@@ -1,0 +1,11 @@
+node_modules/
+.next/
+.npm-cache/
+.env*
+!.env.example
+out/
+coverage/
+*.tsbuildinfo
+.vercel/
+test-results/
+artifacts/
