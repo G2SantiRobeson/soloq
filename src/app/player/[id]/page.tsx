@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Crosshair, TrendingUp } from "lucide-react";
 import { getProfile } from "@/server/queries";
@@ -42,9 +41,10 @@ export default async function PlayerPage({ params, searchParams }: Props) {
   const rate = winrate(record.wins, record.losses);
   return (
     <>
-      <Link href={`/?queue=${view}`} className="back-link">
+      {/* A full navigation keeps the return path usable independently of the client router. */}
+      <a href={`/?queue=${view}`} className="back-link">
         <ArrowLeft size={16} /> Volver a la clasificación
-      </Link>
+      </a>
       <section className="profile-header">
         <RankAvatar
           tier={view === "5v5" ? null : player.rank?.tier}

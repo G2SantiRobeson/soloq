@@ -102,7 +102,6 @@ export function Leaderboard({
             <span className="count-tag">{players.length}</span>
           </h2>
           <span>{view === "5v5" ? "RENDIMIENTO IMPORTADO" : "TIER / DIVISIÓN / LP"}</span>
-          {sync && <SyncCountdown initial={sync} />}
         </div>
         <div className="table-filters">
           <label className="search-input">
@@ -136,6 +135,7 @@ export function Leaderboard({
           </label>
         </div>
       </div>
+      {sync && <SyncCountdown initial={sync} />}
       <div className="mobile-sort">
         <label>
           Ordenar por{" "}

@@ -116,3 +116,21 @@ override de esbuild en el README.
 - Scheduler: no existe job de 10 minutos en staging. Cron diario existente de Production intacto. Configuración externa de runner/autenticación Preview pendiente y documentada en README; no se configuró infraestructura ni se declaró el scheduler activo.
 - Validación manual en Vercel Preview pendiente del usuario; se continuó localmente por el límite de autenticación ya acordado.
 - Sync real local contra Neon staging: HTTP 200, 1 jugador complete y 8 partial antes del límite global; metadata `never → running → partial`. `lastSuccessfulSyncAt` y `nextExpectedSyncAt` permanecieron null (no se fabricó éxito ni se reinició el contador). Informe sin secretos: `artifacts/weekly-validation/staging-sync.json`. El progreso de backfill se conserva para posteriores ejecuciones.
+
+## Corrección del regreso desde perfil — 2026-10-06
+
+- `Volver a la clasificación` usa ahora un enlace HTML con navegación completa, independiente del router cliente. Conserva `?queue=soloq`, `flex` o `5v5`.
+- Verificado con clics de navegador desde el perfil real de ReZzix en las tres colas; retorno a la clasificación correspondiente.
+- Lint sin warnings, typecheck, 122 pruebas y build: PASS. Sin cambios en datos, Riot, `.env.local` o Production.
+
+## Visibilidad del contador — 2026-10-06
+
+- Estado de sincronización movido a una línea propia sobre la tabla, fuera del título y filtros. Incluye icono, etiqueta Próxima actualización y texto de mayor contraste; aplica a SoloQ, Flex y 5v5 y permite wrap móvil.
+- Sin próxima hora válida muestra —:—, con motivo de ausencia/intento parcial/fallido. Mantiene el aviso de programación pendiente y los mismos timestamps, polling y refresco; no se inventa un ciclo de 10 minutos.
+- Lint, typecheck, 122 pruebas y build: PASS. Sin cambios de datos, scheduler, `.env.local` o Production.
+- Inspección visual de esta revisión pendiente: la política de seguridad del navegador rechazó el acceso a la pestaña abierta; no se intentó sortear el bloqueo.
+
+## Acceso superior a métricas — 2026-10-06
+
+- Añadido botón Ver métricas con icono junto a las pestañas de cola, antes de la ladder. Conserva la cola actual en `/metrics?queue=…`; el layout permite wrap en móvil.
+- Lint, typecheck, 122 pruebas y build: PASS. Revisión visual pendiente por el bloqueo del navegador informado anteriormente. Sin cambios de datos ni de Production.

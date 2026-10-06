@@ -1,5 +1,6 @@
 import { parseView } from "@/lib/queues";
 import Link from "next/link";
+import { ChartNoAxesCombined } from "lucide-react";
 import { getLeaderboard } from "@/server/queries";
 import { getAssets } from "@/server/riot/assets";
 import { QueueTabs } from "@/components/queue-tabs";
@@ -41,7 +42,13 @@ export default async function Home({
           </div>
         </dl>
       </section>
-      <QueueTabs view={view} />
+      <div className="ladder-navigation">
+        <QueueTabs view={view} />
+        <Link className="button secondary ladder-metrics-button" href={`/metrics?queue=${view}`}>
+          <ChartNoAxesCombined size={17} aria-hidden="true" />
+          Ver métricas
+        </Link>
+      </div>
       <Leaderboard
         players={players}
         view={view}

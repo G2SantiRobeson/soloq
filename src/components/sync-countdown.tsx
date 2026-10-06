@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Clock3 } from "lucide-react";
 import { countdown, type SyncStatus } from "@/lib/sync-status";
 import { watchSync } from "@/lib/sync-polling";
 
@@ -44,7 +45,22 @@ export function SyncCountdown({
       className="sync-countdown"
       title="Objetivo desde la última sincronización completa de la ladder. Los lotes incompletos y errores no reinician el contador."
     >
-      <span>{countdown(meta, now)}</span>
+      <Clock3 size={16} aria-hidden="true" />
+      <span className="sync-countdown-label">Próxima actualización</span>
+      <strong>
+        {!meta.nextExpectedSyncAt && meta.status !== "running"
+          ? "—:—"
+          : countdown(meta, now).replace("Actualización en ", "")}
+      </strong>
+      {!meta.nextExpectedSyncAt && meta.status !== "running" && (
+        <small>
+          {meta.status === "partial"
+            ? "Último intento parcial"
+            : meta.status === "failed"
+              ? "Último intento fallido"
+              : "Sin sincronización completa"}
+        </small>
+      )}
       {!meta.schedulerConfigured && <small>Programación automática pendiente</small>}
     </span>
   );

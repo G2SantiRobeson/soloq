@@ -2426,6 +2426,22 @@ dialog.confirm-dialog::backdrop {
   color: var(--accent);
   font-size: 13px;
 }
+.ladder-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+}
+.ladder-navigation > .queue-tabs {
+  flex: 1;
+  min-width: min(100%, 540px);
+}
+.ladder-metrics-button {
+  margin-left: auto;
+  color: var(--accent);
+  white-space: nowrap;
+}
 .emblem-audit-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2495,18 +2511,27 @@ dialog.confirm-dialog::backdrop {
 }
 
 /* Historical match performance and observed rank remain separate surfaces. */
-.sync-countdown,
-.table-title > .sync-countdown {
-  display: inline-flex;
-  gap: 8px;
-  align-items: baseline;
-  font-size: 12px;
+.sync-countdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  font-size: 13px;
   color: var(--muted);
   letter-spacing: normal;
   font-variant-numeric: tabular-nums;
 }
 .sync-countdown small {
-  font-size: 10px;
+  font-size: 12px;
+}
+.sync-countdown strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+.sync-countdown-label {
+  color: var(--text);
 }
 .weekly-cell {
   white-space: nowrap;
