@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { LockKeyhole, LogOut, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { PLATFORMS, PLATFORM_LABELS, type Platform } from "@/lib/routing";
+import { CURRENT_SEASON, HISTORY_LABELS, type HistoryStatus } from "@/lib/season";
 export type AdminPlayer = {
   id: string;
   gameName: string;
@@ -11,6 +12,11 @@ export type AdminPlayer = {
   enabled: boolean;
   lastSyncedAt: string | null;
   syncError: string | null;
+  backfillSeason: string | null;
+  backfillStatus: HistoryStatus["status"];
+  backfillDiscovered: number;
+  backfillProcessed: number;
+  backfillUnavailable: number;
 };
 async function request(path: string, method: string, data?: unknown) {
   const response = await fetch(path, {
@@ -186,8 +192,8 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
           </button>
         </form>
         <p className="page-note">
-          La primera importación puede tardar unos minutos. Se guarda el progreso para continuar en
-          la siguiente sincronización.
+          El alta guarda el perfil, el rango actual y comienza el historial de temporada. Los
+          siguientes lotes continúan al sincronizar; cada lote conserva su progreso.
         </p>
       </section>
       {message && (
@@ -226,9 +232,29 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
                     ? `Actualizado ${new Date(p.lastSyncedAt).toLocaleString("es-CL", { timeZone: "UTC" })} UTC`
                     : "Sincronización pendiente"}
                 </p>
+                <p className="history-status">
+                  {CURRENT_SEASON.label}:{" "}
+                  {
+                    HISTORY_LABELS[
+                      p.backfillSeason === CURRENT_SEASON.id ? p.backfillStatus : "not_started"
+                    ]
+                  }
+                  <br />
+                  {p.backfillSeason === CURRENT_SEASON.id &&
+                    `${p.backfillProcessed} / ${p.backfillDiscovered} IDs procesados · ${p.backfillUnavailable} no disponibles`}
+                </p>
                 {p.syncError && <p className="sync-error">{p.syncError}</p>}
               </div>
               <div className="admin-actions">
+                {(p.backfillStatus !== "completed" || p.backfillSeason !== CURRENT_SEASON.id) && (
+                  <button
+                    className="button secondary"
+                    disabled={pending || !p.enabled}
+                    onClick={() => act(`/api/admin/players/${p.id}/backfill`, "POST")}
+                  >
+                    {p.backfillStatus === "failed" ? "Reintentar historial" : "Continuar historial"}
+                  </button>
+                )}
                 <button
                   className={`toggle-tracking ${p.enabled ? "enabled" : ""}`}
                   aria-pressed={p.enabled}

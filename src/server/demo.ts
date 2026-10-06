@@ -2,6 +2,8 @@ import "server-only";
 import type { View } from "@/lib/queues";
 import { queueIds } from "@/lib/queues";
 import type { PlayerProfile, RecentMatch } from "@/lib/types";
+import { CURRENT_SEASON, periodStart, type MetricsPeriod } from "@/lib/season";
+import { rollingWinrate, lpObservations } from "@/lib/history";
 import { aggregate } from "@/lib/stats";
 import { summarizeLp, type RankSnapshot } from "@/lib/lp-metrics";
 import { rankProgress, TIERS } from "@/lib/ranking";
@@ -29,15 +31,17 @@ const champions = [
   { name: "Orianna", id: 61 },
   { name: "Nunu & Willump", id: 20 },
 ];
-export function demoPlayers(view: View): PlayerProfile[] {
+export function demoPlayers(view: View, period: MetricsPeriod = "season"): PlayerProfile[] {
   return names.map((name, index) => {
     const now = Date.now();
-    const all: RecentMatch[] = Array.from({ length: 60 }, (_, i) => {
+    const all: RecentMatch[] = Array.from({ length: 360 }, (_, i) => {
       const champion = champions[(i + index) % champions.length];
       return {
         matchId: `DEMO_${index}_${i}`,
         queueId: [420, 420, 440, 400, 440][i % 5],
-        timestamp: new Date(now - (i + 1) * 3600_000).toISOString(),
+        timestamp: new Date(
+          now - (i + 1) * Math.max(3600_000, (now - periodStart("LA2").getTime()) / 365),
+        ).toISOString(),
         champion: champion.name,
         championId: champion.id,
         position: ["MIDDLE", "TOP", "BOTTOM", "JUNGLE", "UTILITY"][(i + index) % 5],
@@ -56,8 +60,13 @@ export function demoPlayers(view: View): PlayerProfile[] {
       index === 7
         ? []
         : all
-            .filter((m) => queueIds(view).includes(m.queueId))
-            .slice(0, index >= 10 ? 1 : 40)
+            .filter(
+              (m) =>
+                queueIds(view).includes(m.queueId) &&
+                Date.parse(m.timestamp) >=
+                  periodStart(index === 3 ? "EUW1" : "LA2", period, now).getTime(),
+            )
+            .slice(0, index >= 10 ? 1 : 360)
             .map((m) => (index >= 10 ? { ...m, win: index === 10 } : m));
     const rank =
       view === "5v5" || index === 7
@@ -136,6 +145,24 @@ export function demoPlayers(view: View): PlayerProfile[] {
         .filter((c) => c.games > 0)
         .sort((a, b) => b.games - a.games),
       history,
+      performance: rollingWinrate(recent),
+      trackingSince: history[0]?.timestamp ?? null,
+      lpObservations: lpObservations(history, recent),
+      seasonHistory: {
+        season: CURRENT_SEASON.id,
+        status:
+          index === 6
+            ? "running"
+            : index === 7
+              ? "not_started"
+              : index === 8
+                ? "failed"
+                : "completed",
+        processed: recent.length,
+        discovered: recent.length + (index === 6 ? 100 : 0),
+        unavailable: 0,
+        completedAt: new Date(now).toISOString(),
+      },
       momentum: view === "5v5" ? null : summarizeLp(history),
     };
   });

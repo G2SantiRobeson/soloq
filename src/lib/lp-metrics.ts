@@ -1,4 +1,4 @@
-import { rankProgress, TIERS, type Rank, type Tier } from "./ranking";
+import { TIERS, type Rank, type Tier } from "./ranking";
 export type RankSnapshot = Rank & { timestamp: string };
 export const LP_WINDOW = 30;
 export type LpMetrics = {
@@ -23,7 +23,7 @@ function valid(s: RankSnapshot) {
   );
 }
 /**
- * Latest continuous segment, at most 30 observations. Coordinates absorb division/tier changes.
+ * Latest comparable segment, at most 30 observations. Rank transitions end the segment.
  * Counter resets, placements and invalid observations break the segment (never bridge seasons).
  * LP/game uses intervals with games; zero-game decay/adjustments only affect net momentum.
  * LP/win and LP/loss use ONE-game intervals with a compatible sign, including 0 LP.
@@ -64,7 +64,8 @@ export function summarizeLp(history: RankSnapshot[]): LpMetrics {
     const wins = after.wins - before.wins,
       losses = after.losses - before.losses;
     if (wins < 0 || losses < 0) break;
-    const delta = rankProgress(after)! - rankProgress(before)!;
+    if (before.tier !== after.tier || before.division !== after.division) break;
+    const delta = after.leaguePoints - before.leaguePoints;
     const games = wins + losses;
     net += delta;
     result.intervals++;

@@ -78,19 +78,19 @@ describe("observed LP estimates", () => {
       summarizeLp([snap(0, 10, 1, 1), snap(1, 0, 0, 0, "UNRANKED"), snap(2, 34, 2, 1)]),
     ).toMatchObject({ net: null, intervals: 0 });
   });
-  it("accounts for division and tier promotions instead of subtracting raw LP", () => {
+  it("marks division and tier transitions indeterminate instead of manufacturing LP", () => {
     expect(
       summarizeLp([snap(0, 90, 1, 1, "GOLD", "I"), snap(1, 15, 2, 1, "PLATINUM", "IV")]).perWin,
-    ).toBe(25);
+    ).toBeNull();
     expect(
       summarizeLp([snap(0, 90, 1, 1, "DIAMOND", "I"), snap(1, 15, 2, 1, "MASTER")]).perWin,
-    ).toBe(25);
+    ).toBeNull();
     expect(
       summarizeLp([snap(0, 15, 1, 1, "PLATINUM", "IV"), snap(1, 90, 1, 2, "GOLD", "I")]).perLoss,
-    ).toBe(-25);
+    ).toBeNull();
   });
   it("does not add fictional tier offsets between Master and Challenger", () => {
-    expect(summarizeLp([snap(0, 900, 1, 1), snap(1, 925, 2, 1, "CHALLENGER")]).perWin).toBe(25);
+    expect(summarizeLp([snap(0, 900, 1, 1), snap(1, 925, 2, 1, "CHALLENGER")]).perWin).toBeNull();
   });
   it("excludes incompatible result signs from per-outcome samples", () => {
     expect(summarizeLp([snap(0, 100, 1, 1), snap(1, 90, 2, 1)])).toMatchObject({

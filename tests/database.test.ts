@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "@/db/schema";
-import { syncPlayer } from "@/server/sync/service";
+import { syncPlayer, syncAllPlayers } from "@/server/sync/service";
 import { withSyncLease, SyncBusy } from "@/server/sync/lease";
 import { RiotClient, RiotError } from "@/server/riot/client";
 import {
@@ -14,8 +14,15 @@ import {
   destroySession,
   sessionCookie,
 } from "@/server/auth";
+import { seasonStart, CURRENT_SEASON } from "@/lib/season";
+import { getSeasonOverview } from "@/server/season-queries";
+import { SyncDeadline } from "@/server/riot/client";
 import { getLeaderboard, getProfile } from "@/server/queries";
 import type { RiotMatch } from "@/server/riot/schemas";
+import { POST as createPlayer } from "@/app/api/admin/players/route";
+import { getWeeklyLp } from "@/server/weekly-lp";
+import { getSyncStatus } from "@/server/sync/status";
+import { GET as syncStatusRoute } from "@/app/api/ladder/sync-status/route";
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
 const cookieJar = vi.hoisted(() => new Map<string, string>());
@@ -294,8 +301,11 @@ describe("PostgreSQL migrations and data integrity", () => {
       .mockRejectedValueOnce(new RiotError(503));
     await expect(syncPlayer(player.id, riot)).rejects.toThrow();
     const [partial] = await database.select().from(schema.players);
-    expect(partial.scanStart).toEqual(player.scanStart);
-    expect(partial.scanOffset).toBe(0);
+    expect(partial.scanStart).toEqual(seasonStart(player.platform));
+    expect(partial.scanOffset).toBe(2);
+    expect(partial.scanPending).toEqual(["LA2_2"]);
+    expect(partial.backfillStatus).toBe("failed");
+    expect(partial.backfillProcessed).toBe(1);
     expect(partial.scanEnd).not.toBeNull();
     expect(partial.lastSyncedAt).toBeNull();
     expect(await database.select().from(schema.playerMatches)).toHaveLength(1);
@@ -357,5 +367,388 @@ describe("PostgreSQL migrations and data integrity", () => {
       .set({ resetsAt: new Date(0) })
       .where(and(eq(schema.loginAttempts.key, "admin")));
     expect(await allowLogin()).toBe(true);
+  });
+});
+
+describe("resumable season history", () => {
+  it("starts a bounded history batch when the administrator adds an account", async () => {
+    vi.stubEnv("APP_URL", "http://localhost");
+    await createSession();
+    const riot = client();
+    const ids = Array.from({ length: 7 }, (_, i) => `LA2_new_${i}`);
+    const account = { puuid: "stable-puuid", gameName: "Example", tagLine: "LAS" };
+    const mocks = [
+      vi.spyOn(RiotClient.prototype, "account").mockResolvedValue(account),
+      vi.spyOn(RiotClient.prototype, "identity").mockResolvedValue(account),
+      vi.spyOn(RiotClient.prototype, "summoner").mockResolvedValue({ profileIconId: 23 }),
+      vi
+        .spyOn(RiotClient.prototype, "leagues")
+        .mockResolvedValue(await riot.leagues("LA2", account.puuid)),
+      vi.spyOn(RiotClient.prototype, "matchIds").mockResolvedValue(ids),
+      vi.spyOn(RiotClient.prototype, "match").mockImplementation(async (_p, id) => match(id)),
+    ];
+    try {
+      const response = await createPlayer(
+        new Request("http://localhost/api/admin/players", {
+          method: "POST",
+          headers: { origin: "http://localhost", "content-type": "application/json" },
+          body: JSON.stringify({ gameName: "Example", tagLine: "LAS", platform: "LA2" }),
+        }),
+      );
+      expect(response.status).toBe(201);
+      expect((await database.select().from(schema.players))[0]).toMatchObject({
+        backfillStatus: "running",
+        backfillProcessed: 5,
+        backfillDiscovered: 7,
+        scanPending: ids.slice(5),
+      });
+      expect(await database.select().from(schema.playerMatches)).toHaveLength(5);
+      expect(await database.select().from(schema.rankedSnapshots)).toHaveLength(2);
+    } finally {
+      mocks.forEach((mock) => mock.mockRestore());
+    }
+  });
+  it.each([0, 1, 99, 100, 101, 205])(
+    "paginates %i IDs across bounded batches, then switches to incremental",
+    async (count) => {
+      const player = await addPlayer();
+      const riot = client();
+      const ids = Array.from({ length: count }, (_, i) => `LA2_page_${i}`);
+      vi.mocked(riot.matchIds).mockImplementation(async (_platform, _puuid, _start, _end, offset) =>
+        ids.slice(offset, offset + 100),
+      );
+      let result = await syncPlayer(player.id, riot, { budget: 17 });
+      let batches = 1;
+      while (result.status === "partial" && batches < 30) {
+        result = await syncPlayer(player.id, riot, { budget: 17 });
+        batches++;
+      }
+      expect(result.status).toBe("complete");
+      expect(vi.mocked(riot.matchIds).mock.calls.map((c) => c[4])).toEqual(
+        Array.from({ length: Math.floor(count / 100) + 1 }, (_, i) => i * 100),
+      );
+      expect(new Set(vi.mocked(riot.matchIds).mock.calls.map((c) => c[3])).size).toBe(1);
+      expect(vi.mocked(riot.matchIds).mock.calls[0][2]).toBe(
+        seasonStart(player.platform).getTime() / 1000,
+      );
+      const [state] = await database.select().from(schema.players);
+      expect(state).toMatchObject({
+        backfillStatus: "completed",
+        backfillSeason: CURRENT_SEASON.id,
+        backfillProcessed: count,
+        backfillDiscovered: count,
+        scanPending: [],
+        scanOffset: 0,
+      });
+      expect(state.lastBackfillAt).not.toBeNull();
+      expect(state.scanStart.getTime()).toBeGreaterThan(Date.now() - 2 * 86400_000);
+      expect(await database.select().from(schema.playerMatches)).toHaveLength(count);
+      expect(await database.select().from(schema.rankedSnapshots)).toHaveLength(2);
+      vi.mocked(riot.matchIds).mockResolvedValue([]);
+      await syncPlayer(player.id, riot);
+      expect(vi.mocked(riot.matchIds).mock.lastCall?.[2]).toBe(
+        Math.floor(state.scanStart.getTime() / 1000),
+      );
+      expect(await database.select().from(schema.playerMatches)).toHaveLength(count);
+    },
+  );
+  it("saves cursor through expired keys, duplicate IDs and unavailable details", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    vi.mocked(riot.matchIds).mockResolvedValue(["LA2_a", "LA2_a", "LA2_b", "LA2_gone"]);
+    vi.mocked(riot.match).mockImplementation(async (_platform, id) => {
+      if (id === "LA2_b") throw new RiotError(403);
+      if (id === "LA2_gone") throw new RiotError(404);
+      return match(id);
+    });
+    await expect(syncPlayer(player.id, riot)).rejects.toMatchObject({ status: 403 });
+    expect((await database.select().from(schema.players))[0]).toMatchObject({
+      backfillStatus: "failed",
+      backfillProcessed: 1,
+      scanPending: ["LA2_b", "LA2_gone"],
+    });
+    vi.mocked(riot.match).mockImplementation(async (_platform, id) => {
+      if (id === "LA2_gone") throw new RiotError(404);
+      return match(id);
+    });
+    await syncPlayer(player.id, riot);
+    expect((await database.select().from(schema.players))[0]).toMatchObject({
+      backfillStatus: "completed",
+      backfillProcessed: 3,
+      backfillDiscovered: 3,
+      backfillUnavailable: 1,
+    });
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(2);
+    expect(riot.matchIds).toHaveBeenCalledTimes(1);
+  });
+  it("safely yields on a deadline and rank-only creation never requests match history", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    await syncPlayer(player.id, riot, { rankOnly: true });
+    expect(riot.matchIds).not.toHaveBeenCalled();
+    expect(await database.select().from(schema.rankedSnapshots)).toHaveLength(2);
+    vi.mocked(riot.matchIds).mockResolvedValue(["LA2_a", "LA2_b"]);
+    vi.mocked(riot.match)
+      .mockResolvedValueOnce(match("LA2_a"))
+      .mockRejectedValueOnce(new SyncDeadline());
+    await expect(syncPlayer(player.id, riot)).rejects.toBeInstanceOf(SyncDeadline);
+    expect((await database.select().from(schema.players))[0]).toMatchObject({
+      backfillStatus: "running",
+      backfillProcessed: 1,
+      scanPending: ["LA2_b"],
+    });
+    await syncPlayer(player.id, riot);
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(2);
+  });
+  it("restarts the season cursor after a configuration change without destroying existing data", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    await syncPlayer(player.id, riot);
+    await database
+      .update(schema.players)
+      .set({ backfillSeason: "2025", scanOffset: 987, scanPending: ["OLD"] })
+      .where(eq(schema.players.id, player.id));
+    vi.mocked(riot.matchIds).mockResolvedValue([]);
+    await syncPlayer(player.id, riot);
+    expect(vi.mocked(riot.matchIds).mock.lastCall?.[4]).toBe(0);
+    expect(vi.mocked(riot.matchIds).mock.lastCall?.[2]).toBe(seasonStart("LA2").getTime() / 1000);
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(1);
+  });
+  it("aggregates the complete season, filters 30d/7d without deleting, and keeps LP history short", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    const now = Date.now();
+    const rows = [
+      { id: "LA2_old", age: 90 },
+      { id: "LA2_month", age: 10 },
+      { id: "LA2_week", age: 2 },
+      { id: "LA2_remake", age: 1 },
+    ];
+    vi.mocked(riot.matchIds).mockResolvedValue(rows.map((r) => r.id));
+    vi.mocked(riot.match).mockImplementation(async (_p, id) => {
+      const m = match(id);
+      m.info.gameStartTimestamp = now - rows.find((r) => r.id === id)!.age * 86400_000;
+      m.info.participants[0].win = id !== "LA2_month";
+      if (id === "LA2_remake") m.info.participants[0].gameEndedInEarlySurrender = true;
+      return m;
+    });
+    await syncPlayer(player.id, riot);
+    expect((await getLeaderboard("soloq", "season"))[0].stats).toMatchObject({
+      games: 3,
+      wins: 2,
+      losses: 1,
+    });
+    expect((await getLeaderboard("soloq", "30d"))[0].stats.games).toBe(2);
+    expect((await getLeaderboard("soloq", "7d"))[0].stats.games).toBe(1);
+    const profile = await getProfile(player.id, "soloq");
+    expect(profile?.performance).toHaveLength(3);
+    expect(profile?.performance.at(-1)).toMatchObject({ sample: 3, winrate: 200 / 3 });
+    expect(Date.parse(profile!.performance[0].timestamp)).toBeLessThan(now - 30 * 86400_000);
+    expect(Date.parse(profile!.trackingSince!)).toBeGreaterThan(now - 60_000);
+    const season = await getSeasonOverview("soloq", "season");
+    expect(season.uniqueGames).toBe(3);
+    expect(season.champions[0]).toMatchObject({ games: 3, wins: 2 });
+    expect(season.recentForm).toEqual([{ playerId: player.id, games: 3, wins: 2 }]);
+    expect(season.activity.reduce((n, p) => n + p.games, 0)).toBe(3);
+    expect((await getSeasonOverview("soloq", "7d")).uniqueGames).toBe(1);
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(4);
+  });
+  it("bounds recent form at twenty non-remakes and excludes disabled players and other queues", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    vi.mocked(riot.matchIds).mockResolvedValue(
+      Array.from({ length: 24 }, (_, i) => `LA2_form_${i}`),
+    );
+    vi.mocked(riot.match).mockImplementation(async (_p, id) => {
+      const m = match(id),
+        index = Number(id.split("_").at(-1));
+      m.info.gameStartTimestamp = Date.now() - (24 - index) * 3600_000;
+      m.info.participants[0].win = index < 10;
+      if (index === 22) m.info.participants[0].gameEndedInEarlySurrender = true;
+      if (index === 23) m.info.queueId = 440;
+      return m;
+    });
+    await syncPlayer(player.id, riot);
+    expect((await getSeasonOverview("soloq", "season")).recentForm).toEqual([
+      { playerId: player.id, games: 20, wins: 8 },
+    ]);
+    expect((await getSeasonOverview("flex", "season")).recentForm[0].games).toBe(1);
+    await database
+      .update(schema.players)
+      .set({ enabled: false })
+      .where(eq(schema.players.id, player.id));
+    const hidden = await getSeasonOverview("soloq", "season");
+    expect(hidden.recentForm).toEqual([]);
+    expect(hidden.champions).toEqual([]);
+    expect(hidden.uniqueGames).toBe(0);
+  });
+});
+
+describe("weekly ladder baselines and global sync metadata", () => {
+  it("the global service records complete runs but not a partially imported history", async () => {
+    await addPlayer();
+    const spies = [
+      vi
+        .spyOn(RiotClient.prototype, "identity")
+        .mockResolvedValue({ puuid: "stable-puuid", gameName: "Example", tagLine: "LAS" }),
+      vi.spyOn(RiotClient.prototype, "summoner").mockResolvedValue({ profileIconId: 23 }),
+      vi.spyOn(RiotClient.prototype, "leagues").mockResolvedValue([]),
+      vi
+        .spyOn(RiotClient.prototype, "match")
+        .mockImplementation(async (_platform, id) => match(id)),
+    ];
+    const ids = vi.spyOn(RiotClient.prototype, "matchIds").mockResolvedValue([]);
+    try {
+      expect((await syncAllPlayers())[0].status).toBe("complete");
+      const last = (await getSyncStatus()).lastSuccessfulSyncAt;
+      expect(last).not.toBeNull();
+      await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
+      ids.mockResolvedValue(Array.from({ length: 30 }, (_, i) => `LA2_weekly_${i}`));
+      expect((await syncAllPlayers())[0].status).toBe("partial");
+      expect((await getSyncStatus()).lastSuccessfulSyncAt).toBe(last);
+      expect((await getSyncStatus()).status).toBe("partial");
+    } finally {
+      ids.mockRestore();
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+  it("reads the Monday baseline beyond 30 observations and isolates both queues", async () => {
+    const player = await addPlayer();
+    const fresh = await addPlayer("new-midweek");
+    const now = new Date("2026-10-06T18:00:00Z");
+    const base = {
+      playerId: player.id,
+      queue: "RANKED_SOLO_5x5" as const,
+      tier: "PLATINUM",
+      division: "I",
+      leaguePoints: 80,
+      wins: 20,
+      losses: 10,
+    };
+    await database.insert(schema.rankedSnapshots).values([
+      { ...base, timestamp: new Date("2026-10-04T23:00:00Z") },
+      ...Array.from({ length: 40 }, (_, n) => ({
+        ...base,
+        timestamp: new Date(Date.parse("2026-10-05T04:00:00Z") + n * 60000),
+        leaguePoints: 81,
+      })),
+      { ...base, tier: "EMERALD", division: "IV", leaguePoints: 5, timestamp: now },
+      { ...base, tier: "INVALID", timestamp: new Date(now.getTime() - 1) },
+      { ...base, playerId: fresh.id, timestamp: new Date("2026-10-05T05:00:00Z") },
+      {
+        ...base,
+        queue: "RANKED_FLEX_SR",
+        tier: "MASTER",
+        leaguePoints: 350,
+        timestamp: new Date("2026-10-05T03:00:00Z"),
+      },
+      {
+        ...base,
+        queue: "RANKED_FLEX_SR",
+        tier: "GRANDMASTER",
+        leaguePoints: 370,
+        timestamp: now,
+      },
+    ]);
+    const solo = await getWeeklyLp([player.id, fresh.id], "soloq", now);
+    expect(solo.get(player.id)).toBe(25);
+    expect(solo.get(fresh.id)).toBeNull();
+    expect((await getWeeklyLp([player.id], "flex", now)).get(player.id)).toBe(20);
+    expect(await getWeeklyLp([player.id], "5v5", now)).toEqual(new Map());
+  });
+  it("returns zero for an unchanged baseline but never bridges seasons", async () => {
+    const player = await addPlayer();
+    const values = {
+      playerId: player.id,
+      queue: "RANKED_SOLO_5x5" as const,
+      tier: "GOLD",
+      division: "II",
+      leaguePoints: 50,
+      wins: 20,
+      losses: 10,
+    };
+    await database
+      .insert(schema.rankedSnapshots)
+      .values({ ...values, timestamp: new Date("2026-10-04T23:00:00Z") });
+    expect(
+      (await getWeeklyLp([player.id], "soloq", new Date("2026-10-06T18:00:00Z"))).get(player.id),
+    ).toBe(0);
+    await database.delete(schema.rankedSnapshots);
+    await database.insert(schema.rankedSnapshots).values([
+      { ...values, timestamp: new Date("2025-12-01T00:00:00Z") },
+      { ...values, timestamp: new Date("2026-10-06T00:00:00Z") },
+    ]);
+    expect(
+      (await getWeeklyLp([player.id], "soloq", new Date("2026-10-06T18:00:00Z"))).get(player.id),
+    ).toBeNull();
+  });
+  it("records only successful complete global runs; partial, errors and individual jobs preserve success", async () => {
+    const release = () => database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
+    const policy = { successful: (complete: boolean) => complete };
+    expect((await getSyncStatus()).status).toBe("never");
+    await withSyncLease(
+      async () => {
+        expect((await getSyncStatus()).status).toBe("running");
+        return true;
+      },
+      230000,
+      policy,
+    );
+    const success = await getSyncStatus();
+    expect(success.lastSuccessfulSyncAt).not.toBeNull();
+    expect(success.status).toBe("success");
+    expect(
+      Date.parse(success.nextExpectedSyncAt!) - Date.parse(success.lastSuccessfulSyncAt!),
+    ).toBe(600000);
+    await release();
+    await withSyncLease(async () => false, 230000, policy);
+    expect((await getSyncStatus()).status).toBe("partial");
+    expect((await getSyncStatus()).lastSuccessfulSyncAt).toBe(success.lastSuccessfulSyncAt);
+    await release();
+    await expect(
+      withSyncLease(
+        async () => {
+          throw new Error("failed run");
+        },
+        230000,
+        policy,
+      ),
+    ).rejects.toThrow("failed run");
+    expect((await getSyncStatus()).status).toBe("failed");
+    expect((await getSyncStatus()).lastSuccessfulSyncAt).toBe(success.lastSuccessfulSyncAt);
+    await release();
+    await withSyncLease(async () => true);
+    expect((await getSyncStatus()).lastSuccessfulSyncAt).toBe(success.lastSuccessfulSyncAt);
+    expect((await getSyncStatus()).status).toBe("failed");
+  });
+  it("the public read-only endpoint reveals no lease owner or credentials and never calls Riot", async () => {
+    const riot = vi.spyOn(RiotClient.prototype, "leagues");
+    const response = await syncStatusRoute(new Request("http://localhost/api/ladder/sync-status"));
+    expect(response.status).toBe(200);
+    expect(Object.keys(await response.json()).sort()).toEqual(
+      [
+        "lastSuccessfulSyncAt",
+        "nextExpectedSyncAt",
+        "updatedAt",
+        "status",
+        "schedulerConfigured",
+        "serverNow",
+      ].sort(),
+    );
+    expect(riot).not.toHaveBeenCalled();
+    riot.mockRestore();
+    expect(await database.select().from(schema.syncLocks)).toEqual([]);
+  });
+  it("treats an abandoned running lease as failure without fabricating a success", async () => {
+    const now = new Date("2026-10-06T18:00:00Z");
+    await database.insert(schema.syncLocks).values({
+      name: "riot",
+      owner: "00000000-0000-4000-8000-000000000001",
+      expiresAt: new Date(0),
+      lastStartedAt: new Date(now.getTime() - 300000),
+      lastOutcome: "running",
+    });
+    expect((await getSyncStatus(now)).status).toBe("failed");
+    expect((await getSyncStatus(now)).lastSuccessfulSyncAt).toBeNull();
   });
 });

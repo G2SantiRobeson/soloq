@@ -43,13 +43,12 @@ al menos diez partidas en su fuente; el líder ranked se compara por tier, divis
 SoloQ y Flex muestran tendencia en la tabla y un balance en el perfil. Se utilizan
 hasta 30 snapshots recientes, cortando la serie ante reinicios de contadores, Unranked
 o datos inválidos. La coordenada de rango absorbe ascensos/descensos entre divisiones;
-Master, Grandmaster y Challenger comparten la base de LP. El gráfico muestra hasta 180 registros.
-LP/victoria y LP/derrota usan solo intervalos con exactamente una partida y signo compatible.
-Neto/partida incluye intervalos con varias partidas; los cambios sin partidas afectan
-el neto pero no el promedio. Se muestran fechas, muestras y guiones cuando faltan datos.
-Son **estimaciones entre sincronizaciones**, no LP exactos atribuidos a una partida:
-pueden incluir ajustes y una sincronización diaria puede dejar pocas muestras aisladas.
-No hay métricas de LP en 5v5. No se requieren migraciones ni cambios de Riot API o cron.
+El gráfico usa únicamente snapshots oficiales. Su coordenada ordena tier y división, incluidos
+Master, Grandmaster y Challenger, pero no se muestra ni se interpreta como LP ganado.
+Los cambios de tier/división se etiquetan como ascenso/descenso; no se calculan recompensas
+retrospectivas. El perfil diferencia confianza alta (una partida y contadores concordantes),
+agregada (varias partidas) e indeterminada. El momentum resume solo el último segmento
+comparable del mismo rango, hasta 30 snapshots: es una ventana de presentación, no retención.
 
 ### Remakes
 
@@ -254,10 +253,10 @@ Registrar el producto en el portal, proporcionar una demo funcional, explicar la
 `syncPlayer(playerId, client)` es la operación central. Solo se invoca dentro de `withSyncLease`, usada tanto por cron como por las acciones administrativas. El bloqueo vive en PostgreSQL, por lo que cubre distintas instancias de Vercel. Si un proceso muere, el lease caduca.
 
 1. Actualiza identidad e icono; consulta ambas colas ranked y registra los cambios de estado.
-2. Importa inicialmente los últimos **7 días**. Congela `scanEnd` dos minutos antes de la ejecución, conserva `scanStart/scanOffset` y solicita páginas de 20 IDs.
-3. Guarda cada partida en una transacción con `ON CONFLICT DO NOTHING`. Un fallo a mitad de página conserva las filas ya guardadas y no avanza el cursor de esa página.
-4. Continúa hasta cinco páginas por jugador o hasta acercarse al presupuesto de tiempo. En la siguiente ejecución retoma la ventana congelada.
-5. Al completar, mueve el cursor con solapamiento de diez minutos para tolerar indexación tardía y actualiza `lastSyncedAt`. Si falta historial, conserva el timestamp anterior y un mensaje administrativo.
+2. Importa desde el inicio regional de la temporada. Congela `scanEnd` dos minutos antes de la ejecución, persiste páginas de 100 IDs y procesa lotes de 25.
+3. Guarda cada partida y el avance del cursor en una transacción con `ON CONFLICT DO NOTHING`. Un fallo conserva las filas ya guardadas y los IDs pendientes de esa página.
+4. Procesa hasta 25 IDs por jugador o hasta acercarse al presupuesto de tiempo. En la siguiente ejecución retoma la ventana congelada.
+5. Al completar, mueve el cursor con solapamiento de 24 horas para tolerar indexación tardía y actualiza `lastSyncedAt`. Si falta historial, conserva el timestamp anterior y un mensaje administrativo.
 
 Concurrencia Riot = **1**, mínimo 1300 ms entre peticiones, timeout de 10 s y máximo 3 intentos por petición. HTTP 429 respeta `Retry-After` en segundos o fecha HTTP. Si la espera excede el presupuesto, se difiere la sincronización y el lease conserva el cooldown para otras instancias. Los errores transitorios usan backoff acotado; 401/403/404 no tienen retries automáticos. Los logs muestran IDs internos, estados y contadores, sin headers, contraseñas ni respuestas completas.
 
@@ -331,13 +330,100 @@ Los tests críticos cubren clasificación de queues, jerarquía/divisiones/LP, w
 
 ## Límites conocidos y próximos pasos
 
-- No se ha validado contra una cuenta Riot real ni una instancia alojada de PostgreSQL sin proporcionar esas credenciales. Los tests verifican el flujo con PostgreSQL embebido y respuestas Riot controladas.
-- La primera importación abarca siete días, depende de la retención de MATCH-V5 y puede necesitar varias ejecuciones. Una partida que Riot publique con más de diez minutos de retraso respecto del cursor puede requerir un backfill operativo.
+- El historial y la sincronización incremental se validaron localmente contra Neon staging con una cuenta Riot real y Development Key. La validación manual en Vercel Preview sigue pendiente; consultar `VALIDATION.md` para evidencia y alcance.
+- La importación inicial abarca la temporada anual disponible en MATCH-V5 y requiere varios lotes. La retención de Riot puede impedir recuperar partidas antiguas; completar el recorrido no garantiza que Riot conserve toda la temporada. El incremental solapa 24 horas; retrasos de indexación mayores pueden requerir un backfill operativo.
 - La sincronización serial está pensada para una comunidad pequeña. Para cientos/miles de jugadores se necesita una cola duradera por trabajo, presupuesto por método/región y control de rate limits según los headers de producción. La frecuencia diaria de Hobby puede dejar backlog; monitorizar la antigüedad de los jugadores.
 - El leaderboard agrega todo el historial de jugadores habilitados en cada consulta. Para alto tráfico, añadir caché invalidada por sincronización, paginación y agregados materializados tras medir.
-- Hasta 40 partidas recientes y 180 snapshots en la vista de perfil. El resto del historial permanece en la base. No hay API pública de exportación ni paginación de partidas todavía.
+- Hasta 40 partidas recientes en la lista del perfil; las estadísticas y el gráfico móvil usan toda la temporada. La progresión conserva todos los snapshots de la temporada. El resto del historial permanece en la base. No hay API pública de exportación ni paginación de partidas todavía.
 - No hay cuentas de usuario, OAuth/RSO, sistema de roles, MFA, alertas, edición de plataforma ni eliminación automática por retención. El bucket de login compartido puede bloquear nuevos intentos durante 15 minutos; para mayor escala conviene combinar controles por IP confiable e identidad.
 - Revisar los textos legales, backups y contacto del responsable antes de producción. La implementación facilita cumplir la política, pero la aprobación corresponde a Riot.
 - En la auditoría inicial, las dependencias de producción no presentan vulnerabilidades reportadas. Hay avisos de desarrollo heredados de `braces` en las herramientas ESLint/Next, sin versión estable corregida disponible en el registro consultado. No se aplica `npm audit fix --force`, que propone degradar Next/Drizzle. Revisar nuevas versiones del tooling. `esbuild` se sobreescribe a 0.28.2 para retirar su aviso conocido; generación de migraciones y tests se validan con esa versión.
 
 Prioridades siguientes: probar una cuenta real en entorno privado, habilitar la base alojada, obtener Production Key, completar textos del operador y ajustar cron; después medir el tráfico y ampliar la cola de sincronización según necesidad.
+
+
+## Historial de temporada y seguimiento de rango
+
+`src/lib/season.ts` centraliza el ciclo **anual** 2026, distinto de las temporadas temáticas:
+8 de enero a las 12:00 del servidor, según las [notas oficiales 26.1](https://www.leagueoflegends.com/en-us/news/game-updates/patch-26-1-notes/).
+En LAS equivale a 15:00 UTC. Las fechas se convierten con las zonas del servidor;
+`endAt` es opcional (UTC, exclusivo). Al cambiar `CURRENT_SEASON`, el siguiente sync reinicia
+solo el cursor de importación, sin borrar partidas ni snapshots anteriores.
+
+El alta resuelve la cuenta, guarda el rango actual y comienza a importar hasta 5 IDs,
+con un presupuesto de 35 segundos. `/api/cron/sync`, la sincronización manual o
+**Continuar historial** procesan como máximo 25 IDs por jugador y ejecución. MATCH-V5 se
+pagina con `count=100`, offsets 0/100/200…, límites temporales congelados e IDs pendientes
+persistidos. Cada participación y su cursor se confirman en una misma transacción. Los
+campos de la migración **0003_careless_odin.sql** ya existente son suficientes; no hay
+migración nueva. Una página corta termina el recorrido; exactamente 100 requiere otra página.
+
+Al terminar, la consulta incremental avanza desde el límite temporal ya recorrido con
+24 horas de solapamiento. Las claves únicas de Match y PlayerMatch evitan duplicados.
+Solo se almacenan las queues de `STANDARD_QUEUES`, map 11 y modo CLASSIC; no se guarda raw JSON.
+Los contadores del trabajo describen IDs procesados/descubiertos, incluyendo modos excluidos;
+las estadísticas públicas cuentan únicamente las partidas compatibles, sin remakes.
+
+El cliente continúa serial (mínimo 1300 ms), con tres intentos como máximo, backoff y
+Retry-After. El lease PostgreSQL excluye cron/manual/altas concurrentes y conserva el cooldown.
+El presupuesto global es 230 s dentro del máximo HTTP existente de 300 s. Una fecha límite
+conserva el estado running; 401/403 y otros fallos lo marcan recuperable sin perder progreso.
+Tras renovar la Development Key, **Reintentar historial** continúa el cursor. Los detalles
+404 se cuentan como no disponibles. No hay procesos de fondo fuera de la request ni scheduler nuevo.
+
+**Rendimiento de temporada** se calcula desde MATCH-V5: V/D, WR, KDA, CS/min, campeones y
+winrate móvil de 20 partidas (adaptativo al inicio). SQL calcula la ventana antes de seleccionar
+el último punto diario. **Progresión de rango** empieza en el primer snapshot real de esa cola
+y temporada. Solo se inserta un snapshot si cambia tier/división/LP/V/D o comienza la temporada.
+No se infiere rango pasado a partir de resultados. Los deltas de confianza alta exigen además
+una partida que termine entre snapshots y contadores coincidentes; siguen siendo observaciones,
+no premios exactos de MATCH-V5, porque puede haber ajustes externos.
+
+`/metrics` tiene filtros Temporada (predeterminado), 30d y 7d. Usa agregados SQL y muestra
+participaciones, partidas únicas, rendimiento, campeones, actividad semanal y rango actual.
+La forma reciente compara las últimas 20 partidas del período; WR, KDA y destacados recientes
+exigen al menos 10 partidas (`HIGHLIGHT_MIN_GAMES`). El WR por campeón utiliza el mismo mínimo.
+Subidas y caídas comparan el último tramo de hasta 30 snapshots del mismo tier/división,
+con fechas visibles: no son LP reconstruidos ni dependen del filtro de partidas.
+Una partida compartida cuenta una participación por jugador, pero una sola partida única.
+Los filtros no eliminan datos. Los estados parcial/completo/fallido son visibles en perfil/admin;
+la demo ilustra meses de partidas frente a horas de snapshots y nunca escribe en PostgreSQL.
+
+## Δ SEMANA y sincronización global
+
+La semana comienza el lunes 00:00 en `America/Santiago` (`src/lib/time.ts`),
+respetando DST. `weeklyRankDelta` resta la posición del último RankedSnapshot válido
+anterior o igual al lunes a la del último snapshot válido de la misma cola y temporada.
+No hay baseline: `—`. Solo/Duo y Flex son independientes; 5v5 no combina rangos.
+`rankProgress` usa 100 LP/división y 400/tier; Master/Grandmaster/Challenger comparten
+2800 + LP. Promociones y descensos se expresan como desplazamiento continuo, sin
+atribuir premios individuales de MATCH-V5. La consulta semanal usa una ventana SQL
+y devuelve como máximo dos observaciones por jugador, sin N+1 ni límite de 30 snapshots.
+
+El objetivo de 10 minutos está en `LADDER_SYNC_INTERVAL_MS` de
+`src/lib/sync-status.ts`. La migración `0004_far_wiccan.sql` añade cuatro campos
+nullable a `sync_locks`. Solo una ejecución global que recorra todos los jugadores
+habilitados y complete sus sincronizaciones registra `lastSuccessfulSyncAt` al finalizar.
+Errores, backfills parciales, límite de lote y trabajos individuales no lo avanzan.
+Un lease abandonado se muestra como fallido. `nextExpectedSyncAt` es el último éxito
+más 600000 ms, no una promesa de ejecución del scheduler.
+
+El navegador cuenta localmente cada segundo. Al vencer, faltar metadata o estar corriendo,
+consulta exclusivamente `/api/ladder/sync-status` cada 15 segundos mientras la pestaña
+esté visible; no llama a Riot ni inicia un sync. Un éxito más reciente provoca
+`router.refresh()` y comienza el siguiente ciclo desde su timestamp persistido.
+Sin éxito nuevo permanece actualizando o indica retraso si el último intento falló.
+
+**Programación externa pendiente:** `vercel.json` conserva su cron diario de Production.
+No se cambió. [Vercel cron solo corre en Production](https://vercel.com/docs/cron-jobs/manage-cron-jobs),
+no en Preview. Actualmente no hay scheduler de 10 minutos para staging.
+Hace falta configurar, con autorización separada, un runner externo que invoque
+`GET /api/cron/sync` cada 10 minutos, con `Authorization: Bearer <CRON_SECRET>`
+y acceso autorizado al Preview protegido. Los secretos se guardan en el runner,
+no en la URL ni en el cliente. Verificar ejecuciones y límites del proveedor antes
+de declarar `LADDER_SCHEDULER_ENABLED=true`; esa variable solo informa al UI y no crea jobs.
+El lease y el pacing serial existentes siguen evitando solapamientos y respetando 429/Retry-After.
+
+`/dev/ladder` permite auditar signos, baseline ausente, fin del contador y refresco
+con metadata ficticia en memoria. Solo está disponible con NODE_ENV=development;
+no escribe en Neon ni llama a Riot. Los datos reales nunca se sustituyen por esa simulación.

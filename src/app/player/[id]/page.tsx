@@ -20,11 +20,15 @@ import { ChampionIdentity } from "@/components/champion-identity";
 import { Freshness } from "@/components/freshness";
 import { QueueTabs } from "@/components/queue-tabs";
 import { RankChart } from "@/components/rank-chart";
+import { PerformanceChart } from "@/components/performance-chart";
+import { HistoryStatusLabel } from "@/components/history-status";
+import { CURRENT_SEASON, seasonStart } from "@/lib/season";
+import { HIGHLIGHT_MIN_GAMES } from "@/lib/global-metrics";
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ queue?: string }> };
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { id } = await params;
-  const player = await getProfile(id, "soloq");
+  const player = await getProfile(id, parseView((await searchParams).queue));
   const title = player ? `${player.gameName}#${player.tagLine}` : "Jugador no encontrado";
   const description = `Rango, campeones y partidas de ${title} en SoloQ.`;
   return { title, description, openGraph: { title: `${title} | SoloQ`, description } };
@@ -98,9 +102,9 @@ export default async function PlayerPage({ params, searchParams }: Props) {
         <section className="panel evolution-panel">
           <div className="panel-title">
             <h2>
-              <TrendingUp size={17} /> Evolución del rango
+              <TrendingUp size={17} /> Progresión de rango
             </h2>
-            <span>ÚLTIMOS 180 REGISTROS</span>
+            <span>SNAPSHOTS OFICIALES</span>
           </div>
           {view === "5v5" ? (
             <div className="chart-empty">
@@ -108,11 +112,42 @@ export default async function PlayerPage({ params, searchParams }: Props) {
               <span>No tiene un rango ni LP propios.</span>
             </div>
           ) : (
-            <RankChart history={player.history} />
+            <>
+              <p className="metric-note">
+                {player.trackingSince
+                  ? `Seguimiento de rango desde ${new Date(player.trackingSince).toLocaleDateString("es-CL", { timeZone: "UTC" })}. No hay LP históricos anteriores a esta fecha.`
+                  : "Aún no hay snapshots de rango en esta temporada."}
+              </p>
+              <RankChart history={player.history} />
+            </>
           )}
         </section>
       </div>
-      {view !== "5v5" && <LpDeltaSummary metrics={player.momentum} />}
+      {view !== "5v5" && <LpDeltaSummary observations={player.lpObservations} />}
+      <section className="panel season-performance">
+        <div className="panel-title">
+          <h2>Rendimiento de temporada</h2>
+          <span>{CURRENT_SEASON.label.toUpperCase()}</span>
+        </div>
+        <p className="metric-note">
+          Partidas desde{" "}
+          {seasonStart(player.platform).toLocaleDateString("es-CL", { timeZone: "UTC" })}. Este
+          historial puede preceder al seguimiento de rango.
+        </p>
+        <HistoryStatusLabel history={player.seasonHistory} />
+        <div className="season-record">
+          <strong>{player.stats.games} partidas</strong>
+          <span>
+            {player.stats.wins} V / {player.stats.losses} D
+          </span>
+          <strong>
+            {player.stats.games
+              ? `${winrate(player.stats.wins, player.stats.losses).toFixed(1)}% WR`
+              : "— WR"}
+          </strong>
+        </div>
+        <PerformanceChart points={player.performance} />
+      </section>
       <section className="stat-strip" aria-label="Estadísticas del historial importado">
         <div>
           <span>KDA</span>
@@ -156,8 +191,21 @@ export default async function PlayerPage({ params, searchParams }: Props) {
                   {c.games} partidas · {kda(c.kills, c.deaths, c.assists).toFixed(2)} KDA
                 </ChampionIdentity>
                 <div className="champion-rate">
-                  <strong className={winrate(c.wins, c.losses) >= 50 ? "positive" : ""}>
-                    {winrate(c.wins, c.losses).toFixed(0)}%
+                  <strong
+                    className={
+                      c.games >= HIGHLIGHT_MIN_GAMES && winrate(c.wins, c.losses) >= 50
+                        ? "positive"
+                        : ""
+                    }
+                    title={
+                      c.games < HIGHLIGHT_MIN_GAMES
+                        ? `WR disponible desde ${HIGHLIGHT_MIN_GAMES} partidas`
+                        : undefined
+                    }
+                  >
+                    {c.games >= HIGHLIGHT_MIN_GAMES
+                      ? `${winrate(c.wins, c.losses).toFixed(0)}%`
+                      : "— WR"}
                   </strong>
                   <span>
                     {c.wins} V / {c.losses} D
@@ -168,6 +216,9 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           ) : (
             <p className="empty-copy">Aún no hay partidas importadas en esta cola.</p>
           )}
+          <p className="metric-note">
+            Winrate por campeón desde {HIGHLIGHT_MIN_GAMES} partidas; muestras menores muestran V/D.
+          </p>
         </section>
         <section className="panel match-panel">
           <div className="panel-title">

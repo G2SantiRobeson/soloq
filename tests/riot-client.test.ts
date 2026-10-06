@@ -92,7 +92,7 @@ describe("Riot retry and routing", () => {
       "https://asia.api.riotgames.com/riot/account/v1/accounts/by-puuid/p",
     );
     expect(fetcher.mock.calls[1][0]).toBe(
-      "https://sea.api.riotgames.com/lol/match/v5/matches/by-puuid/p/ids?startTime=100&endTime=200&start=0&count=20",
+      "https://sea.api.riotgames.com/lol/match/v5/matches/by-puuid/p/ids?startTime=100&endTime=200&start=0&count=100",
     );
   });
 });

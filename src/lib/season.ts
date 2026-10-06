@@ -11,26 +11,54 @@ export const CURRENT_SEASON = {
   endAt: null as string | null,
 };
 const serverZones: Record<Platform, string> = {
-  LA2: "America/Argentina/Buenos_Aires", LA1: "America/Mexico_City", NA1: "America/Chicago",
-  BR1: "America/Sao_Paulo", EUW1: "Europe/London", EUN1: "Europe/Warsaw",
-  TR1: "Europe/Istanbul", RU: "Europe/Moscow", ME1: "Asia/Riyadh", KR: "Asia/Seoul",
-  JP1: "Asia/Tokyo", OC1: "Australia/Sydney", SG2: "Asia/Singapore", TW2: "Asia/Taipei", VN2: "Asia/Ho_Chi_Minh",
+  LA2: "America/Argentina/Buenos_Aires",
+  LA1: "America/Mexico_City",
+  NA1: "America/Chicago",
+  BR1: "America/Sao_Paulo",
+  EUW1: "Europe/London",
+  EUN1: "Europe/Warsaw",
+  TR1: "Europe/Istanbul",
+  RU: "Europe/Moscow",
+  ME1: "Asia/Riyadh",
+  KR: "Asia/Seoul",
+  JP1: "Asia/Tokyo",
+  OC1: "Australia/Sydney",
+  SG2: "Asia/Singapore",
+  TW2: "Asia/Taipei",
+  VN2: "Asia/Ho_Chi_Minh",
 };
 export function seasonStart(platform: Platform): Date {
   const wall = Date.parse(`${CURRENT_SEASON.startAt}Z`);
   const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: serverZones[platform], timeZoneName: "longOffset",
+    timeZone: serverZones[platform],
+    timeZoneName: "longOffset",
   }).formatToParts(new Date(wall));
-  const offset = parts.find(p => p.type === "timeZoneName")!.value.match(/GMT([+-])(\d{2}):(\d{2})/);
-  const minutes = offset ? (Number(offset[2]) * 60 + Number(offset[3])) * (offset[1] === "+" ? 1 : -1) : 0;
+  const offset = parts
+    .find((p) => p.type === "timeZoneName")!
+    .value.match(/GMT([+-])(\d{2}):(\d{2})/);
+  const minutes = offset
+    ? (Number(offset[2]) * 60 + Number(offset[3])) * (offset[1] === "+" ? 1 : -1)
+    : 0;
   return new Date(wall - minutes * 60_000);
 }
 export type MetricsPeriod = "season" | "30d" | "7d";
+export function seasonEnd() {
+  return CURRENT_SEASON.endAt ? new Date(CURRENT_SEASON.endAt) : null;
+}
 export function parsePeriod(value?: string): MetricsPeriod {
   return value === "30d" || value === "7d" ? value : "season";
 }
-export function periodStart(platform: Platform, period: MetricsPeriod = "season", now = Date.now()) {
-  return new Date(Math.max(seasonStart(platform).getTime(), period === "season" ? 0 : now - (period === "7d" ? 7 : 30) * 86400_000));
+export function periodStart(
+  platform: Platform,
+  period: MetricsPeriod = "season",
+  now = Date.now(),
+) {
+  return new Date(
+    Math.max(
+      seasonStart(platform).getTime(),
+      period === "season" ? 0 : now - (period === "7d" ? 7 : 30) * 86400_000,
+    ),
+  );
 }
 export type HistoryStatus = {
   season: string;
@@ -41,5 +69,8 @@ export type HistoryStatus = {
   completedAt: string | null;
 };
 export const HISTORY_LABELS: Record<HistoryStatus["status"], string> = {
-  not_started: "Pendiente", running: "Importación en curso", completed: "Historial disponible importado", failed: "Interrumpido · reintentable",
+  not_started: "Pendiente",
+  running: "Importación en curso",
+  completed: "Historial disponible importado",
+  failed: "Interrumpido · reintentable",
 };

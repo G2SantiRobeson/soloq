@@ -2,6 +2,8 @@ import type { Platform } from "./routing";
 import type { Rank } from "./ranking";
 import type { Totals } from "./stats";
 import type { LpMetrics, RankSnapshot } from "./lp-metrics";
+import type { HistoryStatus } from "./season";
+import type { PerformancePoint, LpObservation } from "./history";
 export type RecentChampionMatch = Pick<
   RecentMatch,
   "matchId" | "champion" | "championId" | "win" | "isRemake"
@@ -36,10 +38,15 @@ export type PublicPlayer = {
   stats: Totals;
   recent: RecentChampionMatch[];
   momentum: LpMetrics | null;
+  weeklyLp?: number | null;
+  seasonHistory?: HistoryStatus;
 };
 export type ChampionStats = Totals & { champion: string; championId: number };
 export type PlayerProfile = Omit<PublicPlayer, "recent"> & {
   recent: RecentMatch[];
   champions: ChampionStats[];
   history: RankSnapshot[];
+  performance: PerformancePoint[];
+  trackingSince: string | null;
+  lpObservations: LpObservation[];
 };

@@ -6,6 +6,7 @@ import { PLATFORMS } from "@/lib/routing";
 import { body, endpoint, HttpError, json, requireAdmin, verifyOrigin } from "@/server/http";
 import { withSyncLease } from "@/server/sync/lease";
 import { syncPlayer } from "@/server/sync/service";
+import { CURRENT_SEASON, seasonStart } from "@/lib/season";
 import { RiotError } from "@/server/riot/client";
 export const maxDuration = 300;
 export const GET = endpoint(async () => {
@@ -20,6 +21,11 @@ export const GET = endpoint(async () => {
         enabled: players.enabled,
         lastSyncedAt: players.lastSyncedAt,
         syncError: players.syncError,
+        backfillSeason: players.backfillSeason,
+        backfillStatus: players.backfillStatus,
+        backfillDiscovered: players.backfillDiscovered,
+        backfillProcessed: players.backfillProcessed,
+        backfillUnavailable: players.backfillUnavailable,
       })
       .from(players)
       .orderBy(desc(players.createdAt)),
@@ -55,13 +61,14 @@ export const POST = endpoint(async (request) => {
         puuid: account.puuid,
         platform: values.platform,
         profileIconId: summoner.profileIconId,
-        scanStart: new Date(Date.now() - 7 * 86400_000),
+        scanStart: seasonStart(values.platform),
+        backfillSeason: CURRENT_SEASON.id,
       })
       .onConflictDoNothing({ target: players.puuid })
       .returning({ id: players.id });
     if (!player) throw new HttpError(409, "Esta cuenta ya está registrada (PUUID duplicado).");
     try {
-      const result = await syncPlayer(player.id, client);
+      const result = await syncPlayer(player.id, client, { budget: 5 });
       return json(
         {
           id: player.id,
@@ -88,5 +95,5 @@ export const POST = endpoint(async (request) => {
         201,
       );
     }
-  });
+  }, 35_000);
 });

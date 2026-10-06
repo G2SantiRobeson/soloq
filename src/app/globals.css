@@ -1492,6 +1492,13 @@ select option {
 }
 /* Mobile: result slips, not a compressed desktop table */
 @media (max-width: 700px) {
+  .admin-player {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .admin-actions {
+    gap: 8px;
+  }
   .container {
     padding-inline: 16px;
   }
@@ -2467,7 +2474,10 @@ dialog.confirm-dialog::backdrop {
     width: 60px;
     height: 60px;
   }
-  .profile-header > .rank-avatar { width: 92px; height: 92px; }
+  .profile-header > .rank-avatar {
+    width: 92px;
+    height: 92px;
+  }
   .leaderboard .rank-cell .rank-emblem {
     width: 34px;
     height: 34px;
@@ -2481,5 +2491,185 @@ dialog.confirm-dialog::backdrop {
   }
   .emblem-audit-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Historical match performance and observed rank remain separate surfaces. */
+.sync-countdown,
+.table-title > .sync-countdown {
+  display: inline-flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+}
+.sync-countdown small {
+  font-size: 10px;
+}
+.weekly-cell {
+  white-space: nowrap;
+  font-size: 13px;
+}
+@media (max-width: 700px) {
+  .leaderboard .ladder-row:has(.weekly-cell) {
+    grid-template-areas: "place identity lp" "rank rank wr" "weekly weekly weekly" "form form form";
+  }
+  .leaderboard .weekly-cell {
+    grid-area: weekly;
+    padding-left: 40px;
+    font-size: 12px;
+  }
+  .weekly-cell .mobile-label {
+    margin-right: 10px;
+  }
+  .sync-countdown {
+    flex-wrap: wrap;
+  }
+  .table-title {
+    flex-wrap: wrap;
+  }
+}
+.season-performance {
+  margin: 24px 0;
+  padding: 24px;
+  min-width: 0;
+}
+.history-status {
+  display: grid;
+  gap: 5px;
+  border-left: 2px solid var(--accent);
+  padding: 8px 12px;
+  margin: 16px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.history-status strong {
+  color: var(--text);
+  font-weight: 500;
+}
+.history-failed {
+  border-color: var(--loss);
+}
+.season-record {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 20px 0;
+  font-size: 14px;
+}
+.period-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 20px 0;
+}
+.period-tabs a {
+  padding: 10px 16px;
+  color: var(--muted);
+  border-bottom: 2px solid var(--line);
+  font-size: 13px;
+}
+.period-tabs a[aria-current] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.lp-observations {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-height: 320px;
+  overflow: auto;
+  margin-bottom: 16px;
+}
+.lp-observations article {
+  padding: 12px;
+  border: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
+}
+.lp-observations time,
+.lp-observations span,
+.lp-observations small {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.admin-actions {
+  flex-wrap: wrap;
+}
+.metric-leader-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.metric-leader-row a {
+  overflow-wrap: anywhere;
+}
+.metric-leader-row strong,
+.champion-results {
+  text-align: right;
+}
+.metric-leader-row small,
+.champion-results small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.champion-results {
+  font-size: 12px;
+}
+.metrics-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+  margin: 24px 0;
+}
+.metrics-detail-grid.single-column {
+  grid-template-columns: minmax(0, 1fr);
+}
+.rank-distribution-row {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) 24px;
+}
+.distribution-track {
+  height: 4px;
+  background: var(--line);
+}
+.distribution-track > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+@media (max-width: 700px) {
+  .metrics-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .metric-leader-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .metric-leader-row > span:first-child {
+    grid-column: 1 / -1;
+  }
+  .season-performance {
+    padding: 16px;
+  }
+  .lp-observations {
+    grid-template-columns: 1fr;
+  }
+  .season-performance .panel-title {
+    align-items: flex-start;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .period-tabs a {
+    padding: 10px;
   }
 }

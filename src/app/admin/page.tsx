@@ -22,6 +22,11 @@ export default async function AdminPage() {
       enabled: players.enabled,
       lastSyncedAt: players.lastSyncedAt,
       syncError: players.syncError,
+      backfillSeason: players.backfillSeason,
+      backfillStatus: players.backfillStatus,
+      backfillDiscovered: players.backfillDiscovered,
+      backfillProcessed: players.backfillProcessed,
+      backfillUnavailable: players.backfillUnavailable,
     })
     .from(players)
     .orderBy(desc(players.createdAt));

@@ -4,7 +4,7 @@ import { getLeaderboard } from "@/server/queries";
 import { getAssets } from "@/server/riot/assets";
 import { QueueTabs } from "@/components/queue-tabs";
 import { Leaderboard } from "@/components/leaderboard";
-import { GlobalMetricsSection } from "@/components/global-metrics-section";
+import { getSyncStatus } from "@/server/sync/status";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
@@ -12,7 +12,11 @@ export default async function Home({
   searchParams: Promise<{ queue?: string }>;
 }) {
   const view = parseView((await searchParams).queue);
-  const [players, assets] = await Promise.all([getLeaderboard(view), getAssets()]);
+  const [players, assets, sync] = await Promise.all([
+    getLeaderboard(view),
+    getAssets(),
+    getSyncStatus(),
+  ]);
   const games = players.reduce(
     (total, p) => total + (view !== "5v5" && p.rank ? p.rank.wins + p.rank.losses : p.stats.games),
     0,
@@ -43,9 +47,9 @@ export default async function Home({
         view={view}
         version={assets.version}
         champions={assets.champions}
+        sync={sync}
         key={view}
       />
-      <GlobalMetricsSection players={players} view={view} />
       <Link className="metrics-link" href={`/metrics?queue=${view}`}>
         Ver métricas de la comunidad →
       </Link>

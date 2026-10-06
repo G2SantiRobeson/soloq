@@ -8,9 +8,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { rankLabel, rankProgress, type Rank } from "@/lib/ranking";
+import { rankLabel, chartRankCoordinate, chartRankLabel, type Rank } from "@/lib/ranking";
 export function RankChart({ history }: { history: (Rank & { timestamp: string })[] }) {
   const data = history.map((h) => ({
+    time: Date.parse(h.timestamp),
     date: new Date(h.timestamp).toLocaleString("es-CL", {
       timeZone: "UTC",
       day: "numeric",
@@ -19,11 +20,12 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
       minute: "2-digit",
       hour12: false,
     }),
-    value: rankProgress(h),
+    value: chartRankCoordinate(h),
     label: `${rankLabel(h)} · ${h.leaguePoints} LP`,
   }));
-  const apexOnly = data.length > 0 && data.every((d) => d.value !== null && d.value >= 2800);
+
   const net = (data.at(-1)?.value ?? 0) - (data[0]?.value ?? 0);
+  const shortWindow = (data.at(-1)?.time ?? 0) - (data[0]?.time ?? 0) < 2 * 86400_000;
   const lineColor = net > 0 ? "var(--win)" : net < 0 ? "var(--loss)" : "var(--accent)";
   if (data.filter((d) => d.value !== null).length < 2)
     return (
@@ -53,7 +55,17 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
           </defs>
           <CartesianGrid stroke="#272b31" vertical={false} />
           <XAxis
-            dataKey="date"
+            dataKey="time"
+            type="number"
+            domain={["dataMin", "dataMax"]}
+            tickFormatter={(v) =>
+              new Date(v).toLocaleString("es-CL", {
+                timeZone: "UTC",
+                ...(shortWindow
+                  ? { hour: "2-digit", minute: "2-digit", hour12: false }
+                  : { day: "numeric", month: "short" }),
+              })
+            }
             stroke="#8a919c"
             fontSize={11}
             tickLine={false}
@@ -65,24 +77,26 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
             fontSize={11}
             tickLine={false}
             axisLine={false}
-            domain={[(min: number) => Math.max(apexOnly ? 2800 : 0, min - 20), "dataMax + 20"]}
-            width={48}
-            tickFormatter={(value: number) =>
-              apexOnly ? `${Math.round(value - 2800)}` : `${Math.round(value)}`
-            }
+            domain={[
+              (min: number) => Math.max(0, Math.floor(min)),
+              (max: number) => Math.floor(max) + 1,
+            ]}
+            width={92}
+            allowDecimals={false}
+            tickFormatter={chartRankLabel}
           />
           <Tooltip
             content={({ active, payload }) =>
               active && payload?.[0] ? (
                 <div className="chart-tooltip">
-                  {payload[0].payload.date}
+                  {payload[0].payload.date} UTC
                   <strong>{payload[0].payload.label}</strong>
                 </div>
               ) : null
             }
           />
           <Area
-            type="linear"
+            type="stepAfter"
             dataKey="value"
             stroke={lineColor}
             strokeWidth={2}
@@ -93,10 +107,8 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
         </AreaChart>
       </ResponsiveContainer>
       <p className="chart-note">
-        {apexOnly
-          ? "LP oficiales en Master, Grandmaster y Challenger."
-          : "LP oficiales acumulados entre divisiones."}{" "}
-        No representa MMR. Máximo 180 cambios.
+        Solo observaciones oficiales desde el inicio del seguimiento. Las bandas representan tier y
+        división; el tooltip muestra los LP oficiales.
       </p>
     </div>
   );

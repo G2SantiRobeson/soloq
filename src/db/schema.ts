@@ -32,7 +32,10 @@ export const players = pgTable("players", {
   scanPending: jsonb("scan_pending").$type<string[]>().default([]).notNull(),
   scanExhausted: boolean("scan_exhausted").default(false).notNull(),
   backfillSeason: text("backfill_season"),
-  backfillStatus: text("backfill_status").$type<"not_started" | "running" | "completed" | "failed">().default("not_started").notNull(),
+  backfillStatus: text("backfill_status")
+    .$type<"not_started" | "running" | "completed" | "failed">()
+    .default("not_started")
+    .notNull(),
   backfillStartedAt: time("backfill_started_at"),
   backfillUpdatedAt: time("backfill_updated_at"),
   lastBackfillAt: time("last_backfill_at"),
@@ -57,15 +60,19 @@ export const rankedSnapshots = pgTable(
   },
   (t) => [index("snapshot_player_queue_time_idx").on(t.playerId, t.queue, t.timestamp)],
 ).enableRLS();
-export const matches = pgTable("matches", {
-  id: text("id").primaryKey(),
-  queueId: integer("queue_id").notNull(),
-  mapId: integer("map_id").notNull(),
-  timestamp: time("timestamp").notNull(),
-  duration: integer("duration").notNull(),
-  // Null marks legacy rows awaiting a Riot-backed classification.
-  isRemake: boolean("is_remake"),
-}, (t) => [index("match_queue_time_idx").on(t.queueId, t.timestamp)]).enableRLS();
+export const matches = pgTable(
+  "matches",
+  {
+    id: text("id").primaryKey(),
+    queueId: integer("queue_id").notNull(),
+    mapId: integer("map_id").notNull(),
+    timestamp: time("timestamp").notNull(),
+    duration: integer("duration").notNull(),
+    // Null marks legacy rows awaiting a Riot-backed classification.
+    isRemake: boolean("is_remake"),
+  },
+  (t) => [index("match_queue_time_idx").on(t.queueId, t.timestamp)],
+).enableRLS();
 export const playerMatches = pgTable(
   "player_matches",
   {
@@ -104,4 +111,8 @@ export const syncLocks = pgTable("sync_locks", {
   name: text("name").primaryKey(),
   owner: uuid("owner").notNull(),
   expiresAt: time("expires_at").notNull(),
+  lastSuccessfulSyncAt: time("last_successful_sync_at"),
+  lastStartedAt: time("last_started_at"),
+  lastFinishedAt: time("last_finished_at"),
+  lastOutcome: text("last_outcome").$type<"running" | "success" | "partial" | "failed">(),
 }).enableRLS();

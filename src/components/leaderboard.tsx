@@ -13,17 +13,22 @@ import { LPDisplay } from "./lp-display";
 import { RecentChampionForm } from "./recent-champion-form";
 import { PlayerMomentum } from "./player-momentum";
 import type { ChampionCatalog } from "@/lib/champion-assets";
+import type { SyncStatus } from "@/lib/sync-status";
+import { SyncCountdown } from "./sync-countdown";
+import { signedLp } from "@/lib/lp-metrics";
 type Sort = "rank" | "games" | "winrate" | "kda";
 export function Leaderboard({
   players,
   view,
   version,
   champions,
+  sync,
 }: {
   players: PublicPlayer[];
   view: View;
   version: string | null;
   champions: ChampionCatalog;
+  sync?: SyncStatus;
 }) {
   const [search, setSearch] = useState("");
   const [region, setRegion] = useState("all");
@@ -97,6 +102,7 @@ export function Leaderboard({
             <span className="count-tag">{players.length}</span>
           </h2>
           <span>{view === "5v5" ? "RENDIMIENTO IMPORTADO" : "TIER / DIVISIÓN / LP"}</span>
+          {sync && <SyncCountdown initial={sync} />}
         </div>
         <div className="table-filters">
           <label className="search-input">
@@ -180,6 +186,16 @@ export function Leaderboard({
             <th scope="col" role="columnheader" className="lp-column">
               LP
             </th>
+            {view !== "5v5" && (
+              <th
+                scope="col"
+                role="columnheader"
+                className="weekly-column"
+                title="Cambio neto de posición ranked desde el lunes 00:00, America/Santiago. No equivale a premios por partida."
+              >
+                Δ SEMANA
+              </th>
+            )}
             {heading("WINRATE", "winrate")}
             <th scope="col" role="columnheader" className="record-column">
               V / D
@@ -214,6 +230,20 @@ export function Leaderboard({
                 <LPDisplay rank={p.rank} noRank={view === "5v5"} />
                 {view !== "5v5" && <PlayerMomentum metrics={p.momentum} />}
               </td>
+              {view !== "5v5" && (
+                <td
+                  role="cell"
+                  className={`weekly-cell numeric ${(p.weeklyLp ?? 0) > 0 ? "positive" : (p.weeklyLp ?? 0) < 0 ? "negative" : ""}`}
+                  title={
+                    p.weeklyLp == null
+                      ? "Sin baseline válido anterior al lunes de esta semana"
+                      : "Desplazamiento neto semanal de posición ranked"
+                  }
+                >
+                  <span className="mobile-label">Δ SEMANA </span>
+                  {p.weeklyLp == null ? "—" : `${signedLp(p.weeklyLp)} LP`}
+                </td>
+              )}
               <td role="cell" className="wr-cell">
                 <span className={`winrate numeric ${p.games && p.winrate >= 50 ? "positive" : ""}`}>
                   {p.games ? p.winrate.toFixed(1) : "—"}
