@@ -31,14 +31,14 @@ export function Footer() {
         <Link href="/" className="brand small-brand">
           SOLOQ /
         </Link>
-        <span>League of Legends · Community ladder</span>
+        <span>League of Legends · Clasificación de la comunidad</span>
         <nav aria-label="Pie de página">
           <Link href="/admin">Administración</Link>
           <Link href="/privacy">Privacidad</Link>
           <Link href="/terms">Términos</Link>
         </nav>
       </div>
-      <p>
+      <p lang="en">
         SoloQ isn&apos;t endorsed by Riot Games and doesn&apos;t reflect the views or opinions of
         Riot Games or anyone officially involved in producing or managing Riot Games properties.
         Riot Games, and all associated properties are trademarks or registered trademarks of Riot

@@ -36,7 +36,9 @@ export function Avatar({
           onError={() => setFailedSources((previous) => [...previous, imageSrc])}
         />
       ) : (
-        <span aria-label={name}>{name.replace("Demo ", "").slice(0, 2).toUpperCase()}</span>
+        <span role={decorative ? undefined : "img"} aria-label={decorative ? undefined : name}>
+          {name.replace("Demo ", "").slice(0, 2).toUpperCase()}
+        </span>
       )}
     </span>
   );

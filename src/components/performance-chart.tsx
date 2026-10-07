@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import type { PerformancePoint, ActivityPoint } from "@/lib/history";
 import { ChartDataTable, CHART_KEYBOARD_HINT } from "./chart-data-table";
+import { MethodNote } from "./method-note";
 const date = (v: number | string) =>
   new Date(v).toLocaleDateString("es-CL", { timeZone: "UTC", day: "numeric", month: "short" });
 const percent = (v: number) => `${v.toFixed(1)}%`;
@@ -166,11 +167,13 @@ export function ActivityChart({ points }: { points: ActivityPoint[] }) {
           (p) => [date(p.timestamp), `${p.games} (${p.wins} V / ${p.losses} D)`] as const,
         )}
       />
-      <p className="chart-note">
-        Cada jugador cuenta una participación: una partida compartida puede sumar varias. Remakes
-        excluidos. Las semanas vacías entre observaciones indican cero participaciones importadas;
-        durante un backfill, la cobertura todavía es parcial.
-      </p>
+      <MethodNote>
+        <p>
+          Cada jugador cuenta una participación: una partida compartida puede sumar varias. Remakes
+          excluidos. Las semanas vacías entre observaciones indican cero participaciones importadas;
+          mientras se importa el historial, la cobertura todavía es parcial.
+        </p>
+      </MethodNote>
     </figure>
   );
 }

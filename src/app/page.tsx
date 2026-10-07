@@ -28,7 +28,7 @@ export default async function Home({
     <>
       <section className="ladder-heading">
         <div>
-          <div className="eyebrow">LEAGUE OF LEGENDS / COMMUNITY LADDER</div>
+          <div className="eyebrow">LEAGUE OF LEGENDS / CLASIFICACIÓN DE LA COMUNIDAD</div>
           <h1>
             La clasificación<span className="heading-dot">.</span>
           </h1>

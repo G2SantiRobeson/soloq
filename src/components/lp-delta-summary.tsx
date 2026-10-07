@@ -5,11 +5,12 @@ export function LpDeltaSummary({ observations }: { observations: LpObservation[]
     <section className="lp-summary" aria-labelledby="lp-summary-heading">
       <div className="section-heading">
         <h2 id="lp-summary-heading">Cambios de LP observados</h2>
-        <span>ENTRE SNAPSHOTS REALES</span>
+        <span>ENTRE REGISTROS REALES</span>
       </div>
       {!observations.length ? (
         <p className="metric-note">
-          Faltan dos snapshots comparables. MATCH-V5 no proporciona LP por partida.
+          Hacen falta dos registros de rango comparables. Riot no informa los LP ganados o perdidos
+          en cada partida.
         </p>
       ) : (
         <div className="lp-observations">
@@ -22,6 +23,7 @@ export function LpDeltaSummary({ observations }: { observations: LpObservation[]
                   month: "short",
                   hour: "2-digit",
                   minute: "2-digit",
+                  hour12: false,
                 })}{" "}
                 UTC
               </time>
@@ -38,7 +40,8 @@ export function LpDeltaSummary({ observations }: { observations: LpObservation[]
         Confianza alta: una partida coincide temporalmente con el intervalo y con los contadores
         oficiales, sin cambio de rango. Agregado: varias partidas; no se reparte el cambio entre
         ellas. Ascensos, descensos o datos incompletos: indeterminado. Incluso una observación
-        aislada puede incluir ajustes externos; no es una recompensa de LP entregada por MATCH-V5.
+        aislada puede incluir ajustes externos; no es la cantidad de LP que Riot asignó a esa
+        partida.
       </p>
     </section>
   );

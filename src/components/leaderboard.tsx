@@ -116,7 +116,7 @@ export function Leaderboard({
       <div className="table-toolbar">
         <div className="table-title">
           <h2>
-            {view === "5v5" ? "Registro 5v5" : "Ladder"}
+            {view === "5v5" ? "Registro 5v5" : "Ranking"}
             <span className="count-tag">{players.length}</span>
           </h2>
           <span>{view === "5v5" ? "RENDIMIENTO IMPORTADO" : "TIER / DIVISIÓN / LP"}</span>
@@ -325,7 +325,9 @@ export function Leaderboard({
       {!rows.length && (
         <div className="empty-state">
           <span className="eyebrow">SIN RESULTADOS</span>
-          <h3>{players.length ? "Ningún jugador coincide." : "El ladder aún está vacío."}</h3>
+          <h3>
+            {players.length ? "Ningún jugador coincide." : "La clasificación aún está vacía."}
+          </h3>
           <p>
             {players.length
               ? "Prueba otro Riot ID o restablece los filtros."

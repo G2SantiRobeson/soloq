@@ -7,12 +7,10 @@ export function HistoryStatusLabel({ history }: { history?: HistoryStatus }) {
         {CURRENT_SEASON.label} · {HISTORY_LABELS[status]}
       </strong>
       <span>
-        {history
-          ? `${history.processed} / ${history.discovered} IDs descubiertos procesados. `
-          : ""}
+        {history ? `${history.processed} / ${history.discovered} partidas procesadas. ` : ""}
         {status === "completed"
           ? "Cobertura disponible en Riot; no garantiza recuperar partidas que la API ya no conserve."
-          : "Estadísticas parciales mientras se importa el historial; continúa desde Administración o mediante el cron."}
+          : "Estadísticas parciales mientras se importa el historial; se completará en las próximas actualizaciones."}
         {!!history?.unavailable &&
           ` ${history.unavailable} partidas sin detalle disponible en Riot.`}
       </span>

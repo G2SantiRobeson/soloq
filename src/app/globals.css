@@ -1558,24 +1558,82 @@ select option {
   color: var(--text);
   font-size: var(--fs-4);
 }
+.loading-state {
+  display: grid;
+  gap: var(--space-2);
+}
 .skeleton {
-  background: var(--surface-raised);
+  background: linear-gradient(90deg, var(--surface-2), var(--surface-raised), var(--surface-2));
+  background-size: 200% 100%;
   border-radius: var(--radius);
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.skeleton-line {
+  width: 180px;
+  height: 16px;
 }
 .skeleton-title {
-  width: 45%;
-  height: 48px;
-  margin: var(--space-2) 0;
+  width: min(45%, 420px);
+  height: 44px;
 }
-.skeleton-subtitle {
-  width: 65%;
-  height: 24px;
-  margin: var(--space-3) 0 var(--space-4);
+.skeleton-tabs {
+  width: min(100%, 560px);
+  height: 64px;
 }
 .skeleton-row {
-  height: 68px;
-  margin-bottom: var(--space-half);
-  border-bottom: 1px solid var(--line);
+  height: 72px;
+}
+.skeleton-profile-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.skeleton-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+}
+.skeleton-stack {
+  display: grid;
+  flex: 1;
+  gap: var(--space-1);
+}
+.skeleton-profile-grid {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.skeleton-panel {
+  height: 280px;
+}
+.skeleton-highlights {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.skeleton-highlight {
+  height: 120px;
+}
+@media (max-width: 700px) {
+  .skeleton-profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .skeleton-highlights {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
 /* Laptop and tablet: preserve primary measures */
 @media (max-width: 1100px) {
@@ -2350,11 +2408,41 @@ dialog.confirm-dialog::backdrop {
   font-size: var(--fs-2);
 }
 .metric-method summary {
+  display: flex;
+  align-items: center;
   cursor: pointer;
   color: var(--accent);
-  min-height: 36px;
-  padding-block: var(--space-1);
+  font-weight: 600;
+  min-height: 40px;
   width: fit-content;
+}
+.metric-method summary::-webkit-details-marker {
+  display: none;
+}
+.metric-method summary::before {
+  content: "+" / "";
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-right: var(--space-1);
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  font-size: var(--fs-2);
+  line-height: 1;
+}
+.metric-method[open] summary::before {
+  content: "−" / "";
+}
+.metric-method summary:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.metric-method-body {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-1) 0 var(--space-1) var(--space-2);
+  border-left: 2px solid var(--line);
 }
 .metric-method p {
   line-height: 1.75;
@@ -2724,10 +2812,18 @@ dialog.confirm-dialog::backdrop {
   margin: var(--space-3) 0;
 }
 .period-tabs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   padding: var(--space-1) var(--space-2);
   color: var(--muted);
   border-bottom: 2px solid var(--line);
   font-size: var(--fs-2);
+}
+.period-tabs a:hover {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--surface-2);
 }
 .period-tabs a[aria-current] {
   color: var(--accent);

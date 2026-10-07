@@ -12,7 +12,7 @@ export function Freshness({
     : Infinity;
   const stale = elapsed > 36 * 3600_000;
   const text = !timestamp
-    ? "Pendiente de sincronización"
+    ? "Pendiente de actualización"
     : elapsed < 3600_000
       ? `hace ${Math.max(1, Math.floor(elapsed / 60000))} min`
       : elapsed < 86400_000

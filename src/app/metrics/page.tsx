@@ -5,6 +5,7 @@ import { getLeaderboard } from "@/server/queries";
 import { GlobalMetricsSection } from "@/components/global-metrics-section";
 import { QueueTabs } from "@/components/queue-tabs";
 import { BackToLadder } from "@/components/back-link";
+import { MethodNote } from "@/components/method-note";
 import { CURRENT_SEASON, parsePeriod } from "@/lib/season";
 import { getSeasonOverview } from "@/server/season-queries";
 import { ActivityChart } from "@/components/performance-chart";
@@ -105,17 +106,19 @@ export default async function MetricsPage({
             </span>
           )}
         </div>
-        <p className="metric-note">
-          Se comparan hasta {RECENT_FORM_GAMES} partidas importadas recientes por jugador, con un
-          mínimo de {HIGHLIGHT_MIN_GAMES}. Remakes excluidos; un historial parcial puede cambiar el
-          resultado.
-        </p>
+        <MethodNote>
+          <p>
+            Se comparan hasta {RECENT_FORM_GAMES} partidas importadas recientes por jugador, con un
+            mínimo de {HIGHLIGHT_MIN_GAMES}. Remakes excluidos; un historial parcial puede cambiar
+            el resultado.
+          </p>
+        </MethodNote>
       </section>
       {view !== "5v5" && (
         <section className="panel season-performance">
           <div className="panel-title">
             <h2>Tendencia de LP reciente</h2>
-            <span>SNAPSHOTS OFICIALES</span>
+            <span>REGISTROS OFICIALES</span>
           </div>
           <div className="season-record">
             <strong>{players.filter((p) => (p.momentum?.net ?? 0) > 0).length} en subida</strong>
@@ -125,11 +128,6 @@ export default async function MetricsPage({
               {players.filter((p) => p.momentum?.net == null).length} sin datos comparables
             </span>
           </div>
-          <p className="metric-note">
-            Último tramo comparable de hasta 30 snapshots por jugador, dentro del mismo tier y
-            división. Puede incluir ajustes de LP. Esta tendencia y el rango actual son
-            independientes del filtro de partidas; no representan el cambio de toda la temporada.
-          </p>
           {[
             { label: "Mayor subida observada", player: highlights.climb },
             { label: "Mayor caída observada", player: highlights.drop },
@@ -163,10 +161,17 @@ export default async function MetricsPage({
               )}
             </div>
           ))}
-          <p className="metric-note">
-            Los intervalos pueden tener distinta duración; se muestra su cambio neto observado, sin
-            atribuirlo a partidas individuales.
-          </p>
+          <MethodNote>
+            <p>
+              Último tramo comparable de hasta 30 registros de rango por jugador, dentro del mismo
+              tier y división. Puede incluir ajustes de LP. Esta tendencia y el rango actual son
+              independientes del filtro de partidas; no representan el cambio de toda la temporada.
+            </p>
+            <p>
+              Los intervalos pueden tener distinta duración; se muestra su cambio neto observado,
+              sin atribuirlo a partidas individuales.
+            </p>
+          </MethodNote>
         </section>
       )}
       <section className="panel season-performance">
@@ -204,10 +209,12 @@ export default async function MetricsPage({
           ) : (
             <p className="empty-copy">Todavía no hay partidas para este período.</p>
           )}
-          <p className="metric-note">
-            Uso = participaciones con el campeón / participaciones del grupo. El winrate requiere{" "}
-            {HIGHLIGHT_MIN_GAMES} partidas.
-          </p>
+          <MethodNote>
+            <p>
+              Uso = participaciones con el campeón / participaciones del grupo. El winrate requiere{" "}
+              {HIGHLIGHT_MIN_GAMES} partidas.
+            </p>
+          </MethodNote>
         </section>
         {view !== "5v5" && (
           <section className="panel champion-panel">

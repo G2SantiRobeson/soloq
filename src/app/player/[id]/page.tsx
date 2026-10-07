@@ -102,7 +102,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
             <h2>
               <TrendingUp size={17} /> Progresión de rango
             </h2>
-            <span>SNAPSHOTS OFICIALES</span>
+            <span>REGISTROS OFICIALES</span>
           </div>
           {view === "5v5" ? (
             <div className="chart-empty">
@@ -114,7 +114,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
               <p className="metric-note">
                 {player.trackingSince
                   ? `Seguimiento de rango desde ${new Date(player.trackingSince).toLocaleDateString("es-CL", { timeZone: "UTC" })}. No hay LP históricos anteriores a esta fecha.`
-                  : "Aún no hay snapshots de rango en esta temporada."}
+                  : "Aún no hay registros de rango en esta temporada."}
               </p>
               <RankChart history={player.history} />
             </>
