@@ -501,7 +501,7 @@ select {
   align-items: center;
   gap: var(--space-1);
   height: 42px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   padding-inline: var(--space-2);
@@ -659,7 +659,7 @@ select option {
   color: var(--accent);
 }
 .sort-faint {
-  opacity: 0.4;
+  color: var(--muted);
 }
 .identity-cell {
   width: 28%;
@@ -1849,14 +1849,18 @@ select option {
   }
   .mobile-sort select {
     color: var(--text);
-    background: var(--bg);
-    border: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding-inline: var(--space-1);
     min-height: 40px;
     max-width: 125px;
   }
   .mobile-sort button {
-    background: transparent;
-    border: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding-inline: var(--space-1);
     color: var(--muted);
     min-height: 40px;
     display: inline-flex;
@@ -2199,13 +2203,17 @@ dialog.confirm-dialog::backdrop {
   }
   .mobile-sort select {
     color: var(--text);
-    background: var(--bg);
-    border: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding-inline: var(--space-1);
     min-height: 40px;
   }
   .mobile-sort button {
-    background: transparent;
-    border: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding-inline: var(--space-1);
     color: var(--muted);
     min-height: 40px;
     display: inline-flex;
@@ -3012,4 +3020,8 @@ dialog.confirm-dialog::backdrop {
   margin-top: var(--space-half);
   color: var(--muted);
   font-size: var(--fs-1);
+}
+.mobile-sort select:hover,
+.mobile-sort button:hover {
+  border-color: var(--accent);
 }
