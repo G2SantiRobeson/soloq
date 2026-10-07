@@ -32,21 +32,21 @@ export function PerformanceChart({ points }: { points: PerformancePoint[] }) {
           data={points.map((p) => ({ ...p, time: Date.parse(p.timestamp) }))}
           margin={{ left: 0, right: 15, top: 12, bottom: 5 }}
         >
-          <CartesianGrid stroke="#272b31" vertical={false} />
+          <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="time"
             type="number"
             domain={["dataMin", "dataMax"]}
             tickFormatter={date}
             minTickGap={45}
-            stroke="#8a919c"
+            stroke="var(--chart-axis)"
             fontSize={11}
           />
           <YAxis
             domain={[0, 100]}
             tickFormatter={(v) => `${v}%`}
             width={42}
-            stroke="#8a919c"
+            stroke="var(--chart-axis)"
             fontSize={11}
           />
           <Tooltip
@@ -88,15 +88,15 @@ export function ActivityChart({ points }: { points: ActivityPoint[] }) {
     <div className="chart" role="img" aria-label="Participaciones de jugadores por semana">
       <ResponsiveContainer width="100%" height={230}>
         <BarChart data={points} margin={{ right: 12 }}>
-          <CartesianGrid stroke="#272b31" vertical={false} />
+          <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="timestamp"
             tickFormatter={date}
             minTickGap={45}
-            stroke="#8a919c"
+            stroke="var(--chart-axis)"
             fontSize={11}
           />
-          <YAxis allowDecimals={false} width={42} stroke="#8a919c" fontSize={11} />
+          <YAxis allowDecimals={false} width={42} stroke="var(--chart-axis)" fontSize={11} />
           <Tooltip
             content={({ active, payload }) =>
               active && payload?.[0] ? (

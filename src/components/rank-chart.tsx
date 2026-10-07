@@ -53,7 +53,7 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
               <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid stroke="#272b31" vertical={false} />
+          <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="time"
             type="number"
@@ -66,14 +66,14 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
                   : { day: "numeric", month: "short" }),
               })
             }
-            stroke="#8a919c"
+            stroke="var(--chart-axis)"
             fontSize={11}
             tickLine={false}
             axisLine={false}
             minTickGap={45}
           />
           <YAxis
-            stroke="#8a919c"
+            stroke="var(--chart-axis)"
             fontSize={11}
             tickLine={false}
             axisLine={false}
