@@ -11,8 +11,10 @@ import {
   YAxis,
 } from "recharts";
 import type { PerformancePoint, ActivityPoint } from "@/lib/history";
+import { ChartDataTable, CHART_KEYBOARD_HINT } from "./chart-data-table";
 const date = (v: number | string) =>
   new Date(v).toLocaleDateString("es-CL", { timeZone: "UTC", day: "numeric", month: "short" });
+const percent = (v: number) => `${v.toFixed(1)}%`;
 export function PerformanceChart({ points }: { points: PerformancePoint[] }) {
   if (!points.length)
     return (
@@ -21,16 +23,36 @@ export function PerformanceChart({ points }: { points: PerformancePoint[] }) {
         <span>El rendimiento aparecerá al importar partidas de esta temporada.</span>
       </div>
     );
+  const first = points[0];
+  const last = points[points.length - 1];
+  const best = points.reduce((a, b) => (b.winrate > a.winrate ? b : a));
+  const worst = points.reduce((a, b) => (b.winrate < a.winrate ? b : a));
   return (
-    <div
-      className="chart"
-      role="img"
-      aria-label="Winrate móvil de hasta veinte partidas, durante la temporada"
-    >
+    <figure className="chart">
+      <figcaption className="chart-range">
+        <span>
+          {percent(first.winrate)} ({date(first.timestamp)})
+        </span>
+        <span aria-hidden="true">→</span>
+        <strong>
+          {percent(last.winrate)} ({date(last.timestamp)})
+        </strong>
+        <span className="chart-extremes">
+          Máx. {percent(best.winrate)} · Mín. {percent(worst.winrate)}
+        </span>
+        <span className="sr-only">
+          Winrate móvil de hasta veinte partidas: de {percent(first.winrate)} el{" "}
+          {date(first.timestamp)} a {percent(last.winrate)} el {date(last.timestamp)}. Máximo{" "}
+          {percent(best.winrate)} el {date(best.timestamp)}; mínimo {percent(worst.winrate)} el{" "}
+          {date(worst.timestamp)}.
+        </span>
+      </figcaption>
       <ResponsiveContainer width="100%" height={240}>
         <AreaChart
           data={points.map((p) => ({ ...p, time: Date.parse(p.timestamp) }))}
           margin={{ left: 0, right: 15, top: 12, bottom: 5 }}
+          title="Winrate móvil de la temporada"
+          desc={CHART_KEYBOARD_HINT}
         >
           <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
@@ -50,6 +72,7 @@ export function PerformanceChart({ points }: { points: PerformancePoint[] }) {
             fontSize={11}
           />
           <Tooltip
+            cursor={{ stroke: "var(--border)" }}
             content={({ active, payload }) =>
               active && payload?.[0] ? (
                 <div className="chart-tooltip">
@@ -67,27 +90,49 @@ export function PerformanceChart({ points }: { points: PerformancePoint[] }) {
             dataKey="winrate"
             stroke="var(--win)"
             fill="var(--win)"
-            fillOpacity={0.08}
+            fillOpacity={0.12}
             strokeWidth={2}
             dot={points.length === 1}
+            activeDot={{ r: 5, fill: "var(--win)", stroke: "var(--surface)", strokeWidth: 2 }}
             isAnimationActive={false}
           />
         </AreaChart>
       </ResponsiveContainer>
+      <ChartDataTable
+        caption="Winrate móvil por día (UTC)"
+        columns={["Día", "Winrate y muestra"]}
+        rows={points.map(
+          (p) => [date(p.timestamp), `${percent(p.winrate)} · ${p.sample} partidas`] as const,
+        )}
+      />
       <p className="chart-note">
         Winrate móvil de las últimas 20 partidas. Con menos partidas, se usa la muestra disponible.
         Última observación de cada día UTC; remakes excluidos.
       </p>
-    </div>
+    </figure>
   );
 }
 export function ActivityChart({ points }: { points: ActivityPoint[] }) {
   if (!points.length)
     return <p className="empty-copy">Todavía no hay actividad importada en este período.</p>;
+  const total = points.reduce((sum, p) => sum + p.games, 0);
+  const busiest = points.reduce((a, b) => (b.games > a.games ? b : a));
   return (
-    <div className="chart" role="img" aria-label="Participaciones de jugadores por semana">
+    <figure className="chart">
+      <figcaption className="chart-range">
+        <strong>{total.toLocaleString("es-CL")} participaciones</strong>
+        <span>en {points.length} semanas</span>
+        <span className="chart-extremes">
+          Semana más activa: {date(busiest.timestamp)} ({busiest.games})
+        </span>
+      </figcaption>
       <ResponsiveContainer width="100%" height={230}>
-        <BarChart data={points} margin={{ right: 12 }}>
+        <BarChart
+          data={points}
+          margin={{ right: 12 }}
+          title="Participaciones de jugadores por semana"
+          desc={CHART_KEYBOARD_HINT}
+        >
           <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
           <XAxis
             dataKey="timestamp"
@@ -98,6 +143,7 @@ export function ActivityChart({ points }: { points: ActivityPoint[] }) {
           />
           <YAxis allowDecimals={false} width={42} stroke="var(--chart-axis)" fontSize={11} />
           <Tooltip
+            cursor={{ fill: "var(--surface-raised)" }}
             content={({ active, payload }) =>
               active && payload?.[0] ? (
                 <div className="chart-tooltip">
@@ -113,11 +159,18 @@ export function ActivityChart({ points }: { points: ActivityPoint[] }) {
           <Bar dataKey="games" fill="var(--accent)" maxBarSize={28} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
+      <ChartDataTable
+        caption="Participaciones por semana"
+        columns={["Semana del", "Participaciones"]}
+        rows={points.map(
+          (p) => [date(p.timestamp), `${p.games} (${p.wins} V / ${p.losses} D)`] as const,
+        )}
+      />
       <p className="chart-note">
         Cada jugador cuenta una participación: una partida compartida puede sumar varias. Remakes
         excluidos. Las semanas vacías entre observaciones indican cero participaciones importadas;
         durante un backfill, la cobertura todavía es parcial.
       </p>
-    </div>
+    </figure>
   );
 }
