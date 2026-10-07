@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { players } from "@/db/schema";
 import { endpoint, HttpError, json, requireAdmin, verifyOrigin } from "@/server/http";
 import { withSyncLease } from "@/server/sync/lease";
-import { syncPlayer } from "@/server/sync/service";
+import { syncPlayer, syncBackfillPlayer } from "@/server/sync/service";
 export const maxDuration = 300;
 export const POST = endpoint(async (request) => {
   verifyOrigin(request);
@@ -19,7 +19,8 @@ export const POST = endpoint(async (request) => {
     if (!player) throw new HttpError(404, "Jugador no encontrado.");
     if (!player.enabled)
       throw new HttpError(409, "Activa el jugador antes de continuar el historial.");
-    const result = await syncPlayer(parsed.data, client);
+    await syncPlayer(parsed.data, client);
+    const result = await syncBackfillPlayer(parsed.data, client);
     return json({
       message:
         result.status === "complete"

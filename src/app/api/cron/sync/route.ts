@@ -8,11 +8,12 @@ export const GET = endpoint(async (request) => {
   const expected = `Bearer ${requiredSecret("CRON_SECRET")}`;
   if (!secureEqual(request.headers.get("authorization") ?? "", expected))
     throw new HttpError(401, "No autorizado.");
-  const results = await syncAllPlayers();
+  const { results, recent, backfill, outcome } = await syncAllPlayers();
   console.info("cron_sync_complete", {
-    complete: results.filter((r) => r.status === "complete").length,
-    partial: results.filter((r) => r.status === "partial").length,
-    errors: results.filter((r) => r.status === "error").length,
+    ...recent,
+    backfillComplete: backfill.complete,
+    backfillPending: backfill.pending,
+    backfillErrors: backfill.errors,
   });
-  return json({ results });
+  return json({ results, recent, backfill, outcome });
 });

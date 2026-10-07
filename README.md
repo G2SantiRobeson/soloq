@@ -250,19 +250,35 @@ Registrar el producto en el portal, proporcionar una demo funcional, explicar la
 
 ## Sincronización y cron
 
-`syncPlayer(playerId, client)` es la operación central. Solo se invoca dentro de `withSyncLease`, usada tanto por cron como por las acciones administrativas. El bloqueo vive en PostgreSQL, por lo que cubre distintas instancias de Vercel. Si un proceso muere, el lease caduca.
+La sincronización global tiene dos fases dentro de `withSyncLease`: primero recientes
+para los jugadores habilitados y después historial con el presupuesto sobrante. El lease
+PostgreSQL cubre distintas instancias de Vercel y caduca si un proceso muere.
 
-1. Actualiza identidad e icono; consulta ambas colas ranked y registra los cambios de estado.
-2. Importa desde el inicio regional de la temporada. Congela `scanEnd` dos minutos antes de la ejecución, persiste páginas de 100 IDs y procesa lotes de 25.
-3. Guarda cada partida y el avance del cursor en una transacción con `ON CONFLICT DO NOTHING`. Un fallo conserva las filas ya guardadas y los IDs pendientes de esa página.
-4. Procesa hasta 25 IDs por jugador o hasta acercarse al presupuesto de tiempo. En la siguiente ejecución retoma la ventana congelada.
-5. Al completar, mueve el cursor con solapamiento de 24 horas para tolerar indexación tardía y actualiza `lastSyncedAt`. Si falta historial, conserva el timestamp anterior y un mensaje administrativo.
+1. `syncPlayer` actualiza identidad, summoner y snapshots ranked; importa una ventana
+   reciente independiente de `scan_*`, desde `lastSyncedAt - 24 h` hasta ahora menos
+   dos minutos. Sin cobertura previa usa `createdAt - 24 h`, acotado a temporada.
+2. Cada pasada admite cinco participaciones nuevas por jugador; las existentes no
+   consumen el cupo. Se pagina hasta agotar la lista o devolver parcial. Solo completar
+   todas las páginas y detalles avanza `lastSyncedAt` al corte temporal consultado.
+3. `lastAttemptAt` se actualiza después de una respuesta correcta de IDs recientes.
+   Un deadline anterior conserva prioridad. Los intentos más antiguos van primero.
+4. Después de la pasada reciente, `syncBackfillPlayer` retoma el historial pendiente
+   con sus ventanas congeladas, páginas de 100 y lotes de 25. El historial no modifica
+   `lastAttemptAt` ni `lastSyncedAt`; su propio timestamp es `backfillUpdatedAt`.
+5. Participaciones y cursors históricos conservan transacciones y `ON CONFLICT`.
+   Los reintentos recientes se apoyan en las participaciones persistidas, sin migración.
+
+El JSON informa `recent` y `backfill` por separado, conservando `results` de recientes.
+Un éxito global significa que todos completaron recientes, aunque el historial siga
+pendiente; un parcial significa que quedaron ventanas recientes incompletas o jugadores
+sin atender. Los errores recientes se registran como fallidos. Ver [operación y scheduler
+de staging](docs/STAGING_SYNC.md) para semántica, límites y configuración manual.
 
 Concurrencia Riot = **1**, mínimo 1300 ms entre peticiones, timeout de 10 s y máximo 3 intentos por petición. HTTP 429 respeta `Retry-After` en segundos o fecha HTTP. Si la espera excede el presupuesto, se difiere la sincronización y el lease conserva el cooldown para otras instancias. Los errores transitorios usan backoff acotado; 401/403/404 no tienen retries automáticos. Los logs muestran IDs internos, estados y contadores, sin headers, contraseñas ni respuestas completas.
 
-El lote prioriza los jugadores con intentos más antiguos, selecciona hasta 50 y usa un presupuesto de cliente de 230 s. La función Vercel declara máximo 300 s y el lease 285 s. Usar una configuración de funciones que permita esa duración. No usar la misma Riot Key desde otro proceso que ignore este lease.
+El lote prioriza los jugadores con intentos recientes más antiguos y recorre habilitados hasta el deadline global de 230 s. La función Vercel declara máximo 300 s y el lease 285 s. Usar una configuración de funciones que permita esa duración. No usar la misma Riot Key desde otro proceso que ignore este lease.
 
-`vercel.json` programa **09:00 UTC una vez al día**. Esta configuración es compatible con Hobby; no promete sincronización en tiempo real. En un plan que permita mayor frecuencia, cambiar el schedule a `*/15 * * * *` y redeployar. Vercel envía automáticamente `CRON_SECRET` como Bearer. El cron solo se programa en producción; localmente se puede usar el botón de sincronizar en `/admin`.
+`vercel.json` conserva **09:00 UTC una vez al día** en Production. Vercel envía automáticamente `CRON_SECRET` como Bearer. Ese cron no programa Preview: staging necesita el runner externo documentado, sin modificar Production. Localmente se puede usar el botón de sincronizar en `/admin`.
 
 Puede verificarse manualmente el endpoint con un cliente HTTP, usando `GET /api/cron/sync` y `Authorization: Bearer <CRON_SECRET>` como header. No pasar el secreto en la URL. Un 409 significa trabajo en curso/cooldown; el siguiente cron lo reintenta. Revisar también los estados parciales/error del JSON y los logs, no solo el HTTP 200. [Documentación oficial de Vercel Cron](https://vercel.com/docs/cron-jobs/manage-cron-jobs).
 
@@ -350,7 +366,7 @@ En LAS equivale a 15:00 UTC. Las fechas se convierten con las zonas del servidor
 `endAt` es opcional (UTC, exclusivo). Al cambiar `CURRENT_SEASON`, el siguiente sync reinicia
 solo el cursor de importación, sin borrar partidas ni snapshots anteriores.
 
-El alta resuelve la cuenta, guarda el rango actual y comienza a importar hasta 5 IDs,
+El alta resuelve la cuenta, guarda el rango actual, intenta recientes y después hasta 5 IDs históricos,
 con un presupuesto de 35 segundos. `/api/cron/sync`, la sincronización manual o
 **Continuar historial** procesan como máximo 25 IDs por jugador y ejecución. MATCH-V5 se
 pagina con `count=100`, offsets 0/100/200…, límites temporales congelados e IDs pendientes
@@ -358,8 +374,8 @@ persistidos. Cada participación y su cursor se confirman en una misma transacci
 campos de la migración **0003_careless_odin.sql** ya existente son suficientes; no hay
 migración nueva. Una página corta termina el recorrido; exactamente 100 requiere otra página.
 
-Al terminar, la consulta incremental avanza desde el límite temporal ya recorrido con
-24 horas de solapamiento. Las claves únicas de Match y PlayerMatch evitan duplicados.
+Al terminar el historial se conserva su cursor incremental con 24 horas de solapamiento.
+La sincronización global posterior actualiza recientes y no reinicia un backfill completado. Las claves únicas de Match y PlayerMatch evitan duplicados.
 Solo se almacenan las queues de `STANDARD_QUEUES`, map 11 y modo CLASSIC; no se guarda raw JSON.
 Los contadores del trabajo describen IDs procesados/descubiertos, incluyendo modos excluidos;
 las estadísticas públicas cuentan únicamente las partidas compatibles, sin remakes.
@@ -403,23 +419,25 @@ y devuelve como máximo dos observaciones por jugador, sin N+1 ni límite de 30 
 El objetivo de 10 minutos está en `LADDER_SYNC_INTERVAL_MS` de
 `src/lib/sync-status.ts`. La migración `0004_far_wiccan.sql` añade cuatro campos
 nullable a `sync_locks`. Solo una ejecución global que recorra todos los jugadores
-habilitados y complete sus sincronizaciones registra `lastSuccessfulSyncAt` al finalizar.
-Errores, backfills parciales, límite de lote y trabajos individuales no lo avanzan.
+habilitados y complete sus ventanas recientes registra `lastSuccessfulSyncAt` al finalizar.
+Errores recientes, ventanas recientes parciales, deadline y trabajos individuales no lo avanzan.
+El backfill pendiente se informa separadamente y no impide registrar éxito reciente.
 Un lease abandonado se muestra como fallido. `nextExpectedSyncAt` es el último éxito
 más 600000 ms, no una promesa de ejecución del scheduler.
 
-El navegador cuenta localmente cada segundo. Al vencer, faltar metadata o estar corriendo,
+El navegador actualiza la etiqueta localmente cada diez segundos. Al vencer, faltar metadata o estar corriendo,
 consulta exclusivamente `/api/ladder/sync-status` cada 15 segundos mientras la pestaña
-esté visible; no llama a Riot ni inicia un sync. Un éxito más reciente provoca
-`router.refresh()` y comienza el siguiente ciclo desde su timestamp persistido.
+esté visible; no llama a Riot ni inicia un sync. Un éxito más reciente activa
+el aviso de resultados nuevos; solo el botón del usuario ejecuta `router.refresh()`.
 Sin éxito nuevo permanece actualizando o indica retraso si el último intento falló.
 
 **Programación externa pendiente:** `vercel.json` conserva su cron diario de Production.
 No se cambió. [Vercel cron solo corre en Production](https://vercel.com/docs/cron-jobs/manage-cron-jobs),
 no en Preview. Actualmente no hay scheduler de 10 minutos para staging.
-Hace falta configurar, con autorización separada, un runner externo que invoque
+Hace falta configurar manualmente un runner externo que invoque
 `GET /api/cron/sync` cada 10 minutos, con `Authorization: Bearer <CRON_SECRET>`
-y acceso autorizado al Preview protegido. Los secretos se guardan en el runner,
+y el header `x-vercel-protection-bypass` para el Preview protegido.
+Los pasos y límites de GitHub Actions/cron-job.org están en [STAGING_SYNC.md](docs/STAGING_SYNC.md). Los secretos se guardan en el runner,
 no en la URL ni en el cliente. Verificar ejecuciones y límites del proveedor antes
 de declarar `LADDER_SCHEDULER_ENABLED=true`; esa variable solo informa al UI y no crea jobs.
 El lease y el pacing serial existentes siguen evitando solapamientos y respetando 429/Retry-After.

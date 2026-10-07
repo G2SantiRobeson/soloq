@@ -134,3 +134,45 @@ override de esbuild en el README.
 
 - Añadido botón Ver métricas con icono junto a las pestañas de cola, antes de la ladder. Conserva la cola actual en `/metrics?queue=…`; el layout permite wrap en móvil.
 - Lint, typecheck, 122 pruebas y build: PASS. Revisión visual pendiente por el bloqueo del navegador informado anteriormente. Sin cambios de datos ni de Production.
+
+## Recientes antes de historial — 2026-10-07
+
+- Rama `staging`; índice inicialmente vacío. Se conservaron sin edición ni staging
+  `CLAUDE.md`, `.claude/dev-demo.mjs`, `.claude/launch.json` y `.env.local`.
+- Dos fases seriales con el lease global existente: ventanas recientes independientes
+  y después historial con presupuesto restante. Cupo de cinco participaciones recientes
+  nuevas por jugador, sin cobrar nuevamente las persistidas. Paginación completa antes
+  de confirmar cobertura. Inicio bootstrap estable desde creación menos 24 h.
+- `lastAttemptAt` solo después de una respuesta de IDs recientes; `lastSyncedAt` es el
+  corte reciente cubierto. El historial no modifica ninguna marca reciente. El éxito
+  global depende de todos los recientes y separa errores/progreso histórico.
+- Compatibilidad: conserva scans incrementales pendientes y repara huecos entre un
+  scan histórico antiguo completado y su antiguo timestamp de finalización. No reinicia
+  la temporada completa. Sin cambios de schema ni migraciones.
+- Vitest/PGlite: 23 casos nuevos, con partida nueva durante backfill congelado,
+  orden de fases, 51 jugadores sin límite artificial, fairness y recuperación de
+  deadlines, idempotencia, overlap, bootstrap, 105 IDs en varios lotes, página exacta
+  de 100 y fallo de la página siguiente, errores y cooldown en ambas fases, y cursores
+  antiguos. Se conservaron y adaptaron los escenarios históricos a su fase explícita.
+- Validaciones finales: `npm run lint` PASS sin warnings; `npm run typecheck` PASS;
+  `npm run test` PASS, 166 tests en 14 archivos; `npx next build` PASS, Next.js 16.3.8.
+  Vitest/build necesitaron permitir sus workers locales por `spawn EPERM` del sandbox.
+  No se ejecutaron `npm run build` ni `npm run dev`; no se regeneraron assets de public.
+- API real mediante el build local en puerto 3001 contra Neon staging: Bearer inválido
+  rechazado con HTTP 401. Primera ronda HTTP 200 en 220 s, 18 visitados, 17 recientes
+  completos y uno pendiente, sin errores; 17 marcas de cobertura nuevas y progreso
+  histórico en tres jugadores. Segunda ronda HTTP 200 en 220 s, 18 visitados, 17 completos
+  y uno pendiente, sin errores; progreso histórico en cuatro jugadores. Ambas registraron
+  `partial`, conservaron `lastSuccessfulSyncAt=null` y no fabricaron cobertura completa.
+- Tercera ronda real HTTP 200 en 220 s: 18 recientes completos, cero pendientes y cero
+  errores; 18 marcas de cobertura nuevas y progreso histórico en cuatro jugadores.
+  Registró `success` y `lastSuccessfulSyncAt` válido con 15 backfills aún pendientes.
+  El jugador que quedó pendiente en las dos rondas anteriores completó su ventana.
+  `schedulerConfigured=false` se conservó durante las tres rondas.
+- SQL exclusivamente de lectura para comprobar los resultados: ocho jugadores con
+  backfill running tienen partidas guardadas posteriores al `scan_end` congelado.
+  Home, métricas y perfil real respondieron HTTP 200 sin el error boundary observado.
+- Scheduler externo, activación del flag y Vercel Preview quedan para configuración
+  manual según `docs/STAGING_SYNC.md`. GitHub schedule requiere la rama por defecto;
+  cron-job.org necesita una cuenta con timeout suficiente (el estándar de 30 s no basta).
+  No se tocó Production, `vercel.json`, secretos ni se activó el scheduler.

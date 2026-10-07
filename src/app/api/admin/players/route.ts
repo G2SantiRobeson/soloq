@@ -5,7 +5,7 @@ import { players } from "@/db/schema";
 import { PLATFORMS } from "@/lib/routing";
 import { body, endpoint, HttpError, json, requireAdmin, verifyOrigin } from "@/server/http";
 import { withSyncLease } from "@/server/sync/lease";
-import { syncPlayer } from "@/server/sync/service";
+import { syncPlayer, syncBackfillPlayer } from "@/server/sync/service";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
 import { RiotError } from "@/server/riot/client";
 export const maxDuration = 300;
@@ -69,13 +69,16 @@ export const POST = endpoint(async (request) => {
     if (!player) throw new HttpError(409, "Esta cuenta ya está registrada (PUUID duplicado).");
     try {
       const result = await syncPlayer(player.id, client, { budget: 5 });
+      const backfill = await syncBackfillPlayer(player.id, client, 5);
       return json(
         {
           id: player.id,
           message:
             result.status === "complete"
-              ? "Jugador añadido y sincronizado."
-              : "Jugador añadido. El historial continuará importándose en la próxima sincronización.",
+              ? backfill.status === "complete"
+                ? "Jugador añadido y sincronizado."
+                : "Jugador añadido. Partidas recientes al día; el historial continuará importándose."
+              : "Jugador añadido. La sincronización reciente y el historial continuarán en la próxima ejecución.",
         },
         201,
       );

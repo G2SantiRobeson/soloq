@@ -14,7 +14,11 @@ export class SyncBusy extends Error {
 export async function withSyncLease<T>(
   work: (client: RiotClient) => Promise<T>,
   budgetMs = 230_000,
-  ladder?: { successful: (result: T) => boolean },
+  ladder?: {
+    successful: (result: T) => boolean;
+    cooldown?: (result: T) => number;
+    outcome?: (result: T) => "success" | "partial" | "failed";
+  },
 ): Promise<T> {
   if (isDemo()) throw new Error("La sincronización está deshabilitada en modo demo.");
   const owner = randomUUID();
@@ -41,7 +45,9 @@ export async function withSyncLease<T>(
   let outcome: "success" | "partial" | "failed" = "failed";
   try {
     const result = await work(new RiotClient(Date.now() + budgetMs));
-    outcome = !ladder || ladder.successful(result) ? "success" : "partial";
+    cooldown = Math.max(cooldown, ladder?.cooldown?.(result) ?? 0);
+    outcome =
+      ladder?.outcome?.(result) ?? (!ladder || ladder.successful(result) ? "success" : "partial");
     return result;
   } catch (error) {
     if (error instanceof RiotError && error.status === 429)

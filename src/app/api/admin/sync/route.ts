@@ -4,5 +4,12 @@ export const maxDuration = 300;
 export const POST = endpoint(async (request) => {
   verifyOrigin(request);
   await requireAdmin();
-  return json({ results: await syncAllPlayers() });
+  const { results, recent, backfill, outcome } = await syncAllPlayers();
+  return json({
+    results,
+    recent,
+    backfill,
+    outcome,
+    message: `${recent.complete} de ${recent.eligible} jugadores con recientes al día; ${recent.pending} pendientes. Historial: ${backfill.pending} pendientes, ${backfill.errors} con error.`,
+  });
 });

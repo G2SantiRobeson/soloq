@@ -2,9 +2,13 @@ import { readFileSync, readdirSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { and, eq, sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "@/db/schema";
-import { syncPlayer, syncAllPlayers } from "@/server/sync/service";
+import {
+  syncPlayer as syncRecentPlayer,
+  syncBackfillPlayer,
+  syncAllPlayers,
+} from "@/server/sync/service";
 import { withSyncLease, SyncBusy } from "@/server/sync/lease";
 import { RiotClient, RiotError } from "@/server/riot/client";
 import {
@@ -23,6 +27,7 @@ import { POST as createPlayer } from "@/app/api/admin/players/route";
 import { getWeeklyLp } from "@/server/weekly-lp";
 import { getSyncStatus } from "@/server/sync/status";
 import { GET as syncStatusRoute } from "@/app/api/ladder/sync-status/route";
+import { RECENT_OVERLAP_MS } from "@/server/sync/recent";
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
 const cookieJar = vi.hoisted(() => new Map<string, string>());
@@ -38,6 +43,389 @@ beforeAll(async () => {
     .filter((f) => f.endsWith(".sql"))
     .sort())
     await pg.exec(readFileSync(`drizzle/${file}`, "utf8"));
+});
+
+describe("recent-first synchronization", () => {
+  function freshMatch(id: string, puuid = "stable-puuid") {
+    const result = match(id);
+    result.info.gameStartTimestamp = Date.now() - 3600_000;
+    result.info.participants[0].puuid = puuid;
+    return result;
+  }
+  beforeEach(() => {
+    vi.spyOn(RiotClient.prototype, "identity").mockImplementation(async (_p, puuid) => ({
+      puuid,
+      gameName: "Example",
+      tagLine: "LAS",
+    }));
+    vi.spyOn(RiotClient.prototype, "summoner").mockResolvedValue({ profileIconId: 23 });
+    vi.spyOn(RiotClient.prototype, "leagues").mockResolvedValue([]);
+    vi.spyOn(RiotClient.prototype, "matchIds").mockResolvedValue([]);
+    vi.spyOn(RiotClient.prototype, "match").mockImplementation(async (_p, id) => freshMatch(id));
+  });
+  afterEach(() => vi.restoreAllMocks());
+  async function row(id: string) {
+    return (await database.select().from(schema.players).where(eq(schema.players.id, id)))[0];
+  }
+  async function release() {
+    await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
+  }
+
+  it("imports a newly played match without touching a frozen historical cursor", async () => {
+    const p = await addPlayer();
+    const frozen = new Date(Date.now() - 3 * 86400_000);
+    await database
+      .update(schema.players)
+      .set({
+        backfillSeason: CURRENT_SEASON.id,
+        backfillStatus: "running",
+        scanEnd: frozen,
+        scanOffset: 100,
+        scanPending: ["old_pending"],
+        scanExhausted: false,
+      })
+      .where(eq(schema.players.id, p.id));
+    vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue(["new_match"]);
+    const result = await syncRecentPlayer(p.id, new RiotClient());
+    expect(result.status).toBe("complete");
+    const updated = await row(p.id);
+    expect(updated).toMatchObject({
+      scanEnd: frozen,
+      scanOffset: 100,
+      scanPending: ["old_pending"],
+      scanExhausted: false,
+      backfillStatus: "running",
+    });
+    expect(updated.lastSyncedAt?.getTime()).toBe(
+      vi.mocked(RiotClient.prototype.matchIds).mock.calls[0][3] * 1000,
+    );
+    expect((await getProfile(p.id, "soloq"))?.recent[0].matchId).toBe("new_match");
+  });
+
+  it("offers recent windows to both players before any history request, serially", async () => {
+    const a = await addPlayer();
+    const b = await addPlayer("other-player");
+    const events: string[] = [];
+    let active = 0;
+    let maximum = 0;
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, puuid, start) => {
+      active++;
+      maximum = Math.max(maximum, active);
+      events.push(`${start < Date.now() / 1000 - 2 * 86400 ? "history" : "recent"}:${puuid}`);
+      await Promise.resolve();
+      active--;
+      return [];
+    });
+    const run = await syncAllPlayers();
+    expect(events.slice(0, 2)).toEqual([`recent:${a.puuid}`, `recent:${b.puuid}`]);
+    expect(events.slice(2).every((e) => e.startsWith("history:"))).toBe(true);
+    expect(maximum).toBe(1);
+    expect(run.recent).toMatchObject({ eligible: 2, complete: 2, pending: 0 });
+    expect(run.backfill.complete).toBe(2);
+  });
+
+  it("does not impose a player-count cap when the global deadline still permits work", async () => {
+    await database.insert(schema.players).values(
+      Array.from({ length: 51 }, (_, i) => ({
+        gameName: `Roster ${i}`,
+        tagLine: "LAS",
+        puuid: `roster-${i}`,
+        platform: "LA2" as const,
+        scanStart: seasonStart("LA2"),
+        backfillSeason: CURRENT_SEASON.id,
+        backfillStatus: "completed" as const,
+      })),
+    );
+    const run = await syncAllPlayers();
+    expect(run.recent).toMatchObject({ eligible: 51, complete: 51, pending: 0 });
+    expect(run.outcome).toBe("success");
+  });
+
+  it("recovers a recent deadline with untouched players first in the next run", async () => {
+    const a = await addPlayer("first");
+    const b = await addPlayer("second");
+    const c = await addPlayer("third");
+    for (const [i, p] of [a, b, c].entries())
+      await database
+        .update(schema.players)
+        .set({ createdAt: new Date(1000 + i * 1000) })
+        .where(eq(schema.players.id, p.id));
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, puuid) => {
+      if (puuid === b.puuid) throw new SyncDeadline();
+      return [];
+    });
+    const run = await syncAllPlayers();
+    expect(run.outcome).toBe("partial");
+    expect(run.recent).toMatchObject({ complete: 1, pending: 2 });
+    expect(run.backfill.results).toEqual([]);
+    expect((await row(a.id)).lastAttemptAt).not.toBeNull();
+    expect((await row(b.id)).lastAttemptAt).toBeNull();
+    expect((await row(c.id)).lastAttemptAt).toBeNull();
+    expect((await getSyncStatus()).lastSuccessfulSyncAt).toBeNull();
+    await release();
+    vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue([]).mockClear();
+    await syncAllPlayers();
+    expect(
+      vi
+        .mocked(RiotClient.prototype.matchIds)
+        .mock.calls.slice(0, 3)
+        .map((c) => c[1]),
+    ).toEqual([b.puuid, c.puuid, a.puuid]);
+  });
+
+  it("does not demote a player when the deadline precedes its first request", async () => {
+    const p = await addPlayer();
+    vi.mocked(RiotClient.prototype.identity).mockRejectedValue(new SyncDeadline());
+    await expect(syncRecentPlayer(p.id, new RiotClient())).rejects.toBeInstanceOf(SyncDeadline);
+    expect((await row(p.id)).lastAttemptAt).toBeNull();
+    expect((await row(p.id)).lastSyncedAt).toBeNull();
+  });
+
+  it("keeps recent global success when history encounters a deadline", async () => {
+    const p = await addPlayer();
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, _id, start) => {
+      if (start < Date.now() / 1000 - 2 * 86400) throw new SyncDeadline();
+      return [];
+    });
+    const run = await syncAllPlayers();
+    expect(run.outcome).toBe("success");
+    expect(run.recent.pending).toBe(0);
+    expect(run.backfill.results).toEqual([{ playerId: p.id, status: "partial" }]);
+    expect((await getSyncStatus()).status).toBe("success");
+    expect((await getSyncStatus()).lastSuccessfulSyncAt).not.toBeNull();
+    expect((await row(p.id)).backfillStatus).toBe("running");
+    expect((await row(p.id)).lastSyncedAt).not.toBeNull();
+  });
+
+  it("reports success separately from a bounded, unfinished historical batch", async () => {
+    const p = await addPlayer();
+    const ids = Array.from({ length: 30 }, (_, i) => `historical_${i}`);
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, _id, start) =>
+      start < Date.now() / 1000 - 2 * 86400 ? ids : [],
+    );
+    const run = await syncAllPlayers();
+    expect(run.recent).toMatchObject({ complete: 1, pending: 0 });
+    expect(run.outcome).toBe("success");
+    expect(run.backfill).toMatchObject({ complete: 0, pending: 1 });
+    expect((await row(p.id)).scanPending).toHaveLength(5);
+    expect((await row(p.id)).backfillProcessed).toBe(25);
+    const attempt = (await row(p.id)).lastAttemptAt;
+    const coverage = (await row(p.id)).lastSyncedAt;
+    vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue([]);
+    await syncBackfillPlayer(p.id, new RiotClient());
+    expect((await row(p.id)).lastAttemptAt).toEqual(attempt);
+    expect((await row(p.id)).lastSyncedAt).toEqual(coverage);
+    expect((await row(p.id)).backfillStatus).toBe("completed");
+  });
+
+  it("keeps the bootstrap lower bound stable between incomplete retries", async () => {
+    const p = await addPlayer();
+    const played = Date.now() - 3600_000;
+    vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue(["bootstrap_a", "bootstrap_b"]);
+    vi.mocked(RiotClient.prototype.match).mockImplementation(async (_p, id) => {
+      const result = freshMatch(id);
+      result.info.gameStartTimestamp = played;
+      return result;
+    });
+    expect((await syncRecentPlayer(p.id, new RiotClient(), { budget: 1 })).status).toBe("partial");
+    const start = vi.mocked(RiotClient.prototype.matchIds).mock.lastCall?.[2];
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 3600_000);
+    expect((await syncRecentPlayer(p.id, new RiotClient(), { budget: 1 })).status).toBe("complete");
+    expect(vi.mocked(RiotClient.prototype.matchIds).mock.lastCall?.[2]).toBe(start);
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(2);
+  });
+
+  it("reports recent errors separately and does not disguise them with backfill", async () => {
+    await addPlayer();
+    vi.mocked(RiotClient.prototype.matchIds).mockRejectedValue(new RiotError(503));
+    const run = await syncAllPlayers();
+    expect(run.outcome).toBe("failed");
+    expect(run.recent).toMatchObject({ complete: 0, pending: 1, errors: 1 });
+    expect(run.backfill.results).toEqual([]);
+    expect((await getSyncStatus()).lastSuccessfulSyncAt).toBeNull();
+  });
+
+  it("repairs the legacy gap between an old completed scan and a later completion timestamp", async () => {
+    const p = await addPlayer();
+    await database
+      .update(schema.players)
+      .set({
+        backfillSeason: CURRENT_SEASON.id,
+        backfillStatus: "completed",
+        scanStart: new Date(Date.now() - 10 * 86400_000),
+        lastSyncedAt: new Date(Date.now() - 2 * 3600_000),
+      })
+      .where(eq(schema.players.id, p.id));
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, _id, start) =>
+      start < Date.now() / 1000 - 2 * 86400 ? ["legacy_gap"] : [],
+    );
+    vi.mocked(RiotClient.prototype.match).mockImplementation(async (_p, id) => {
+      const result = freshMatch(id);
+      result.info.gameStartTimestamp = Date.now() - 5 * 86400_000;
+      return result;
+    });
+    const run = await syncAllPlayers();
+    expect(run.recent).toMatchObject({ complete: 1, pending: 0 });
+    expect(run.backfill).toMatchObject({ eligible: 1, complete: 1 });
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(1);
+    expect((await row(p.id)).scanStart.getTime()).toBeGreaterThan(Date.now() - 2 * 86400_000);
+    await release();
+    const next = await syncAllPlayers();
+    expect(next.backfill.eligible).toBe(0);
+    expect(vi.mocked(RiotClient.prototype.match)).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes an already frozen incremental cursor even for a completed backfill", async () => {
+    const p = await addPlayer();
+    const frozen = new Date(Date.now() - 2 * 3600_000);
+    await database
+      .update(schema.players)
+      .set({
+        backfillSeason: CURRENT_SEASON.id,
+        backfillStatus: "completed",
+        scanStart: new Date(Date.now() - 86400_000),
+        scanEnd: frozen,
+        scanPending: ["frozen_incremental"],
+        scanOffset: 1,
+        scanExhausted: true,
+      })
+      .where(eq(schema.players.id, p.id));
+    vi.mocked(RiotClient.prototype.match).mockImplementation(async (_p, id) => {
+      const result = freshMatch(id);
+      result.info.gameStartTimestamp = Date.now() - 3 * 3600_000;
+      return result;
+    });
+    const run = await syncAllPlayers();
+    expect(run.outcome).toBe("success");
+    expect(run.backfill.complete).toBe(1);
+    expect((await row(p.id)).scanPending).toEqual([]);
+    expect((await row(p.id)).scanEnd).toBeNull();
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(1);
+  });
+
+  it.each([new SyncDeadline(), new RiotError(503)])(
+    "preserves coverage and saved participants after an incomplete detail request (%s)",
+    async (error) => {
+      const p = await addPlayer();
+      const coverage = new Date(Date.now() - 2 * 3600_000);
+      await database.update(schema.players).set({ lastSyncedAt: coverage });
+      vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue(["saved", "pending"]);
+      vi.mocked(RiotClient.prototype.match)
+        .mockResolvedValueOnce(freshMatch("saved"))
+        .mockRejectedValueOnce(error);
+      await expect(syncRecentPlayer(p.id, new RiotClient())).rejects.toThrow();
+      expect((await row(p.id)).lastSyncedAt).toEqual(coverage);
+      expect(await database.select().from(schema.playerMatches)).toHaveLength(1);
+      vi.mocked(RiotClient.prototype.match).mockImplementation(async (_p, id) => freshMatch(id));
+      expect((await syncRecentPlayer(p.id, new RiotClient())).status).toBe("complete");
+      expect(await database.select().from(schema.playerMatches)).toHaveLength(2);
+    },
+  );
+
+  it("replays multiple pages and bounded batches without skipping or duplicating matches", async () => {
+    const p = await addPlayer();
+    const ids = Array.from({ length: 105 }, (_, i) => `recent_${i}`);
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, _id, _s, _e, offset) =>
+      ids.slice(offset, offset + 100),
+    );
+    for (const expected of [40, 80]) {
+      expect((await syncRecentPlayer(p.id, new RiotClient(), { budget: 40 })).status).toBe(
+        "partial",
+      );
+      expect((await row(p.id)).lastSyncedAt).toBeNull();
+      expect(await database.select().from(schema.playerMatches)).toHaveLength(expected);
+    }
+    expect((await syncRecentPlayer(p.id, new RiotClient(), { budget: 40 })).status).toBe(
+      "complete",
+    );
+    expect((await row(p.id)).lastSyncedAt).not.toBeNull();
+    expect(await database.select().from(schema.matches)).toHaveLength(105);
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(105);
+    expect(vi.mocked(RiotClient.prototype.match)).toHaveBeenCalledTimes(105);
+    expect((await syncRecentPlayer(p.id, new RiotClient(), { budget: 40 })).imported).toBe(0);
+    expect(vi.mocked(RiotClient.prototype.match)).toHaveBeenCalledTimes(105);
+  });
+
+  it("checks another page after exactly 100 IDs before declaring coverage", async () => {
+    const p = await addPlayer();
+    const ids = Array.from({ length: 100 }, (_, i) => `boundary_${i}`);
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, _id, _s, _e, offset) =>
+      ids.slice(offset, offset + 100),
+    );
+    expect((await syncRecentPlayer(p.id, new RiotClient(), { budget: 100 })).status).toBe(
+      "complete",
+    );
+    expect(vi.mocked(RiotClient.prototype.matchIds).mock.calls.map((c) => c[4])).toEqual([0, 100]);
+  });
+
+  it("does not advance coverage if the next page fails after the entire first page was saved", async () => {
+    const p = await addPlayer();
+    const ids = Array.from({ length: 100 }, (_, i) => `page_${i}`);
+    vi.mocked(RiotClient.prototype.matchIds)
+      .mockResolvedValueOnce(ids)
+      .mockRejectedValueOnce(new SyncDeadline());
+    await expect(syncRecentPlayer(p.id, new RiotClient(), { budget: 100 })).rejects.toThrow();
+    expect((await row(p.id)).lastSyncedAt).toBeNull();
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(100);
+  });
+
+  it("imports late-indexed matches through overlap while preserving the historical state", async () => {
+    const p = await addPlayer();
+    await syncRecentPlayer(p.id, new RiotClient());
+    const coverage = (await row(p.id)).lastSyncedAt!;
+    const late = freshMatch("late");
+    late.info.gameStartTimestamp = coverage.getTime() - 3600_000;
+    vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue(["late"]);
+    vi.mocked(RiotClient.prototype.match).mockResolvedValue(late);
+    await syncRecentPlayer(p.id, new RiotClient());
+    expect(vi.mocked(RiotClient.prototype.matchIds).mock.lastCall?.[2]).toBe(
+      Math.floor((coverage.getTime() - RECENT_OVERLAP_MS) / 1000),
+    );
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(1);
+    expect((await row(p.id)).scanEnd).toBeNull();
+  });
+
+  it("does not let excluded modes consume the new-participant allowance", async () => {
+    const p = await addPlayer();
+    const ids = ["aram", "gone", "ranked"];
+    vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue(ids);
+    vi.mocked(RiotClient.prototype.match).mockImplementation(async (_p, id) => {
+      if (id === "gone") throw new RiotError(404);
+      const result = freshMatch(id);
+      if (id === "aram") result.info.queueId = 450;
+      return result;
+    });
+    expect((await syncRecentPlayer(p.id, new RiotClient(), { budget: 1 })).status).toBe("complete");
+    expect(await database.select().from(schema.matches)).toHaveLength(1);
+  });
+
+  it.each([401, 403, 429])(
+    "aborts recent sync on %i and preserves shared cooldown",
+    async (status) => {
+      const p = await addPlayer();
+      await addPlayer("untouched");
+      vi.mocked(RiotClient.prototype.matchIds).mockRejectedValue(new RiotError(status, 300000));
+      await expect(syncAllPlayers()).rejects.toMatchObject({ status });
+      expect(vi.mocked(RiotClient.prototype.matchIds)).toHaveBeenCalledTimes(1);
+      expect((await row(p.id)).lastSyncedAt).toBeNull();
+      expect((await getSyncStatus()).status).toBe("failed");
+      if (status === 429)
+        await expect(withSyncLease(async () => true)).rejects.toBeInstanceOf(SyncBusy);
+    },
+  );
+
+  it("preserves a history 429 cooldown without invalidating completed recent windows", async () => {
+    await addPlayer();
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, _id, start) => {
+      if (start < Date.now() / 1000 - 2 * 86400) throw new RiotError(429, 300000);
+      return [];
+    });
+    const run = await syncAllPlayers();
+    expect(run.outcome).toBe("success");
+    expect(run.backfill.errors).toBe(1);
+    expect((await getSyncStatus()).status).toBe("success");
+    await expect(withSyncLease(async () => true)).rejects.toBeInstanceOf(SyncBusy);
+  });
 });
 beforeEach(async () => {
   await pg.exec(
@@ -128,6 +516,17 @@ function client() {
   vi.spyOn(client, "matchIds").mockResolvedValue(["LA2_1"]);
   vi.spyOn(client, "match").mockImplementation(async (_platform, id) => match(id));
   return client;
+}
+// Existing historical scenarios exercise the rank refresh and the historical phase explicitly.
+// Recent-window behavior is covered independently below, with current match timestamps.
+async function syncPlayer(
+  id: string,
+  riot: RiotClient,
+  options: { rankOnly?: boolean; budget?: number } = {},
+) {
+  const rank = await syncRecentPlayer(id, riot, { rankOnly: true });
+  if (options.rankOnly || rank.status === "skipped") return rank;
+  return syncBackfillPlayer(id, riot, options.budget);
 }
 describe("PostgreSQL migrations and data integrity", () => {
   it("keeps remakes visible in history while excluding them from public combat aggregates", async () => {
@@ -289,7 +688,7 @@ describe("PostgreSQL migrations and data integrity", () => {
     expect(await database.select().from(schema.rankedSnapshots)).toHaveLength(3);
     const [updated] = await database.select().from(schema.players);
     expect(updated.gameName).toBe("Renamed");
-    expect(updated.lastSyncedAt).not.toBeNull();
+    expect(updated.lastSyncedAt).toBeNull(); // Historical completion is not recent coverage.
     expect(updated.scanEnd).toBeNull();
   });
   it("resumes failed pages without advancing the cursor or losing completed matches", async () => {
@@ -385,7 +784,11 @@ describe("resumable season history", () => {
         .spyOn(RiotClient.prototype, "leagues")
         .mockResolvedValue(await riot.leagues("LA2", account.puuid)),
       vi.spyOn(RiotClient.prototype, "matchIds").mockResolvedValue(ids),
-      vi.spyOn(RiotClient.prototype, "match").mockImplementation(async (_p, id) => match(id)),
+      vi.spyOn(RiotClient.prototype, "match").mockImplementation(async (_p, id) => {
+        const result = match(id);
+        result.info.gameStartTimestamp = Date.now() - 3600_000;
+        return result;
+      }),
     ];
     try {
       const response = await createPlayer(
@@ -585,7 +988,7 @@ describe("resumable season history", () => {
 });
 
 describe("weekly ladder baselines and global sync metadata", () => {
-  it("the global service records complete runs but not a partially imported history", async () => {
+  it("the global service records complete recent runs but not an incomplete recent window", async () => {
     await addPlayer();
     const spies = [
       vi
@@ -593,18 +996,20 @@ describe("weekly ladder baselines and global sync metadata", () => {
         .mockResolvedValue({ puuid: "stable-puuid", gameName: "Example", tagLine: "LAS" }),
       vi.spyOn(RiotClient.prototype, "summoner").mockResolvedValue({ profileIconId: 23 }),
       vi.spyOn(RiotClient.prototype, "leagues").mockResolvedValue([]),
-      vi
-        .spyOn(RiotClient.prototype, "match")
-        .mockImplementation(async (_platform, id) => match(id)),
+      vi.spyOn(RiotClient.prototype, "match").mockImplementation(async (_platform, id) => {
+        const result = match(id);
+        result.info.gameStartTimestamp = Date.now() - 3600_000;
+        return result;
+      }),
     ];
     const ids = vi.spyOn(RiotClient.prototype, "matchIds").mockResolvedValue([]);
     try {
-      expect((await syncAllPlayers())[0].status).toBe("complete");
+      expect((await syncAllPlayers()).results[0].status).toBe("complete");
       const last = (await getSyncStatus()).lastSuccessfulSyncAt;
       expect(last).not.toBeNull();
       await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
       ids.mockResolvedValue(Array.from({ length: 30 }, (_, i) => `LA2_weekly_${i}`));
-      expect((await syncAllPlayers())[0].status).toBe("partial");
+      expect((await syncAllPlayers()).results[0].status).toBe("partial");
       expect((await getSyncStatus()).lastSuccessfulSyncAt).toBe(last);
       expect((await getSyncStatus()).status).toBe("partial");
     } finally {

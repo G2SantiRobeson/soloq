@@ -57,8 +57,9 @@ export function SyncCountdown({
         <span className="sync-countdown-label">Próxima actualización</span>
         <strong>{label ?? "sin programar"}</strong>
         <InfoTip label="Cómo se calcula la próxima actualización" align="start">
-          Se cuenta desde la última actualización completa de la clasificación. Las actualizaciones
-          parciales y los errores no reinician el contador.
+          Se cuenta desde la última actualización completa de partidas recientes de todos los
+          jugadores. El historial puede seguir importándose. Los intentos recientes parciales y los
+          errores no reinician el contador.
         </InfoTip>
         {!label && (
           <small>

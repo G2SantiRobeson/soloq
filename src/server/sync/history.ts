@@ -73,7 +73,6 @@ export async function importHistory(
           scanOffset: 0,
           scanPending: [],
           scanExhausted: false,
-          lastSyncedAt: new Date(),
           syncError: null,
           updatedAt: new Date(),
           ...(backfill
