@@ -78,7 +78,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           </div>
           <div className="profile-lp">
             <LPDisplay rank={player.rank} noRank={view === "5v5"} />
-            {view !== "5v5" && <PlayerMomentum metrics={player.momentum} />}
+            {view !== "5v5" && <PlayerMomentum metrics={player.momentum} detailed />}
           </div>
           <div className="profile-record">
             <strong className="positive">{record.wins} V</strong>
@@ -194,11 +194,6 @@ export default async function PlayerPage({ params, searchParams }: Props) {
                       c.games >= HIGHLIGHT_MIN_GAMES && winrate(c.wins, c.losses) >= 50
                         ? "positive"
                         : ""
-                    }
-                    title={
-                      c.games < HIGHLIGHT_MIN_GAMES
-                        ? `WR disponible desde ${HIGHLIGHT_MIN_GAMES} partidas`
-                        : undefined
                     }
                   >
                     {c.games >= HIGHLIGHT_MIN_GAMES

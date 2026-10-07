@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Clock3, RefreshCw } from "lucide-react";
 import { syncCountdownLabel, type SyncStatus } from "@/lib/sync-status";
 import { watchSync } from "@/lib/sync-polling";
+import { InfoTip } from "./info-tip";
 
 const TICK_MS = 10_000;
 
@@ -51,13 +52,14 @@ export function SyncCountdown({
   }
   return (
     <div className="sync-area">
-      <p
-        className="sync-countdown"
-        title="Objetivo desde la última sincronización completa de la ladder. Los lotes incompletos y errores no reinician el contador."
-      >
+      <p className="sync-countdown">
         <Clock3 size={16} aria-hidden="true" />
         <span className="sync-countdown-label">Próxima actualización</span>
         <strong>{label ?? "sin programar"}</strong>
+        <InfoTip label="Cómo se calcula la próxima actualización" align="start">
+          Se cuenta desde la última actualización completa de la clasificación. Las actualizaciones
+          parciales y los errores no reinician el contador.
+        </InfoTip>
         {!label && (
           <small>
             {meta.status === "partial"

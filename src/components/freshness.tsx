@@ -19,14 +19,26 @@ export function Freshness({
         ? `hace ${Math.floor(elapsed / 3600_000)} h`
         : `hace ${Math.floor(elapsed / 86400_000)} días`;
   return (
-    <span
-      className={`freshness ${stale ? "stale" : ""}`}
-      title={timestamp ? new Date(timestamp).toUTCString() : text}
-    >
-      <span className="status-dot" />
+    <span className={`freshness ${stale ? "stale" : ""}`}>
+      <span className="status-dot" aria-hidden="true" />
       {!compact && "Actualizado "}
-      {text}
+      {timestamp ? <time dateTime={timestamp}>{text}</time> : text}
       {stale && timestamp && " · desactualizado"}
+      {!compact && timestamp && (
+        <span className="freshness-exact">
+          {" · "}
+          {new Date(timestamp).toLocaleString("es-CL", {
+            timeZone: "UTC",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })}{" "}
+          UTC
+        </span>
+      )}
     </span>
   );
 }

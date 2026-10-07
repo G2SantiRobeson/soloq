@@ -66,6 +66,8 @@ export default async function Home({
           {view === "5v5"
             ? "5v5 reúne partidas PvP estándar de Summoner’s Rift, incluidas SoloQ, Flex y Clash. Sin rango combinado. El orden inicial es por winrate del historial importado."
             : "Orden inicial por tier, división y LP oficiales. V/D y winrate ranked corresponden a la temporada; KDA y forma reciente, al historial importado. Los jugadores sin rango muestran su registro importado."}{" "}
+          {view !== "5v5" &&
+            "Δ semana es el cambio neto de rango desde el lunes 00:00 (hora de Santiago), no la suma de LP por partida; «LP recientes» compara los últimos registros del mismo tier y división. "}
           La partida más reciente aparece a la izquierda. Los remakes se muestran con una flecha
           circular y se excluyen de las estadísticas del historial importado.
         </p>

@@ -24,6 +24,7 @@ import type { SyncStatus } from "@/lib/sync-status";
 import { SyncCountdown } from "./sync-countdown";
 import { signedLp } from "@/lib/lp-metrics";
 import { rememberLadderUrl } from "@/lib/ladder-memory";
+import { InfoTip } from "./info-tip";
 export function Leaderboard({
   players,
   view,
@@ -223,16 +224,22 @@ export function Leaderboard({
               heading("RANGO", "rank")
             )}
             <th scope="col" role="columnheader" className="lp-column">
-              LP
+              {view === "5v5" ? (
+                "LP"
+              ) : (
+                <InfoTip term="LP">
+                  LP oficiales actuales. Debajo: cambio neto entre los últimos registros comparables
+                  del mismo tier y división.
+                </InfoTip>
+              )}
             </th>
             {view !== "5v5" && (
-              <th
-                scope="col"
-                role="columnheader"
-                className="weekly-column"
-                title="Cambio neto de posición ranked desde el lunes 00:00, America/Santiago. No equivale a premios por partida."
-              >
-                Δ SEMANA
+              <th scope="col" role="columnheader" className="weekly-column">
+                <InfoTip term="Δ SEMANA">
+                  Cambio neto de rango desde el lunes 00:00 (hora de Santiago). Es la diferencia de
+                  posición, no la suma de los LP de cada partida. «—»: todavía no hay un registro
+                  válido anterior al lunes.
+                </InfoTip>
               </th>
             )}
             {heading("WINRATE", "winrate")}
@@ -273,11 +280,6 @@ export function Leaderboard({
                 <td
                   role="cell"
                   className={`weekly-cell numeric ${(p.weeklyLp ?? 0) > 0 ? "positive" : (p.weeklyLp ?? 0) < 0 ? "negative" : ""}`}
-                  title={
-                    p.weeklyLp == null
-                      ? "Sin baseline válido anterior al lunes de esta semana"
-                      : "Desplazamiento neto semanal de posición ranked"
-                  }
                 >
                   <span className="mobile-label">Δ SEMANA </span>
                   {p.weeklyLp == null ? "—" : `${signedLp(p.weeklyLp)} LP`}

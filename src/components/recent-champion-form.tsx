@@ -25,7 +25,7 @@ export function RecentChampionForm({
             role="listitem"
             className={`recent-champion ${match.isRemake ? "remade" : match.win ? "won" : "lost"}`}
             key={match.matchId}
-            title={label}
+            data-tip={label}
           >
             <span className="sr-only">{label}</span>
             <Avatar decorative champion {...asset} size={28} />
