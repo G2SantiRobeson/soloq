@@ -2408,6 +2408,8 @@ dialog.confirm-dialog::backdrop {
   width: 100%;
   height: 100%;
   overflow: visible;
+  /* Decorative artwork paints outside its box (wings are never clipped); it must not take clicks. */
+  pointer-events: none;
 }
 .rank-emblem-fallback {
   color: var(--muted);
@@ -2442,6 +2444,8 @@ dialog.confirm-dialog::backdrop {
   width: 100%;
   height: 100%;
   overflow: visible;
+  /* Decorative artwork paints outside its box (wings are never clipped); it must not take clicks. */
+  pointer-events: none;
 }
 .rank-avatar-portrait {
   position: absolute;
