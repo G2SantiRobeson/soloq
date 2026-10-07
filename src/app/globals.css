@@ -44,7 +44,7 @@
   --tier-emerald: #45e083;
   --tier-diamond: #72a6ff;
   --tier-master: #d07cff;
-  --tier-grandmaster: #ff7380;
+  --tier-grandmaster: #f86056; /* Grandmaster emblem crimson (#a02820), lightened to AA */
   --tier-challenger: #fff0a8;
   /* Charts */
   --chart-grid: #1f2b49;
@@ -3027,4 +3027,66 @@ dialog.confirm-dialog::backdrop {
 .mobile-sort select:hover,
 .mobile-sort button:hover {
   border-color: var(--accent);
+}
+
+/* Tablet (701-1100px): the full table must fit its container without horizontal
+   scroll. Same columns and order; only cell content is compacted. */
+@media (min-width: 701px) and (max-width: 1100px) {
+  .leaderboard td,
+  .leaderboard th {
+    padding-inline: var(--space-1);
+  }
+  .leaderboard .player-identity .rank-avatar {
+    width: 60px;
+    height: 60px;
+  }
+  .leaderboard .rank-cell .rank-emblem {
+    width: 32px;
+    height: 32px;
+  }
+  .leaderboard .lp-display strong {
+    font-size: var(--fs-4);
+  }
+  .leaderboard .lp-cell .momentum > span:not(.sr-only) {
+    display: none;
+  }
+  .leaderboard .wr-cell .winrate-track {
+    width: 48px;
+  }
+  .leaderboard .recent-champions {
+    gap: 2px;
+  }
+  .leaderboard .recent-champion .avatar {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px !important;
+  }
+  .leaderboard .row-link {
+    min-width: 32px;
+  }
+}
+@media (min-width: 701px) and (max-width: 850px) {
+  .leaderboard td,
+  .leaderboard th {
+    padding-inline: var(--space-half);
+  }
+  .leaderboard .player-identity .rank-avatar {
+    width: 52px;
+    height: 52px;
+  }
+  .leaderboard .player-name {
+    font-size: var(--fs-2);
+  }
+  .leaderboard .rank-display {
+    font-size: var(--fs-1);
+  }
+  .leaderboard .rank-cell .rank-emblem {
+    width: 28px;
+    height: 28px;
+  }
+  .leaderboard .recent-champion .avatar {
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+  }
 }
