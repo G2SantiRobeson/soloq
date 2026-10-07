@@ -243,25 +243,38 @@ select {
   font-size: var(--fs-5);
   font-weight: 400;
 }
-.header-inner nav {
+.header-nav {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  align-self: stretch;
   gap: var(--space-3);
 }
 .nav-link {
+  position: relative;
   font-weight: 600;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
+  color: var(--muted);
 }
-.nav-link:hover,
+.nav-link:hover {
+  color: var(--text);
+}
+.nav-link[aria-current="page"] {
+  color: var(--text);
+}
+.nav-link[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 3px;
+  background: var(--accent);
+  box-shadow: var(--glow-accent);
+}
 .footer-top a:hover {
   color: var(--accent);
-}
-.header-divider {
-  width: 1px;
-  height: 16px;
-  background: var(--line);
 }
 .header-caption {
   font-size: var(--fs-1);
@@ -307,7 +320,7 @@ select {
   font-size: var(--fs-5);
   color: var(--text);
 }
-.footer-top > div {
+.footer-top > nav {
   margin-left: auto;
   display: flex;
   gap: var(--space-3);
@@ -1521,8 +1534,7 @@ select option {
   }
 }
 @media (max-width: 850px) {
-  .header-caption,
-  .header-divider {
+  .header-caption {
     display: none;
   }
   .leaderboard .kda-column {
@@ -1557,7 +1569,7 @@ select option {
     flex-wrap: wrap;
     gap: var(--space-1) var(--space-3);
   }
-  .footer-top > div {
+  .footer-top > nav {
     margin-left: 0;
   }
   .data-note {
@@ -1585,8 +1597,11 @@ select option {
     height: 60px;
   }
   .header-inner {
-    gap: var(--space-3);
+    gap: var(--space-2);
     justify-content: space-between;
+  }
+  .header-nav {
+    gap: var(--space-2);
   }
   .brand {
     font-size: var(--fs-5);
@@ -1963,7 +1978,7 @@ select option {
   .confirm-dialog > div {
     flex-wrap: wrap;
   }
-  .footer-top > div {
+  .footer-top > nav {
     width: 100%;
     gap: var(--space-3);
   }
@@ -2440,12 +2455,6 @@ dialog.confirm-dialog::backdrop {
   position: absolute;
   right: 0;
   top: 14px;
-}
-.metrics-link {
-  display: inline-block;
-  margin: var(--space-2) 0;
-  color: var(--accent);
-  font-size: var(--fs-2);
 }
 .ladder-navigation {
   display: flex;

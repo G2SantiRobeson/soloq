@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Crosshair, TrendingUp } from "lucide-react";
+import { Crosshair, TrendingUp } from "lucide-react";
 import { getProfile } from "@/server/queries";
 import { getAssets, profileIconUrl } from "@/server/riot/assets";
 import { parseView, STANDARD_QUEUES } from "@/lib/queues";
@@ -18,6 +18,7 @@ import { championAsset } from "@/lib/champion-assets";
 import { ChampionIdentity } from "@/components/champion-identity";
 import { Freshness } from "@/components/freshness";
 import { QueueTabs } from "@/components/queue-tabs";
+import { BackToLadder } from "@/components/back-link";
 import { RankChart } from "@/components/rank-chart";
 import { PerformanceChart } from "@/components/performance-chart";
 import { HistoryStatusLabel } from "@/components/history-status";
@@ -41,10 +42,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
   const rate = winrate(record.wins, record.losses);
   return (
     <>
-      {/* A full navigation keeps the return path usable independently of the client router. */}
-      <a href={`/?queue=${view}`} className="back-link">
-        <ArrowLeft size={16} /> Volver a la clasificación
-      </a>
+      <BackToLadder view={view} />
       <section className="profile-header">
         <RankAvatar
           tier={view === "5v5" ? null : player.rank?.tier}

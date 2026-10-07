@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { isDemo } from "@/server/env";
+import { HeaderNav } from "./header-nav";
 export function Header() {
   return (
     <header className="site-header">
@@ -10,14 +11,8 @@ export function Header() {
             /
           </span>
         </Link>
-        <nav aria-label="Principal">
-          <Link href="/" className="nav-link">
-            Clasificación
-          </Link>
-          <span className="header-divider" />
-          <span className="header-caption">LEAGUE OF LEGENDS</span>
-        </nav>
-        <span className="header-caption header-end">RANK. PLAY. REPEAT.</span>
+        <HeaderNav />
+        <span className="header-caption header-end">LEAGUE OF LEGENDS · COMUNIDAD</span>
       </div>
     </header>
   );
@@ -37,11 +32,11 @@ export function Footer() {
           SOLOQ /
         </Link>
         <span>League of Legends · Community ladder</span>
-        <div>
+        <nav aria-label="Pie de página">
           <Link href="/admin">Administración</Link>
           <Link href="/privacy">Privacidad</Link>
           <Link href="/terms">Términos</Link>
-        </div>
+        </nav>
       </div>
       <p>
         SoloQ isn&apos;t endorsed by Riot Games and doesn&apos;t reflect the views or opinions of

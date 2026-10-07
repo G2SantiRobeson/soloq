@@ -4,6 +4,7 @@ import { parseView } from "@/lib/queues";
 import { getLeaderboard } from "@/server/queries";
 import { GlobalMetricsSection } from "@/components/global-metrics-section";
 import { QueueTabs } from "@/components/queue-tabs";
+import { BackToLadder } from "@/components/back-link";
 import { CURRENT_SEASON, parsePeriod } from "@/lib/season";
 import { getSeasonOverview } from "@/server/season-queries";
 import { ActivityChart } from "@/components/performance-chart";
@@ -34,9 +35,7 @@ export default async function MetricsPage({
   const highlights = recentHighlights(players, overview.recentForm);
   return (
     <>
-      <Link href={`/?queue=${view}`} className="back-link">
-        ← Volver a la clasificación
-      </Link>
+      <BackToLadder view={view} />
       <section className="ladder-heading">
         <div>
           <div className="eyebrow">LA COMUNIDAD EN NÚMEROS</div>

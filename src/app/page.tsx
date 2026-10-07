@@ -60,9 +60,6 @@ export default async function Home({
         initialFilters={parseLadderFilters(view, params)}
         key={view}
       />
-      <Link className="metrics-link" href={`/metrics?queue=${view}`}>
-        Ver métricas de la comunidad →
-      </Link>
       <aside className="data-note">
         <span>LECTURA DEL RANKING</span>
         <p>

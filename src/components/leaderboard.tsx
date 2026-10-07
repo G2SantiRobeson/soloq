@@ -23,6 +23,7 @@ import type { ChampionCatalog } from "@/lib/champion-assets";
 import type { SyncStatus } from "@/lib/sync-status";
 import { SyncCountdown } from "./sync-countdown";
 import { signedLp } from "@/lib/lp-metrics";
+import { rememberLadderUrl } from "@/lib/ladder-memory";
 export function Leaderboard({
   players,
   view,
@@ -48,6 +49,7 @@ export function Leaderboard({
     const query = ladderQuery(view, { search, region, sort, ascending });
     if (window.location.search !== query)
       window.history.replaceState(null, "", `${window.location.pathname}${query}`);
+    if (window.location.pathname === "/") rememberLadderUrl(`/${query}`);
   }, [view, search, region, sort, ascending]);
   const records = useMemo(() => {
     const list = players.map((p) => {
