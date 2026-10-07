@@ -153,6 +153,13 @@ input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+button[aria-disabled="true"],
+input:read-only:not([type="checkbox"]) {
+  cursor: progress;
+}
+button[aria-disabled="true"] {
+  opacity: 0.6;
+}
 input,
 select {
   min-width: 0;
@@ -1346,6 +1353,40 @@ select option {
 .form-error {
   color: var(--loss);
 }
+.notice.form-error {
+  border-color: var(--loss);
+  background: var(--loss-bg);
+}
+.field-error {
+  margin-top: var(--space-1);
+  font-size: var(--fs-2);
+}
+.field-error:empty {
+  margin: 0;
+}
+.field-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  font-size: var(--fs-2);
+}
+.field-hint p {
+  flex: 1 1 240px;
+}
+.login-card input:hover,
+.add-form input:hover,
+.add-form select:hover {
+  border-color: var(--accent);
+}
+.login-card input[aria-invalid="true"],
+.add-form input[aria-invalid="true"] {
+  border-color: var(--loss);
+}
 .success-notice {
   background: var(--win-bg);
   color: var(--win);
@@ -1410,18 +1451,50 @@ select option {
   align-items: center;
   gap: var(--space-1);
 }
-.toggle-tracking {
+.tracking-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   min-height: 40px;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--line);
+  padding: 0 var(--space-2) 0 var(--space-1);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface-raised);
-  color: var(--text);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--fs-2);
 }
-.toggle-tracking.enabled {
+.tracking-switch:hover {
+  border-color: var(--accent);
+}
+.tracking-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-raised);
+}
+.tracking-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 120ms;
+}
+.tracking-switch.on {
   color: var(--win);
-  background: var(--win-bg);
   border-color: var(--win);
+}
+.tracking-switch.on .tracking-track {
+  border-color: var(--win);
+  background: var(--win-bg);
+}
+.tracking-switch.on .tracking-thumb {
+  transform: translateX(14px);
+  background: var(--win);
 }
 .icon-button {
   min-width: 40px;

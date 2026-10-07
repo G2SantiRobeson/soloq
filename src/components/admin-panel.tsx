@@ -1,9 +1,16 @@
 "use client";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { LockKeyhole, LogOut, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { PLATFORMS, PLATFORM_LABELS, type Platform } from "@/lib/routing";
 import { CURRENT_SEASON, HISTORY_LABELS, type HistoryStatus } from "@/lib/season";
+import {
+  AdminRequestError,
+  describeAdminError,
+  splitRiotId,
+  type AdminAction,
+  type AdminError,
+} from "@/lib/admin-errors";
 export type AdminPlayer = {
   id: string;
   gameName: string;
@@ -18,167 +25,250 @@ export type AdminPlayer = {
   backfillProcessed: number;
   backfillUnavailable: number;
 };
-async function request(path: string, method: string, data?: unknown) {
-  const response = await fetch(path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: data === undefined ? undefined : JSON.stringify(data),
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error ?? "No se pudo completar la solicitud.");
-  return result as { message?: string; results?: { status: string }[] };
+type Result = { message?: string; results?: { status: string }[] };
+async function request(path: string, method: string, data?: unknown): Promise<Result> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: data === undefined ? undefined : JSON.stringify(data),
+    });
+  } catch {
+    throw new AdminRequestError(0, null);
+  }
+  // A proxy or crash page may not be JSON; never show the parser's message.
+  const result = (await response.json().catch(() => null)) as (Result & { error?: string }) | null;
+  if (!response.ok) throw new AdminRequestError(response.status, result?.error ?? null);
+  return result ?? {};
 }
 export function LoginForm({ demo }: { demo: boolean }) {
   const router = useRouter();
-  const [error, setError] = useState("");
+  const ids = useId();
+  const [error, setError] = useState<AdminError | null>(null);
   const [pending, setPending] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending) return;
     setPending(true);
-    setError("");
+    setError(null);
     const form = event.currentTarget;
     try {
       await request("/api/admin/login", "POST", { password: new FormData(form).get("password") });
       form.reset();
       router.refresh();
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "No se pudo iniciar sesión.");
+    } catch (caught) {
+      setError(describeAdminError(caught, "login"));
     } finally {
       setPending(false);
     }
   }
+  const errorId = `${ids}-error`;
   return (
     <section className="login-card panel">
       <span className="login-icon">
-        <LockKeyhole size={27} />
+        <LockKeyhole size={27} aria-hidden="true" />
       </span>
-      <div className="eyebrow">SOLOQ / CONTROL DE ACCESO</div>
+      <div className="eyebrow">SOLOQ / ACCESO DE ADMINISTRACIÓN</div>
       <h1>Detrás del ranking.</h1>
-      <p>Inicia sesión para gestionar los jugadores y la sincronización de tu comunidad.</p>
+      <p>Inicia sesión para gestionar los jugadores y las actualizaciones de tu comunidad.</p>
       {demo && (
         <div className="notice">
-          Modo demo: para administrar cuentas reales, configura PostgreSQL y las variables del
-          servidor y establece DEMO_MODE=false.
+          Estás en el modo demo: el acceso de administración está desactivado. Para gestionar
+          cuentas reales, el responsable del servidor debe configurar la base de datos y desactivar
+          el modo demo.
         </div>
       )}
       <form onSubmit={submit}>
-        <label htmlFor="password">Contraseña de administrador</label>
+        <label htmlFor={`${ids}-password`}>Contraseña de administrador</label>
         <input
-          id="password"
+          id={`${ids}-password`}
           name="password"
           type="password"
           autoComplete="current-password"
           required
           maxLength={256}
-          disabled={demo || pending}
+          disabled={demo}
+          readOnly={pending}
+          aria-invalid={error?.field === "password" || undefined}
+          aria-describedby={error ? errorId : undefined}
         />
-        <button className="button primary full-width" disabled={demo || pending}>
+        <button
+          className="button primary full-width"
+          disabled={demo}
+          aria-disabled={pending || undefined}
+        >
           {pending ? "Verificando…" : "Entrar al panel"}
         </button>
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        )}
+        <p id={errorId} className="form-error" role="alert">
+          {error?.message}
+        </p>
       </form>
-      <span className="login-note">El ranking y los perfiles siempre son públicos.</span>
+      <span className="login-note">La clasificación y los perfiles siempre son públicos.</span>
     </section>
   );
 }
 export function AdminPanel({ players }: { players: AdminPlayer[] }) {
   const router = useRouter();
-  const [pending, setPending] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState(false);
+  const ids = useId();
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ message: string; error: boolean } | null>(null);
+  const [addError, setAddError] = useState<AdminError | null>(null);
+  const [gameName, setGameName] = useState("");
+  const [tagLine, setTagLine] = useState("");
   const [deleting, setDeleting] = useState<AdminPlayer | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const rosterHeading = useRef<HTMLHeadingElement>(null);
+  const gameNameInput = useRef<HTMLInputElement>(null);
+  const deleted = useRef(false);
+  const pending = pendingAction !== null;
+  const fullRiotId = splitRiotId(gameName);
   useEffect(() => {
     if (!deleting) return;
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dialog = dialogRef.current;
+    const heading = rosterHeading.current;
+    deleted.current = false;
     dialog?.showModal();
     return () => {
       dialog?.close();
-      previous?.focus();
+      // The trigger disappears with the deleted player, so focus the roster heading instead.
+      (deleted.current ? heading : previous)?.focus();
     };
   }, [deleting]);
-  async function act(path: string, method: string, data?: unknown, success = "Cambios guardados.") {
-    setPending(true);
-    setMessage("");
-    setError(false);
+  async function act(
+    key: string,
+    action: AdminAction,
+    path: string,
+    method: string,
+    data?: unknown,
+    success = "Cambios guardados.",
+  ) {
+    // Controls stay focusable while busy (aria-disabled); this guard prevents double actions.
+    if (pendingAction) return false;
+    setPendingAction(key);
+    setNotice(null);
     try {
       const result = await request(path, method, data);
       const summary = result.results
         ? `${result.results.filter((r) => r.status === "complete").length} completos, ${result.results.filter((r) => r.status === "partial").length} parciales, ${result.results.filter((r) => r.status === "error").length} con error.`
         : undefined;
-      setMessage(result.message ?? summary ?? success);
+      setNotice({ message: result.message ?? summary ?? success, error: false });
+      if (action === "delete") deleted.current = true;
       setDeleting(null);
       router.refresh();
       return true;
-    } catch (error) {
-      setError(true);
-      setMessage(error instanceof Error ? error.message : "Error inesperado.");
+    } catch (caught) {
+      const described = describeAdminError(caught, action);
+      if (action === "add" && described.field) setAddError(described);
+      else setNotice({ message: described.message, error: true });
+      // A modal dialog hides the page notice, so close it and show the error there.
+      if (action === "delete") setDeleting(null);
       router.refresh();
       return false;
     } finally {
-      setPending(false);
+      setPendingAction(null);
     }
   }
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending) return;
+    setAddError(null);
+    if (fullRiotId) {
+      setAddError({
+        message: "El nombre no puede incluir «#». Escribe el tag en su propio campo.",
+        field: "riotId",
+      });
+      gameNameInput.current?.focus();
+      return;
+    }
     const form = event.currentTarget;
-    const data = new FormData(form);
-    if (await act("/api/admin/players", "POST", Object.fromEntries(data))) form.reset();
+    const data = Object.fromEntries(new FormData(form));
+    if (await act("add", "add", "/api/admin/players", "POST", data)) {
+      form.reset();
+      setGameName("");
+      setTagLine("");
+    }
   }
+  function applySplit() {
+    if (!fullRiotId) return;
+    setGameName(fullRiotId.gameName);
+    setTagLine(fullRiotId.tagLine);
+    setAddError(null);
+    gameNameInput.current?.focus();
+  }
+  const riotIdInvalid = addError?.field === "riotId";
+  const describedBy = [
+    fullRiotId ? `${ids}-split` : null,
+    addError ? `${ids}-add-error` : null,
+    `${ids}-riot-id-help`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const busyLabel = (key: string, idle: string) => (pendingAction === key ? "Procesando…" : idle);
   return (
     <>
       <div className="admin-heading">
         <div>
           <div className="eyebrow">CENTRO DE CONTROL</div>
           <h1>Tu comunidad.</h1>
-          <p className="muted">Gestiona el roster y mantén los datos al día.</p>
+          <p className="muted">Gestiona los jugadores y mantén los datos al día.</p>
         </div>
         <button
-          disabled={pending}
+          type="button"
+          aria-disabled={pending || undefined}
           className="button secondary"
-          onClick={() => act("/api/admin/logout", "POST", undefined, "Sesión cerrada.")}
+          onClick={() =>
+            act("logout", "logout", "/api/admin/logout", "POST", undefined, "Sesión cerrada.")
+          }
         >
-          <LogOut size={16} /> Cerrar sesión
+          <LogOut size={16} aria-hidden="true" /> {busyLabel("logout", "Cerrar sesión")}
         </button>
       </div>
-      <section className="panel add-player">
+      <section className="panel add-player" aria-labelledby={`${ids}-add-title`}>
         <div className="panel-title">
-          <h2>
-            <Plus size={18} /> Añadir jugador
+          <h2 id={`${ids}-add-title`}>
+            <Plus size={18} aria-hidden="true" /> Añadir jugador
           </h2>
           <span>RIOT ID</span>
         </div>
         <form className="add-form" onSubmit={add}>
           <label>
-            gameName
+            Nombre del Riot ID
             <input
+              ref={gameNameInput}
               name="gameName"
-              placeholder="Nombre en Riot"
+              placeholder="Nombre"
               required
               minLength={3}
-              maxLength={16}
-              disabled={pending}
+              maxLength={22}
+              autoComplete="off"
+              value={gameName}
+              onChange={(event) => setGameName(event.target.value)}
+              readOnly={pending}
+              aria-invalid={riotIdInvalid || Boolean(fullRiotId) || undefined}
+              aria-describedby={describedBy}
             />
           </label>
           <label>
-            tagLine
+            Tag (sin #)
             <input
               name="tagLine"
               placeholder="LAS"
               required
               minLength={3}
               maxLength={5}
-              disabled={pending}
+              autoComplete="off"
+              value={tagLine}
+              onChange={(event) => setTagLine(event.target.value)}
+              readOnly={pending}
+              aria-invalid={riotIdInvalid || undefined}
+              aria-describedby={describedBy}
             />
           </label>
           <label>
-            Plataforma
-            <select name="platform" defaultValue="LA2" disabled={pending}>
+            Región
+            <select name="platform" defaultValue="LA2">
               {PLATFORMS.map((p) => (
                 <option value={p} key={p}>
                   {PLATFORM_LABELS[p]} ({p})
@@ -186,96 +276,145 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
               ))}
             </select>
           </label>
-          <button className="button primary" disabled={pending}>
-            {pending ? "Procesando…" : "Añadir jugador"}
-            <Plus size={16} />
+          <button className="button primary" aria-disabled={pending || undefined}>
+            {busyLabel("add", "Añadir jugador")}
+            <Plus size={16} aria-hidden="true" />
           </button>
         </form>
-        <p className="page-note">
-          El alta guarda el perfil, el rango actual y comienza el historial de temporada. Los
-          siguientes lotes continúan al sincronizar; cada lote conserva su progreso.
+        {fullRiotId && (
+          <div id={`${ids}-split`} className="field-hint" role="status">
+            <p>
+              Parece que escribiste el Riot ID completo. El nombre es «{fullRiotId.gameName}» y el
+              tag «{fullRiotId.tagLine}».
+            </p>
+            <button type="button" className="button secondary" onClick={applySplit}>
+              Separar nombre y tag
+            </button>
+          </div>
+        )}
+        <p id={`${ids}-add-error`} className="form-error field-error" role="alert">
+          {addError?.message}
+        </p>
+        <p id={`${ids}-riot-id-help`} className="page-note">
+          El Riot ID es «Nombre#TAG»: el nombre tiene de 3 a 16 caracteres y el tag, de 3 a 5. Al
+          añadirlo se guardan su perfil y su rango actual, y empieza a importarse su historial de la
+          temporada; las siguientes actualizaciones continúan desde donde quedó.
         </p>
       </section>
-      {message && (
-        <div
-          role={error ? "alert" : "status"}
-          className={error ? "notice form-error" : "notice success-notice"}
-        >
-          {message}
-        </div>
-      )}
-      <section className="panel admin-roster">
+      <div role="status" className="notice-slot">
+        {notice && !notice.error && <div className="notice success-notice">{notice.message}</div>}
+      </div>
+      <div role="alert" className="notice-slot">
+        {notice?.error && <div className="notice form-error">{notice.message}</div>}
+      </div>
+      <section className="panel admin-roster" aria-labelledby={`${ids}-roster-title`}>
         <div className="panel-title">
-          <h2>
+          <h2 id={`${ids}-roster-title`} ref={rosterHeading} tabIndex={-1}>
             Jugadores <span className="count-tag">{players.length}</span>
           </h2>
           <button
+            type="button"
             className="button secondary"
-            disabled={pending}
-            onClick={() => act("/api/admin/sync", "POST")}
+            aria-disabled={pending || undefined}
+            onClick={() => act("sync", "sync", "/api/admin/sync", "POST")}
           >
-            <RefreshCw size={15} />
-            {pending ? "Procesando…" : "Sincronizar"}
+            <RefreshCw size={15} aria-hidden="true" />
+            {busyLabel("sync", "Actualizar todos")}
           </button>
         </div>
         {players.length ? (
-          players.map((p) => (
-            <div className="admin-player" key={p.id}>
-              <div>
-                <strong>
-                  {p.gameName}
-                  <span className="muted">#{p.tagLine}</span>
-                </strong>
-                <p>
-                  {PLATFORM_LABELS[p.platform]} ·{" "}
-                  {p.lastSyncedAt
-                    ? `Actualizado ${new Date(p.lastSyncedAt).toLocaleString("es-CL", { timeZone: "UTC" })} UTC`
-                    : "Sincronización pendiente"}
-                </p>
-                <p className="history-status">
-                  {CURRENT_SEASON.label}:{" "}
-                  {
-                    HISTORY_LABELS[
-                      p.backfillSeason === CURRENT_SEASON.id ? p.backfillStatus : "not_started"
-                    ]
-                  }
-                  <br />
-                  {p.backfillSeason === CURRENT_SEASON.id &&
-                    `${p.backfillProcessed} / ${p.backfillDiscovered} IDs procesados · ${p.backfillUnavailable} no disponibles`}
-                </p>
-                {p.syncError && <p className="sync-error">{p.syncError}</p>}
-              </div>
-              <div className="admin-actions">
-                {(p.backfillStatus !== "completed" || p.backfillSeason !== CURRENT_SEASON.id) && (
+          players.map((p) => {
+            const nameId = `${ids}-${p.id}-name`;
+            return (
+              <div className="admin-player" key={p.id}>
+                <div>
+                  <strong id={nameId}>
+                    {p.gameName}
+                    <span className="muted">#{p.tagLine}</span>
+                  </strong>
+                  <p>
+                    {PLATFORM_LABELS[p.platform]} ·{" "}
+                    {p.lastSyncedAt
+                      ? `Actualizado ${new Date(p.lastSyncedAt).toLocaleString("es-CL", { timeZone: "UTC", hour12: false })} UTC`
+                      : "Pendiente de la primera actualización"}
+                  </p>
+                  <p className="history-status">
+                    Historial {CURRENT_SEASON.label}:{" "}
+                    {
+                      HISTORY_LABELS[
+                        p.backfillSeason === CURRENT_SEASON.id ? p.backfillStatus : "not_started"
+                      ]
+                    }
+                    <br />
+                    {p.backfillSeason === CURRENT_SEASON.id &&
+                      `${p.backfillProcessed} de ${p.backfillDiscovered} partidas procesadas · ${p.backfillUnavailable} sin detalle en Riot`}
+                  </p>
+                  {p.syncError && <p className="sync-error">{p.syncError}</p>}
+                </div>
+                <div className="admin-actions">
+                  {(p.backfillStatus !== "completed" || p.backfillSeason !== CURRENT_SEASON.id) && (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      disabled={!p.enabled}
+                      aria-disabled={pending || undefined}
+                      aria-describedby={nameId}
+                      onClick={() =>
+                        act(
+                          `backfill:${p.id}`,
+                          "backfill",
+                          `/api/admin/players/${p.id}/backfill`,
+                          "POST",
+                        )
+                      }
+                    >
+                      {busyLabel(
+                        `backfill:${p.id}`,
+                        p.backfillStatus === "failed"
+                          ? "Reintentar historial"
+                          : "Continuar historial",
+                      )}
+                    </button>
+                  )}
                   <button
-                    className="button secondary"
-                    disabled={pending || !p.enabled}
-                    onClick={() => act(`/api/admin/players/${p.id}/backfill`, "POST")}
+                    type="button"
+                    role="switch"
+                    aria-checked={p.enabled}
+                    aria-label={`Seguimiento de ${p.gameName}`}
+                    className={`tracking-switch ${p.enabled ? "on" : ""}`}
+                    aria-disabled={pending || undefined}
+                    onClick={() =>
+                      act(`toggle:${p.id}`, "toggle", `/api/admin/players/${p.id}`, "PATCH", {
+                        enabled: !p.enabled,
+                      })
+                    }
                   >
-                    {p.backfillStatus === "failed" ? "Reintentar historial" : "Continuar historial"}
+                    <span className="tracking-track" aria-hidden="true">
+                      <span className="tracking-thumb" />
+                    </span>
+                    <span aria-hidden="true">
+                      {pendingAction === `toggle:${p.id}`
+                        ? "Guardando…"
+                        : p.enabled
+                          ? "Seguimiento activo"
+                          : "Seguimiento pausado"}
+                    </span>
                   </button>
-                )}
-                <button
-                  className={`toggle-tracking ${p.enabled ? "enabled" : ""}`}
-                  aria-pressed={p.enabled}
-                  disabled={pending}
-                  onClick={() =>
-                    act(`/api/admin/players/${p.id}`, "PATCH", { enabled: !p.enabled })
-                  }
-                >
-                  {p.enabled ? "Activo" : "Pausado"}
-                </button>
-                <button
-                  className="icon-button danger"
-                  aria-label={`Eliminar ${p.gameName}`}
-                  disabled={pending}
-                  onClick={() => setDeleting(p)}
-                >
-                  <Trash2 size={17} />
-                </button>
+                  <button
+                    type="button"
+                    className="icon-button danger"
+                    aria-label={`Eliminar a ${p.gameName}`}
+                    aria-disabled={pending || undefined}
+                    onClick={() => {
+                      if (!pending) setDeleting(p);
+                    }}
+                  >
+                    <Trash2 size={17} aria-hidden="true" />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="empty-state">
             <p>Todavía no hay jugadores. Añade la primera cuenta arriba.</p>
@@ -309,25 +448,31 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
             if (!pending) setDeleting(null);
           }}
         >
-          <h2 id="delete-title">Eliminar {deleting.gameName}</h2>
+          <h2 id="delete-title">¿Eliminar a {deleting.gameName}?</h2>
           <p id="delete-description">
-            Se eliminarán su perfil, sus snapshots y sus estadísticas. Las partidas compartidas con
-            otros jugadores se conservarán. Esta acción no se puede deshacer.
+            Se eliminarán su perfil, su historial de rango y sus estadísticas. Las partidas que
+            comparte con otros jugadores se conservan. Esta acción no se puede deshacer.
           </p>
           <div>
             <button
+              type="button"
               autoFocus
               className="button secondary"
-              disabled={pending}
-              onClick={() => setDeleting(null)}
+              aria-disabled={pending || undefined}
+              onClick={() => {
+                if (!pending) setDeleting(null);
+              }}
             >
               Cancelar
             </button>
             <button
+              type="button"
               className="button danger-button"
-              disabled={pending}
+              aria-disabled={pending || undefined}
               onClick={() =>
                 act(
+                  `delete:${deleting.id}`,
+                  "delete",
                   `/api/admin/players/${deleting.id}`,
                   "DELETE",
                   { confirm: true },
@@ -335,7 +480,7 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
                 )
               }
             >
-              Eliminar jugador
+              {busyLabel(`delete:${deleting.id}`, "Eliminar jugador")}
             </button>
           </div>
         </dialog>
