@@ -9,23 +9,26 @@ export function ChartDataTable({
   rows: readonly (readonly [string, string])[];
 }) {
   return (
-    <table className="sr-only">
-      <caption>{caption}</caption>
-      <thead>
-        <tr>
-          <th scope="col">{columns[0]}</th>
-          <th scope="col">{columns[1]}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(([key, value], index) => (
-          <tr key={`${key}-${index}`}>
-            <th scope="row">{key}</th>
-            <td>{value}</td>
+    // A visually hidden wrapper: overflow clipping does not apply to table boxes themselves.
+    <div className="sr-only">
+      <table>
+        <caption>{caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">{columns[0]}</th>
+            <th scope="col">{columns[1]}</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map(([key, value], index) => (
+            <tr key={`${key}-${index}`}>
+              <th scope="row">{key}</th>
+              <td>{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

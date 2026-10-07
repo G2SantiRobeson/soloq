@@ -1,23 +1,43 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { parseView } from "@/lib/queues";
+import { QUEUE_LABELS, VIEWS, parseView } from "@/lib/queues";
 import { getLeaderboard } from "@/server/queries";
-import { GlobalMetricsSection } from "@/components/global-metrics-section";
-import { QueueTabs } from "@/components/queue-tabs";
-import { BackToLadder } from "@/components/back-link";
-import { MethodNote } from "@/components/method-note";
-import { CURRENT_SEASON, parsePeriod } from "@/lib/season";
+import { CURRENT_SEASON, parsePeriod, type MetricsPeriod } from "@/lib/season";
 import { getSeasonOverview } from "@/server/season-queries";
 import { ActivityChart } from "@/components/performance-chart";
 import { ChampionIdentity } from "@/components/champion-identity";
 import { RankDisplay } from "@/components/rank-display";
+import { RankEmblem } from "@/components/rank-emblem";
+import { InfoTip } from "@/components/info-tip";
+import {
+  AwardList,
+  Block,
+  FormRows,
+  HeroStat,
+  PlayerLink,
+  TrendBar,
+} from "@/components/metrics-bento";
 import { getAssets } from "@/server/riot/assets";
 import { championAsset } from "@/lib/champion-assets";
 import { TIERS } from "@/lib/ranking";
-import { HIGHLIGHT_MIN_GAMES, RECENT_FORM_GAMES, recentHighlights } from "@/lib/global-metrics";
+import {
+  HIGHLIGHT_MIN_GAMES,
+  RECENT_FORM_GAMES,
+  globalMetrics,
+  recentHighlights,
+} from "@/lib/global-metrics";
+import { computeAwards, formExtremes, formRanking } from "@/lib/awards";
+import { kda } from "@/lib/stats";
 import { signedLp } from "@/lib/lp-metrics";
 export const metadata: Metadata = { title: "Métricas" };
 export const dynamic = "force-dynamic";
+
+const PERIODS: { key: MetricsPeriod; label: string }[] = [
+  { key: "season", label: CURRENT_SEASON.label },
+  { key: "30d", label: "30 días" },
+  { key: "7d", label: "7 días" },
+];
+
 export default async function MetricsPage({
   searchParams,
 }: {
@@ -31,218 +51,312 @@ export default async function MetricsPage({
     getSeasonOverview(view, period),
     getAssets(),
   ]);
+  const ranked = view !== "5v5";
   const partial = players.filter((p) => p.seasonHistory?.status !== "completed").length;
   const games = players.reduce((n, p) => n + p.stats.games, 0);
+  const classified = players.filter((p) => p.rank && p.rank.tier !== "UNRANKED").length;
+  const stats = globalMetrics(players, view, "matches");
   const highlights = recentHighlights(players, overview.recentForm);
+  const awards = computeAwards(players, view, overview.sequences);
+  const form = formExtremes(formRanking(players, overview.sequences));
+  const leader = stats.leader?.player;
+  const minimum = `Mínimo ${HIGHLIGHT_MIN_GAMES} partidas`;
+  const trend = [
+    {
+      key: "up",
+      label: "en subida",
+      count: players.filter((p) => (p.momentum?.net ?? 0) > 0).length,
+    },
+    {
+      key: "down",
+      label: "en bajada",
+      count: players.filter((p) => (p.momentum?.net ?? 0) < 0).length,
+    },
+    {
+      key: "flat",
+      label: "sin cambio",
+      count: players.filter((p) => p.momentum?.net === 0).length,
+    },
+    {
+      key: "none",
+      label: "sin datos",
+      count: players.filter((p) => p.momentum?.net == null).length,
+    },
+  ];
+  const distribution = [...TIERS, "UNRANKED"]
+    .map((tier) => ({
+      tier,
+      count: players.filter((p) => (p.rank?.tier ?? "UNRANKED") === tier).length,
+    }))
+    .filter((r) => r.count > 0);
   return (
-    <>
-      <BackToLadder view={view} />
-      <section className="ladder-heading">
-        <div>
-          <div className="eyebrow">LA COMUNIDAD EN NÚMEROS</div>
-          <h1>
-            Métricas<span className="heading-dot">.</span>
-          </h1>
-        </div>
-      </section>
-      <QueueTabs view={view} base="/metrics" period={period} />
-      <nav className="period-tabs" aria-label="Período de estadísticas">
-        {(["season", "30d", "7d"] as const).map((p) => (
-          <Link
-            key={p}
-            href={`/metrics?queue=${view}&period=${p}`}
-            aria-current={period === p ? "page" : undefined}
-          >
-            {p === "season"
-              ? CURRENT_SEASON.label
-              : p === "30d"
-                ? "Últimos 30 días"
-                : "Últimos 7 días"}
-          </Link>
-        ))}
-      </nav>
-      <p className="metric-note">
-        {!players.length
-          ? "Todavía no hay jugadores activos."
-          : partial
-            ? `${partial} jugadores con historial parcial. Las cifras crecerán al completar la importación.`
-            : "Historial disponible importado para los jugadores activos."}{" "}
-        Los filtros solo cambian la consulta.
-      </p>
-      <div className="season-record">
-        <strong>{players.length} jugadores</strong>
-        <span>{games} participaciones</span>
-        <span>{overview.uniqueGames} partidas únicas</span>
-        {view !== "5v5" && (
-          <span>
-            {players.filter((p) => p.rank && p.rank.tier !== "UNRANKED").length} clasificados
-          </span>
+    <div className={`metrics-page ${ranked ? "" : "is-5v5"}`}>
+      <header className="metrics-bar">
+        <h1>
+          Métricas<span className="heading-dot">.</span>
+        </h1>
+        <nav className="segmented" aria-label="Tipo de partida">
+          {VIEWS.map((q) => (
+            <Link
+              key={q}
+              href={`/metrics?queue=${q}&period=${period}`}
+              aria-current={q === view ? "page" : undefined}
+            >
+              {QUEUE_LABELS[q]}
+            </Link>
+          ))}
+        </nav>
+        <nav className="segmented" aria-label="Período">
+          {PERIODS.map((p) => (
+            <Link
+              key={p.key}
+              href={`/metrics?queue=${view}&period=${p.key}`}
+              aria-current={p.key === period ? "page" : undefined}
+            >
+              {p.label}
+            </Link>
+          ))}
+        </nav>
+      </header>
+      <ul className="metrics-chips" aria-label="Resumen del período">
+        <li>{players.length} jugadores</li>
+        <li>{games.toLocaleString("es-CL")} participaciones</li>
+        <li>{overview.uniqueGames.toLocaleString("es-CL")} partidas únicas</li>
+        {ranked && <li>{classified} clasificados</li>}
+        {partial > 0 && (
+          <li className="chip-warning">
+            <InfoTip align="start" term={<>{partial} con historial parcial</>}>
+              Todavía se está importando el historial de {partial} jugadores: las cifras crecerán al
+              completarse. Los filtros solo cambian la consulta.
+            </InfoTip>
+          </li>
         )}
-      </div>
-      <GlobalMetricsSection players={players} view={view} source="matches" />
-      <section className="panel season-performance">
-        <div className="panel-title">
-          <h2>Forma reciente</h2>
-          <span>ÚLTIMAS {RECENT_FORM_GAMES} DEL PERÍODO</span>
-        </div>
-        <div className="metric-leader-row">
-          <span>Mejor forma</span>
-          {highlights.form?.player ? (
-            <>
-              <Link href={`/player/${highlights.form.player.id}?queue=${view}`}>
-                {highlights.form.player.gameName}
-                <span className="muted">#{highlights.form.player.tagLine}</span>
-              </Link>
-              <strong>
-                {((100 * highlights.form.wins) / highlights.form.games).toFixed(1)}%{" "}
-                <small>
-                  {highlights.form.wins} V / {highlights.form.games - highlights.form.wins} D
-                </small>
-              </strong>
-            </>
-          ) : (
-            <span className="muted">
-              Muestra insuficiente · mínimo {HIGHLIGHT_MIN_GAMES} partidas
-            </span>
-          )}
-        </div>
-        <MethodNote>
-          <p>
-            Se comparan hasta {RECENT_FORM_GAMES} partidas importadas recientes por jugador, con un
-            mínimo de {HIGHLIGHT_MIN_GAMES}. Remakes excluidos; un historial parcial puede cambiar
-            el resultado.
-          </p>
-        </MethodNote>
-      </section>
-      {view !== "5v5" && (
-        <section className="panel season-performance">
-          <div className="panel-title">
-            <h2>Tendencia de LP reciente</h2>
-            <span>REGISTROS OFICIALES</span>
-          </div>
-          <div className="season-record">
-            <strong>{players.filter((p) => (p.momentum?.net ?? 0) > 0).length} en subida</strong>
-            <span>{players.filter((p) => (p.momentum?.net ?? 0) < 0).length} en bajada</span>
-            <span>{players.filter((p) => p.momentum?.net === 0).length} sin cambio neto</span>
-            <span>
-              {players.filter((p) => p.momentum?.net == null).length} sin datos comparables
-            </span>
-          </div>
-          {[
-            { label: "Mayor subida observada", player: highlights.climb },
-            { label: "Mayor caída observada", player: highlights.drop },
-          ].map(({ label, player }) => (
-            <div className="metric-leader-row" key={label}>
-              <span>{label}</span>
-              {player ? (
-                <>
-                  <Link href={`/player/${player.id}?queue=${view}`}>
-                    {player.gameName}
-                    <span className="muted">#{player.tagLine}</span>
-                  </Link>
-                  <strong className={player.momentum!.net! > 0 ? "positive" : "negative"}>
-                    {signedLp(player.momentum!.net!)} LP{" "}
-                    <small>
-                      {player.momentum!.games} partidas ·{" "}
-                      {new Date(player.momentum!.from!).toLocaleDateString("es-CL", {
-                        timeZone: "UTC",
-                      })}
-                      –
-                      {new Date(player.momentum!.to!).toLocaleDateString("es-CL", {
-                        timeZone: "UTC",
-                      })}
-                    </small>
-                  </strong>
-                </>
-              ) : (
-                <span className="muted">
-                  Sin tramo elegible de al menos {HIGHLIGHT_MIN_GAMES} partidas
-                </span>
+      </ul>
+
+      <div className="bento">
+        {ranked && (
+          <Block
+            title="Líder ranked"
+            className="span-hero"
+            info="El líder se ordena por tier, división y LP oficiales actuales; no se reconstruye rango histórico con partidas."
+          >
+            <HeroStat
+              value={leader?.rank ? `${leader.rank.leaguePoints} LP` : "—"}
+              badge={leader?.rank && <RankDisplay rank={leader.rank} emblem={false} />}
+              player={leader}
+              view={view}
+              note="Rango oficial actual"
+              aside={leader && <RankEmblem tier={leader.rank?.tier} size={64} decorative />}
+            />
+          </Block>
+        )}
+        <Block
+          title="Mejor winrate"
+          className="span-hero"
+          info={`Victorias / resultados de las partidas importadas del período. ${minimum}.`}
+        >
+          <HeroStat
+            value={stats.bestWinrate ? `${stats.bestWinrate.rate.toFixed(1)}%` : "—"}
+            player={stats.bestWinrate?.player}
+            view={view}
+            note={
+              stats.bestWinrate
+                ? `${stats.bestWinrate.wins} V / ${stats.bestWinrate.losses} D · ${minimum.toLowerCase()}`
+                : minimum
+            }
+          />
+        </Block>
+        <Block
+          title="Mejor KDA"
+          className="span-hero"
+          info={`(Kills + asistencias) / muertes, con divisor mínimo de 1. ${minimum}.`}
+        >
+          <HeroStat
+            value={
+              stats.bestKda
+                ? kda(
+                    stats.bestKda.stats.kills,
+                    stats.bestKda.stats.deaths,
+                    stats.bestKda.stats.assists,
+                  ).toFixed(2)
+                : "—"
+            }
+            player={stats.bestKda}
+            view={view}
+            note={minimum}
+          />
+        </Block>
+        <Block
+          title="Más partidas"
+          className="span-hero"
+          info="Partidas importadas del período seleccionado; los remakes no cuentan."
+        >
+          <HeroStat
+            value={stats.mostGames?.games.toLocaleString("es-CL") ?? "—"}
+            player={stats.mostGames?.player}
+            view={view}
+            note="Partidas del período"
+          />
+        </Block>
+
+        <Block
+          title="Winrate conjunto"
+          className="span-community"
+          info="Victorias / resultados de todo el grupo. No es un promedio simple de porcentajes."
+        >
+          <strong className="community-value">
+            {stats.winrate === null ? "—" : `${stats.winrate.toFixed(1)}%`}
+          </strong>
+          <span className="community-meter" aria-hidden="true">
+            <span style={{ width: `${stats.winrate ?? 0}%` }} />
+          </span>
+        </Block>
+        <Block
+          title="KDA conjunto"
+          className="span-community"
+          info="(Kills + asistencias) / muertes de todo el grupo, con divisor mínimo de 1."
+        >
+          <strong className="community-value">{stats.kda?.toFixed(2) ?? "—"}</strong>
+          <small className="community-note">Todo el grupo</small>
+        </Block>
+        <Block
+          title="Partidas por participante"
+          className="span-community community-last"
+          info="Participaciones del período / jugadores con partidas."
+        >
+          <strong className="community-value">{stats.averageGames?.toFixed(1) ?? "—"}</strong>
+          <small className="community-note">Media del período</small>
+        </Block>
+
+        <Block
+          title="Salón de honor"
+          className="span-half awards-honor"
+          info={`Winrate, KDA y forma exigen ${HIGHLIGHT_MIN_GAMES} partidas. Forma = últimas ${RECENT_FORM_GAMES}. LP: último tramo comparable del mismo tier y división. Empates: más partidas, luego nombre.`}
+        >
+          <AwardList awards={awards.honor} view={view} />
+        </Block>
+        <Block
+          title="Salón de la vergüenza"
+          className="span-half awards-shame"
+          info={`Con cariño: mismos datos y umbrales (${HIGHLIGHT_MIN_GAMES} partidas). Los «peores» necesitan al menos 2 jugadores comparables.`}
+        >
+          <p className="awards-tagline">Con cariño. La próxima sale mejor.</p>
+          <AwardList awards={awards.shame} view={view} />
+        </Block>
+
+        <Block
+          title="Forma reciente"
+          className="span-form"
+          info={`Últimas ${RECENT_FORM_GAMES} partidas importadas del período, la más reciente a la izquierda. Mínimo ${HIGHLIGHT_MIN_GAMES}; remakes excluidos.`}
+        >
+          {form.top.length ? (
+            <div className="form-groups">
+              <div>
+                <h3>Mejores</h3>
+                <FormRows rows={form.top} view={view} />
+              </div>
+              {form.bottom.length > 0 && (
+                <div>
+                  <h3>Peores</h3>
+                  <FormRows rows={form.bottom} view={view} />
+                </div>
               )}
             </div>
-          ))}
-          <MethodNote>
-            <p>
-              Último tramo comparable de hasta 30 registros de rango por jugador, dentro del mismo
-              tier y división. Puede incluir ajustes de LP. Esta tendencia y el rango actual son
-              independientes del filtro de partidas; no representan el cambio de toda la temporada.
-            </p>
-            <p>
-              Los intervalos pueden tener distinta duración; se muestra su cambio neto observado,
-              sin atribuirlo a partidas individuales.
-            </p>
-          </MethodNote>
-        </section>
-      )}
-      <section className="panel season-performance">
-        <div className="panel-title">
-          <h2>{period === "season" ? "Actividad de temporada" : "Actividad del período"}</h2>
-          <span>PARTICIPACIONES / SEMANA</span>
-        </div>
-        <ActivityChart points={overview.activity} />
-      </section>
-      <div className={`metrics-detail-grid ${view === "5v5" ? "single-column" : ""}`}>
-        <section className="panel champion-panel">
-          <div className="panel-title">
-            <h2>Campeones más jugados</h2>
-            <span>PERÍODO SELECCIONADO</span>
-          </div>
-          {overview.champions.length ? (
-            overview.champions.map((c) => (
-              <div className="champion-row" key={c.championId}>
-                <ChampionIdentity {...championAsset(c.championId, c.champion, assets.champions)}>
-                  {c.games} participaciones · {games ? ((100 * c.games) / games).toFixed(1) : "0"}%
-                  de uso
-                </ChampionIdentity>
-                <div className="champion-results">
-                  <strong>
-                    {c.wins} V / {c.games - c.wins} D
-                  </strong>
-                  <small>
-                    {c.games >= HIGHLIGHT_MIN_GAMES
-                      ? `${((100 * c.wins) / c.games).toFixed(1)}% WR`
-                      : `WR: mínimo ${HIGHLIGHT_MIN_GAMES} partidas`}
-                  </small>
-                </div>
-              </div>
-            ))
           ) : (
-            <p className="empty-copy">Todavía no hay partidas para este período.</p>
+            <p className="bento-empty">Nadie tiene {HIGHLIGHT_MIN_GAMES} partidas recientes.</p>
           )}
-          <MethodNote>
-            <p>
-              Uso = participaciones con el campeón / participaciones del grupo. El winrate requiere{" "}
-              {HIGHLIGHT_MIN_GAMES} partidas.
-            </p>
-          </MethodNote>
-        </section>
-        {view !== "5v5" && (
-          <section className="panel champion-panel">
-            <div className="panel-title">
-              <h2>Distribución de rangos</h2>
-              <span>ESTADO ACTUAL</span>
-            </div>
-            {[...TIERS, "UNRANKED"]
-              .map((tier) => ({
-                tier,
-                count: players.filter((p) => (p.rank?.tier ?? "UNRANKED") === tier).length,
-              }))
-              .filter((r) => r.count > 0)
-              .map((r) => (
-                <div className="champion-row rank-distribution-row" key={r.tier}>
-                  <RankDisplay
-                    rank={{ tier: r.tier, division: "", leaguePoints: 0, wins: 0, losses: 0 }}
-                  />
-                  <span className="distribution-track" aria-hidden="true">
-                    <span style={{ width: `${(100 * r.count) / players.length}%` }} />
-                  </span>
-                  <strong>{r.count}</strong>
+        </Block>
+        {ranked && (
+          <Block
+            title="Tendencia de LP"
+            className="span-trend"
+            info="Último tramo comparable de hasta 30 registros de rango por jugador, dentro del mismo tier y división. Puede incluir ajustes de LP; no se atribuye a partidas individuales."
+          >
+            <TrendBar segments={trend} />
+            <dl className="trend-extremes">
+              {[
+                { label: "Mayor subida", player: highlights.climb },
+                { label: "Mayor caída", player: highlights.drop },
+              ].map(({ label, player }) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  {player ? (
+                    <dd>
+                      <PlayerLink player={player} view={view} />
+                      <strong className={player.momentum!.net! > 0 ? "positive" : "negative"}>
+                        {signedLp(player.momentum!.net!)} LP
+                      </strong>
+                    </dd>
+                  ) : (
+                    <dd className="bento-empty">Sin tramo de {HIGHLIGHT_MIN_GAMES} partidas</dd>
+                  )}
                 </div>
               ))}
-            {!players.length && <p className="empty-copy">Añade jugadores para comenzar.</p>}
-          </section>
+            </dl>
+          </Block>
+        )}
+
+        <Block
+          title={period === "season" ? "Actividad de temporada" : "Actividad del período"}
+          className="span-activity"
+          info="Cada jugador cuenta una participación: una partida compartida puede sumar varias. Remakes excluidos; mientras se importa el historial, la cobertura es parcial."
+        >
+          <ActivityChart points={overview.activity} />
+        </Block>
+        <Block
+          title="Campeones más jugados"
+          className="span-champions"
+          info={`Uso = participaciones con el campeón / participaciones del grupo. El winrate requiere ${HIGHLIGHT_MIN_GAMES} partidas.`}
+        >
+          {overview.champions.length ? (
+            <ul className="champion-list">
+              {overview.champions.slice(0, 4).map((c) => (
+                <li key={c.championId}>
+                  <ChampionIdentity {...championAsset(c.championId, c.champion, assets.champions)}>
+                    {games ? ((100 * c.games) / games).toFixed(1) : "0"}% de uso
+                  </ChampionIdentity>
+                  <span className="champion-score">
+                    {c.wins} V / {c.games - c.wins} D
+                    <small>
+                      {c.games >= HIGHLIGHT_MIN_GAMES
+                        ? `${((100 * c.wins) / c.games).toFixed(1)}% WR`
+                        : `${c.games} partidas`}
+                    </small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="bento-empty">Todavía no hay partidas en este período.</p>
+          )}
+        </Block>
+        {ranked && (
+          <Block
+            title="Distribución de rangos"
+            className="span-ranks"
+            info="Rango oficial actual de cada jugador."
+          >
+            {distribution.length ? (
+              <ul className="rank-bars">
+                {distribution.map((r) => (
+                  <li key={r.tier}>
+                    <RankDisplay
+                      rank={{ tier: r.tier, division: "", leaguePoints: 0, wins: 0, losses: 0 }}
+                      size={18}
+                    />
+                    <span className="distribution-track" aria-hidden="true">
+                      <span style={{ width: `${(100 * r.count) / players.length}%` }} />
+                    </span>
+                    <strong>{r.count}</strong>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="bento-empty">Añade jugadores para comenzar.</p>
+            )}
+          </Block>
         )}
       </div>
-    </>
+    </div>
   );
 }

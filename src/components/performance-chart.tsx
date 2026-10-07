@@ -12,7 +12,6 @@ import {
 } from "recharts";
 import type { PerformancePoint, ActivityPoint } from "@/lib/history";
 import { ChartDataTable, CHART_KEYBOARD_HINT } from "./chart-data-table";
-import { MethodNote } from "./method-note";
 const date = (v: number | string) =>
   new Date(v).toLocaleDateString("es-CL", { timeZone: "UTC", day: "numeric", month: "short" });
 const percent = (v: number) => `${v.toFixed(1)}%`;
@@ -127,7 +126,7 @@ export function ActivityChart({ points }: { points: ActivityPoint[] }) {
           Semana más activa: {date(busiest.timestamp)} ({busiest.games})
         </span>
       </figcaption>
-      <ResponsiveContainer width="100%" height={230}>
+      <ResponsiveContainer width="100%" height={150}>
         <BarChart
           data={points}
           margin={{ right: 12 }}
@@ -140,9 +139,9 @@ export function ActivityChart({ points }: { points: ActivityPoint[] }) {
             tickFormatter={date}
             minTickGap={45}
             stroke="var(--chart-axis)"
-            fontSize={11}
+            fontSize={12}
           />
-          <YAxis allowDecimals={false} width={42} stroke="var(--chart-axis)" fontSize={11} />
+          <YAxis allowDecimals={false} width={42} stroke="var(--chart-axis)" fontSize={12} />
           <Tooltip
             cursor={{ fill: "var(--surface-raised)" }}
             content={({ active, payload }) =>
@@ -167,13 +166,6 @@ export function ActivityChart({ points }: { points: ActivityPoint[] }) {
           (p) => [date(p.timestamp), `${p.games} (${p.wins} V / ${p.losses} D)`] as const,
         )}
       />
-      <MethodNote>
-        <p>
-          Cada jugador cuenta una participación: una partida compartida puede sumar varias. Remakes
-          excluidos. Las semanas vacías entre observaciones indican cero participaciones importadas;
-          mientras se importa el historial, la cobertura todavía es parcial.
-        </p>
-      </MethodNote>
     </figure>
   );
 }

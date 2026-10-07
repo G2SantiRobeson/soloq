@@ -7,6 +7,7 @@ import { type MetricsPeriod } from "@/lib/season";
 import type { PerformancePoint, ActivityPoint } from "@/lib/history";
 import { continuousActivity } from "@/lib/history";
 import { RECENT_FORM_GAMES } from "@/lib/global-metrics";
+import type { ResultSequence } from "@/lib/awards";
 import { seasonFilter } from "./season-filter";
 import { isDemo } from "./env";
 import { demoPlayers } from "./demo";
@@ -73,6 +74,13 @@ export async function getSeasonOverview(view: View, period: MetricsPeriod) {
         const recent = p.recent.filter((m) => !m.isRemake).slice(0, RECENT_FORM_GAMES);
         return { playerId: p.id, games: recent.length, wins: recent.filter((m) => m.win).length };
       }),
+      sequences: roster.map((p): ResultSequence => ({
+        playerId: p.id,
+        results: p.recent
+          .filter((m) => !m.isRemake)
+          .toReversed()
+          .map((m) => m.win),
+      })),
     };
   }
   const filter = and(
@@ -95,7 +103,7 @@ export async function getSeasonOverview(view: View, period: MetricsPeriod) {
     .innerJoin(players, eq(players.id, playerMatches.playerId))
     .where(filter)
     .as("ordered_results");
-  const [activity, champions, unique, recentForm] = await Promise.all([
+  const [activity, champions, unique, recentForm, sequences] = await Promise.all([
     db()
       .select({
         timestamp: sql<string>`${week}::text`,
@@ -138,6 +146,19 @@ export async function getSeasonOverview(view: View, period: MetricsPeriod) {
       .from(orderedResults)
       .where(sql`${orderedResults.n} <= ${RECENT_FORM_GAMES}`)
       .groupBy(orderedResults.playerId),
+    // Chronological results per player (same filter): streaks and recent-form dots.
+    db()
+      .select({
+        playerId: playerMatches.playerId,
+        results: sql<
+          boolean[]
+        >`array_agg(${playerMatches.win} order by ${matches.timestamp}, ${matches.id})`,
+      })
+      .from(playerMatches)
+      .innerJoin(matches, eq(matches.id, playerMatches.matchId))
+      .innerJoin(players, eq(players.id, playerMatches.playerId))
+      .where(filter)
+      .groupBy(playerMatches.playerId),
   ]);
   return {
     activity: continuousActivity(
@@ -149,5 +170,9 @@ export async function getSeasonOverview(view: View, period: MetricsPeriod) {
     champions,
     uniqueGames: unique[0]?.n ?? 0,
     recentForm,
+    sequences: sequences.map((s): ResultSequence => ({
+      playerId: s.playerId,
+      results: (s.results as unknown[]).map((v) => v === true || v === "t" || v === "true"),
+    })),
   };
 }
