@@ -68,6 +68,8 @@
   --space-4: 32px;
   --space-5: 40px;
   --space-6: 48px;
+  /* Main-table cell inset: kept at its original 12px so column widths do not change */
+  --space-cell: calc(var(--space-1) + var(--space-half));
   --radius: 2px;
 }
 * {
@@ -575,16 +577,17 @@ select option {
 .leaderboard th {
   border-block: 1px solid var(--line);
   background: var(--surface-2);
-  padding: 0 var(--space-1);
+  padding: 0 var(--space-cell);
   height: 42px;
   color: var(--muted);
   font-size: var(--fs-1);
   font-weight: 600;
-  letter-spacing: 1px;
+  /* Tighter tracking offsets the 10px -> 11px header size so column widths hold. */
+  letter-spacing: 0.3px;
   white-space: nowrap;
 }
 .leaderboard td {
-  padding: var(--space-1);
+  padding: var(--space-cell);
   height: 72px;
   border-bottom: 1px solid var(--line);
 }
