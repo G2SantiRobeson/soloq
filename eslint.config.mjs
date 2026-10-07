@@ -4,5 +4,13 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "drizzle/**", "artifacts/**", ".npm-cache/**", "next-env.d.ts"]),
+  globalIgnores([
+    ".next/**",
+    "drizzle/**",
+    "artifacts/**",
+    ".npm-cache/**",
+    "next-env.d.ts",
+    // Vendored engine, kept verbatim.
+    "src/lib/signature-metrics.cjs",
+  ]),
 ]);

@@ -3350,3 +3350,93 @@ dialog.confirm-dialog::backdrop {
     background: none;
   }
 }
+
+/* Player signature: four engine metrics as cards, three more as compact readings. */
+.signature {
+  display: grid;
+  gap: var(--space-2);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.signature .section-heading {
+  margin-bottom: 0;
+}
+.signature-lead,
+.signature-text {
+  color: var(--muted);
+  font-size: var(--fs-2);
+  line-height: 1.6;
+}
+.signature-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--space-2);
+}
+.signature-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+  min-width: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--rank-color, var(--accent));
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.signature-label {
+  color: var(--muted);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.signature-num,
+.signature-mini {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--space-1);
+  font-family: var(--font-display), sans-serif;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+}
+.signature-num {
+  margin-block: var(--space-half);
+  color: var(--rank-color, var(--accent));
+  font-size: var(--fs-6);
+}
+.signature-mini {
+  font-size: var(--fs-5);
+}
+.signature-num small,
+.signature-mini small {
+  color: var(--muted);
+  font-size: var(--fs-4);
+}
+.signature-card h3 {
+  font:
+    600 var(--fs-3) / 1.35 var(--font-body),
+    sans-serif;
+}
+.signature-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.signature-subhead {
+  margin-top: var(--space-1);
+  font-size: var(--fs-4);
+}
+.signature-others {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.signature-others li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}

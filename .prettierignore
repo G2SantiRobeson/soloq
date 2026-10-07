@@ -5,3 +5,4 @@ artifacts
 drizzle/meta
 package-lock.json
 next-env.d.ts
+src/lib/signature-metrics.cjs

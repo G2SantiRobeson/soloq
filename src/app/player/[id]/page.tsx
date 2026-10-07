@@ -24,6 +24,12 @@ import { PerformanceChart } from "@/components/performance-chart";
 import { HistoryStatusLabel } from "@/components/history-status";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
 import { HIGHLIGHT_MIN_GAMES } from "@/lib/global-metrics";
+import { Suspense } from "react";
+import {
+  PlayerSignatureSection,
+  PlayerSignatureSkeleton,
+} from "@/components/player-signature-section";
+import { toSignaturePlayer } from "@/lib/signature";
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ queue?: string }> };
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
@@ -38,6 +44,11 @@ export default async function PlayerPage({ params, searchParams }: Props) {
   const view = parseView((await searchParams).queue);
   const [player, assets] = await Promise.all([getProfile(id, view), getAssets()]);
   if (!player) notFound();
+  const signatureInput = toSignaturePlayer(
+    player,
+    view,
+    (championId, fallback) => championAsset(championId, fallback, assets.champions).name,
+  );
   const record = view !== "5v5" && player.rank ? player.rank : player.stats;
   const rate = winrate(record.wins, record.losses);
   return (
@@ -121,6 +132,14 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           )}
         </section>
       </div>
+      <Suspense fallback={<PlayerSignatureSkeleton name={player.gameName} />}>
+        <PlayerSignatureSection
+          input={signatureInput}
+          view={view}
+          name={player.gameName}
+          tier={view === "5v5" ? null : (player.rank?.tier ?? null)}
+        />
+      </Suspense>
       {view !== "5v5" && <LpDeltaSummary observations={player.lpObservations} />}
       <section className="panel season-performance">
         <div className="panel-title">
