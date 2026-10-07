@@ -1,4 +1,5 @@
 import { parseView } from "@/lib/queues";
+import { parseLadderFilters, type LadderSearchParams } from "@/lib/ladder-filters";
 import Link from "next/link";
 import { ChartNoAxesCombined } from "lucide-react";
 import { getLeaderboard } from "@/server/queries";
@@ -10,9 +11,10 @@ export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ queue?: string }>;
+  searchParams: Promise<LadderSearchParams>;
 }) {
-  const view = parseView((await searchParams).queue);
+  const params = await searchParams;
+  const view = parseView(params.queue);
   const [players, assets, sync] = await Promise.all([
     getLeaderboard(view),
     getAssets(),
@@ -55,6 +57,7 @@ export default async function Home({
         version={assets.version}
         champions={assets.champions}
         sync={sync}
+        initialFilters={parseLadderFilters(view, params)}
         key={view}
       />
       <Link className="metrics-link" href={`/metrics?queue=${view}`}>

@@ -1,10 +1,17 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpRight, Search, X } from "lucide-react";
 import type { PublicPlayer } from "@/lib/types";
 import type { View } from "@/lib/queues";
-import { PLATFORM_LABELS } from "@/lib/routing";
+import { PLATFORM_LABELS, type Platform } from "@/lib/routing";
+import {
+  ladderQuery,
+  parseLadderFilters,
+  SEARCH_MAX_LENGTH,
+  type LadderFilters,
+  type LadderSort,
+} from "@/lib/ladder-filters";
 import { rankSortValue } from "@/lib/ranking";
 import { kda, winrate } from "@/lib/stats";
 import { PlayerIdentity } from "./player-identity";
@@ -16,24 +23,32 @@ import type { ChampionCatalog } from "@/lib/champion-assets";
 import type { SyncStatus } from "@/lib/sync-status";
 import { SyncCountdown } from "./sync-countdown";
 import { signedLp } from "@/lib/lp-metrics";
-type Sort = "rank" | "games" | "winrate" | "kda";
 export function Leaderboard({
   players,
   view,
   version,
   champions,
   sync,
+  initialFilters = parseLadderFilters(view, {}),
 }: {
   players: PublicPlayer[];
   view: View;
   version: string | null;
   champions: ChampionCatalog;
   sync?: SyncStatus;
+  initialFilters?: LadderFilters;
 }) {
-  const [search, setSearch] = useState("");
-  const [region, setRegion] = useState("all");
-  const [sort, setSort] = useState<Sort>(view === "5v5" ? "winrate" : "rank");
-  const [ascending, setAscending] = useState(false);
+  const ids = useId();
+  const [search, setSearch] = useState(initialFilters.search);
+  const [region, setRegion] = useState<LadderFilters["region"]>(initialFilters.region);
+  const [sort, setSort] = useState<LadderSort>(initialFilters.sort);
+  const [ascending, setAscending] = useState(initialFilters.ascending);
+  useEffect(() => {
+    // Keep filters shareable and restorable without a server round trip.
+    const query = ladderQuery(view, { search, region, sort, ascending });
+    if (window.location.search !== query)
+      window.history.replaceState(null, "", `${window.location.pathname}${query}`);
+  }, [view, search, region, sort, ascending]);
   const records = useMemo(() => {
     const list = players.map((p) => {
       const wins = view !== "5v5" && p.rank ? p.rank.wins : p.stats.wins;
@@ -67,14 +82,14 @@ export function Leaderboard({
         (sort === "rank" ? b.rankValue - a.rankValue : b[sort] - a[sort]) * (ascending ? -1 : 1);
       return value || a.gameName.localeCompare(b.gameName);
     });
-  function sortBy(next: Sort) {
+  function sortBy(next: LadderSort) {
     if (sort === next) setAscending(!ascending);
     else {
       setSort(next);
       setAscending(false);
     }
   }
-  function heading(label: string, key: Sort, className = "") {
+  function heading(label: string, key: LadderSort, className = "") {
     return (
       <th
         role="columnheader"
@@ -104,35 +119,56 @@ export function Leaderboard({
           <span>{view === "5v5" ? "RENDIMIENTO IMPORTADO" : "TIER / DIVISIÓN / LP"}</span>
         </div>
         <div className="table-filters">
-          <label className="search-input">
-            <Search size={16} aria-hidden="true" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar Riot ID…"
-              aria-label="Buscar jugador"
-            />
-            {search && (
-              <button aria-label="Borrar búsqueda" onClick={() => setSearch("")}>
-                <X size={15} />
-              </button>
-            )}
-          </label>
-          <label className="region-filter">
-            <span className="sr-only">Filtrar región</span>
-            <select
-              aria-label="Filtrar región"
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-            >
-              <option value="all">Todas las regiones</option>
-              {[...new Set(players.map((p) => p.platform))].map((p) => (
-                <option key={p} value={p}>
-                  {PLATFORM_LABELS[p]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="filter-field search-field">
+            <label className="filter-label" htmlFor={`${ids}-search`}>
+              Buscar Riot ID
+            </label>
+            <div className="search-input">
+              <Search size={16} aria-hidden="true" />
+              <input
+                id={`${ids}-search`}
+                value={search}
+                maxLength={SEARCH_MAX_LENGTH}
+                autoComplete="off"
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Nombre#TAG"
+              />
+              {search && (
+                <button
+                  type="button"
+                  className="clear-search"
+                  aria-label="Borrar búsqueda"
+                  onClick={() => setSearch("")}
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="filter-field region-field">
+            <label className="filter-label" htmlFor={`${ids}-region`}>
+              Región
+            </label>
+            <div className="region-filter">
+              <select
+                id={`${ids}-region`}
+                value={region}
+                onChange={(e) => setRegion(e.target.value as Platform | "all")}
+              >
+                <option value="all">Todas las regiones</option>
+                {[
+                  ...new Set([
+                    ...players.map((p) => p.platform),
+                    ...(region === "all" ? [] : [region]),
+                  ]),
+                ].map((p) => (
+                  <option key={p} value={p}>
+                    {PLATFORM_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
       {sync && <SyncCountdown initial={sync} />}
@@ -142,7 +178,7 @@ export function Leaderboard({
           <select
             value={sort}
             onChange={(e) => {
-              setSort(e.target.value as Sort);
+              setSort(e.target.value as LadderSort);
               setAscending(false);
             }}
           >
@@ -153,6 +189,7 @@ export function Leaderboard({
           </select>
         </label>
         <button
+          type="button"
           onClick={() => setAscending(!ascending)}
           aria-label={
             ascending

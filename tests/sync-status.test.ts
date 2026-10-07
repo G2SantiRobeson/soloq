@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   countdown,
+  syncCountdownLabel,
   nextExpectedSyncAt,
   newerSuccessfulSync,
   LADDER_SYNC_INTERVAL_MS,
@@ -46,6 +47,20 @@ describe("global sync countdown", () => {
       nextExpectedSyncAt: nextExpectedSyncAt("2026-10-06T18:11:00Z"),
     };
     expect(countdown(next, Date.parse(next.lastSuccessfulSyncAt))).toBe("Actualización en 10:00");
+  });
+  it("labels the visible countdown by minute, never by second", () => {
+    const at = (ms: number) => syncCountdownLabel(status, Date.parse(last) + ms);
+    expect(at(0)).toBe("en 10 min");
+    expect(at(1000)).toBe("en 10 min");
+    expect(at(540_000)).toBe("en 1 min");
+    expect(at(541_000)).toBe("en menos de 1 min");
+    expect(at(600_000)).toBe("Actualizando…");
+    expect(syncCountdownLabel({ ...status, status: "failed" }, Date.parse(last) + 600_000)).toBe(
+      "Actualización retrasada",
+    );
+    expect(syncCountdownLabel({ ...status, nextExpectedSyncAt: null, status: "never" }, 0)).toBe(
+      null,
+    );
   });
   it("polls metadata every 15s, refreshes only once on a newer success and recovers from a failure", async () => {
     vi.useFakeTimers();

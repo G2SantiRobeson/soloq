@@ -434,7 +434,7 @@ select {
 .table-toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--space-3);
   padding: var(--space-3) 0;
 }
@@ -463,17 +463,39 @@ select {
   display: flex;
   gap: var(--space-1);
 }
+.filter-field {
+  display: grid;
+  gap: var(--space-half);
+  min-width: 0;
+}
+.filter-label {
+  color: var(--muted);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
 .search-input,
 .region-filter {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  height: 40px;
+  height: 42px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   padding-inline: var(--space-2);
   color: var(--muted);
+}
+.search-input {
+  padding-right: 0;
+}
+.search-input > svg {
+  flex-shrink: 0;
+}
+.search-input:hover,
+.region-filter:hover {
+  border-color: var(--accent);
 }
 .search-input:focus-within,
 .region-filter:focus-within {
@@ -482,6 +504,8 @@ select {
 }
 .search-input input {
   width: 175px;
+  height: 100%;
+  padding-right: var(--space-1);
   border: 0;
   background: transparent;
   color: var(--text);
@@ -491,15 +515,21 @@ select {
 .search-input input::placeholder {
   color: var(--muted);
 }
-.search-input button {
+.clear-search {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  min-width: 28px;
-  min-height: 36px;
   border: 0;
+  border-left: 1px solid var(--line);
   background: transparent;
   color: var(--muted);
   display: grid;
   place-items: center;
+}
+.clear-search:hover {
+  color: var(--text);
+  background: var(--surface-raised);
 }
 .region-filter select {
   background: transparent;
@@ -1633,17 +1663,20 @@ select option {
   .table-filters {
     width: 100%;
   }
-  .search-input {
+  .search-field {
     flex: 1;
-    min-width: 0;
-    padding-inline: var(--space-1);
+  }
+  .search-input {
+    padding-left: var(--space-1);
   }
   .search-input input {
     width: 100%;
     font-size: var(--fs-2);
   }
-  .region-filter {
+  .region-field {
     max-width: 145px;
+  }
+  .region-filter {
     padding-inline: var(--space-1);
   }
   .region-filter select {
@@ -2499,12 +2532,14 @@ dialog.confirm-dialog::backdrop {
 }
 
 /* Historical match performance and observed rank remain separate surfaces. */
+.sync-area {
+  margin-bottom: var(--space-2);
+}
 .sync-countdown {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1) var(--space-2);
   align-items: center;
-  margin-bottom: var(--space-2);
   font-size: var(--fs-2);
   color: var(--muted);
   letter-spacing: normal;
@@ -2520,6 +2555,25 @@ dialog.confirm-dialog::backdrop {
 }
 .sync-countdown-label {
   color: var(--text);
+}
+.sync-countdown > svg {
+  color: var(--win);
+}
+.refresh-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--accent);
+  border-left-width: 3px;
+  background: var(--surface-2);
+  box-shadow: var(--glow-accent);
+  font-size: var(--fs-2);
+}
+.refresh-notice p {
+  flex: 1 1 260px;
 }
 .weekly-cell {
   white-space: nowrap;

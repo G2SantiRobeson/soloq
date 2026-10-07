@@ -22,6 +22,17 @@ export function countdown(status: SyncStatus, now: number) {
       : "Actualizando…";
   return `Actualización en ${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
+/** Minute-level label for the visible countdown, so the UI does not change every second. */
+export function syncCountdownLabel(status: SyncStatus, now: number): string | null {
+  if (status.status === "running") return "Actualizando…";
+  if (!status.nextExpectedSyncAt) return null;
+  const seconds = Math.ceil((Date.parse(status.nextExpectedSyncAt) - now) / 1000);
+  if (seconds <= 0)
+    return status.status === "failed" || status.status === "partial"
+      ? "Actualización retrasada"
+      : "Actualizando…";
+  return seconds < 60 ? "en menos de 1 min" : `en ${Math.ceil(seconds / 60)} min`;
+}
 export function newerSuccessfulSync(before: string | null, after: string | null) {
   return !!after && (!before || Date.parse(after) > Date.parse(before));
 }
