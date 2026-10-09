@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { authenticated } from "./auth";
 import { RiotError, SyncDeadline } from "./riot/client";
-import { SyncBusy } from "./sync/lease";
+import { runErrorIdentity, SyncBusy } from "./sync/lease";
 import { isDemo } from "./env";
 export class HttpError extends Error {
   constructor(
@@ -53,16 +53,31 @@ export function endpoint(handler: (request: Request) => Promise<Response>) {
     try {
       return await handler(request);
     } catch (error) {
-      if (error instanceof HttpError) return json({ error: error.message }, error.status);
+      if (error instanceof HttpError)
+        return json({ ...runErrorIdentity(error), error: error.message }, error.status);
       if (error instanceof SyncBusy) return json({ error: error.message }, 409);
-      if (error instanceof RiotError)
-        return json({ error: error.message }, error.status === 404 ? 404 : 503);
-      if (error instanceof SyncDeadline) return json({ error: error.message }, 503);
+      if (error instanceof RiotError) {
+        const response = json(
+          { ...runErrorIdentity(error), error: error.message },
+          error.status === 404 ? 404 : 503,
+        );
+        if (error.status === 429)
+          response.headers.set(
+            "Retry-After",
+            String(Math.ceil(Math.max(1300, error.retryAfterMs) / 1000)),
+          );
+        return response;
+      }
+      if (error instanceof SyncDeadline)
+        return json({ ...runErrorIdentity(error), error: error.message }, 503);
       console.error("request_failed", {
         type: error instanceof Error ? error.name : "UnknownError",
       });
       return json(
-        { error: "No se pudo completar la solicitud. Verifica la configuración del servidor." },
+        {
+          ...runErrorIdentity(error),
+          error: "No se pudo completar la solicitud. Verifica la configuración del servidor.",
+        },
         500,
       );
     }

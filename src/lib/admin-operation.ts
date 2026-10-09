@@ -1,8 +1,11 @@
 import type { IndividualSyncResult } from "./admin-sync";
 import { AdminRequestError, describeAdminError, type AdminAction } from "./admin-errors";
 import type { SyncPlayerResult } from "./sync-scheduling";
+import { z } from "zod";
 
 export type AdminResponse = {
+  runId?: string;
+  requestId?: string | null;
   message?: string;
   results?: SyncPlayerResult[];
   backfill?: { results: SyncPlayerResult[]; pending: number; errors: number };
@@ -14,17 +17,29 @@ export type AdminNotice = {
   title: string;
   message: string;
 };
+export function rejectedBeforeRun(error: unknown) {
+  return (
+    error instanceof AdminRequestError &&
+    !error.runId &&
+    ([400, 401, 403, 404, 409, 413, 415, 422].includes(error.status) ||
+      (error.status === 503 && /demo/i.test(error.serverMessage ?? "")))
+  );
+}
 
 export async function requestAdmin(
   path: string,
   method: string,
   data?: unknown,
+  requestId?: string,
 ): Promise<AdminResponse> {
   let response: Response;
   try {
     response = await fetch(path, {
       method,
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(requestId ? { "X-SoloQ-Sync-Request-Id": requestId } : {}),
+      },
       body: data === undefined ? undefined : JSON.stringify(data),
     });
   } catch {
@@ -37,7 +52,12 @@ export async function requestAdmin(
     if (response.ok) throw new AdminRequestError(0, null);
     result = null;
   }
-  if (!response.ok) throw new AdminRequestError(response.status, result?.error ?? null);
+  if (!response.ok)
+    throw new AdminRequestError(
+      response.status,
+      result?.error ?? null,
+      z.uuid().safeParse(result?.runId).success ? result!.runId : undefined,
+    );
   if (!result) throw new AdminRequestError(0, null);
   return result;
 }

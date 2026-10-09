@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { players } from "@/db/schema";
 import { endpoint, HttpError, json, requireAdmin, verifyOrigin } from "@/server/http";
-import { withSyncLease, SyncBusy } from "@/server/sync/lease";
+import { withSyncLease, SyncBusy, runIdentity, runErrorIdentity } from "@/server/sync/lease";
+import { requestCorrelation } from "@/server/sync/progress";
 import { syncPlayer } from "@/server/sync/service";
 import { RiotError, SyncDeadline } from "@/server/riot/client";
 import { toAdminPlayer } from "@/server/admin-queries";
@@ -16,6 +17,8 @@ export const POST = endpoint(async (request) => {
   const parsed = z.uuid().safeParse(new URL(request.url).pathname.split("/").at(-2));
   if (!parsed.success) throw new HttpError(400, "ID inválido.");
   const id = parsed.data;
+  const requestId = requestCorrelation(request);
+  let identity = {};
   async function load() {
     const [player] = await db().select().from(players).where(eq(players.id, id));
     if (!player) throw new HttpError(404, "Jugador no encontrado.");
@@ -26,11 +29,18 @@ export const POST = endpoint(async (request) => {
   const startedAt = Date.now();
   try {
     // No ladder callbacks: preserve the last outcome/success of the global synchronization.
-    const result: IndividualSyncResult = await withSyncLease(async (client) => {
-      const synced = await syncPlayer(id, client);
-      return { ...synced, syncState: toAdminPlayer(await load()).syncState };
-    });
+    const result: IndividualSyncResult = await withSyncLease(
+      async (client) => {
+        identity = runIdentity(client);
+        const synced = await syncPlayer(id, client);
+        return { ...synced, syncState: toAdminPlayer(await load()).syncState };
+      },
+      undefined,
+      undefined,
+      { action: "player_recent", playerId: id, requestId },
+    );
     return json({
+      ...identity,
       result,
       message:
         result.status === "complete"
@@ -66,7 +76,12 @@ export const POST = endpoint(async (request) => {
           ? " El rango se verificó; la cobertura reciente quedó pendiente."
           : "";
     const response = json(
-      { result, error: message + phaseMessage, message: message + phaseMessage },
+      {
+        ...runErrorIdentity(error),
+        result,
+        error: message + phaseMessage,
+        message: message + phaseMessage,
+      },
       error instanceof SyncDeadline
         ? 200
         : error instanceof RiotError && error.status === 429

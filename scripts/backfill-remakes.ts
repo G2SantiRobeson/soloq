@@ -5,6 +5,7 @@ import { matches } from "../src/db/schema";
 import { isRemake } from "../src/lib/match-outcome";
 import { PLATFORMS, type Platform } from "../src/lib/routing";
 import { withSyncLease } from "../src/server/sync/lease";
+import { syncWrite } from "../src/server/sync/progress";
 
 config({ path: ".env.local", quiet: true });
 // Existing rows have null classification. Fetch explicit Riot markers, not a duration guess.
@@ -23,7 +24,9 @@ try {
       if (!PLATFORMS.includes(platform)) throw new Error("Unknown match platform");
       const match = await client.match(platform, id);
       const remake = isRemake(match);
-      await db().update(matches).set({ isRemake: remake }).where(eq(matches.id, id));
+      await syncWrite(client, async (tx) => {
+        await tx.update(matches).set({ isRemake: remake }).where(eq(matches.id, id));
+      });
       remakes += Number(remake);
     }
     console.log(`Classified ${pending.length} stored matches; ${remakes} remakes.`);

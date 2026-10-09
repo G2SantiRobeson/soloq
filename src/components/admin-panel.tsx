@@ -7,12 +7,14 @@ import { CURRENT_SEASON } from "@/lib/season";
 import type { AdminPlayer, AdminSyncContext } from "@/lib/admin-sync";
 import { AdminPlayerDiagnostics } from "./admin-player-diagnostics";
 import { AdminOperationFeedback, type AdminWork } from "./admin-operation-feedback";
+import { useAdminProgress } from "./use-admin-progress";
 import {
   actionTitle,
   createAdminActionRunner,
   failureNotice,
   requestAdmin as request,
   resultNotice,
+  rejectedBeforeRun,
   type AdminNotice,
   type AdminResponse,
 } from "@/lib/admin-operation";
@@ -111,7 +113,8 @@ export function AdminPanel({
   const gameNameInput = useRef<HTMLInputElement>(null);
   const deleted = useRef(false);
   const runAction = useRef(createAdminActionRunner());
-  const pending = pendingAction !== null;
+  const progress = useAdminProgress(context.progress, () => router.refresh());
+  const pending = pendingAction !== null || progress.blocked;
   const fullRiotId = splitRiotId(gameName);
   useEffect(() => {
     if (!deleting) return;
@@ -134,9 +137,21 @@ export function AdminPanel({
     data?: unknown,
     success = "Cambios guardados.",
   ) {
+    if (progress.blocked && action !== "logout") return false;
+    let requestId: string | undefined;
     return (
       (await runAction.current(
         () => {
+          if (action === "sync" || action === "backfill" || action === "add")
+            requestId = progress.begin(
+              key === "sync"
+                ? "global"
+                : action === "backfill"
+                  ? "player_history"
+                  : action === "add"
+                    ? "player_add"
+                    : "player_recent",
+            );
           const playerId = key.split(":")[1];
           const player = players.find((p) => p.id === playerId);
           setWork({
@@ -153,7 +168,9 @@ export function AdminPanel({
         },
         async () => {
           try {
-            const result = await request(path, method, data);
+            const result = await request(path, method, data, requestId);
+            if (action === "logout") progress.cancel();
+            else if (requestId) progress.refresh();
             if (result.results) setBatch(result);
             setNotice(resultNotice(result, success));
             if (action === "delete") deleted.current = true;
@@ -161,6 +178,8 @@ export function AdminPanel({
             router.refresh();
             return true;
           } catch (caught) {
+            if (requestId && rejectedBeforeRun(caught)) progress.rejected();
+            else if (requestId) progress.refresh();
             const described = describeAdminError(caught, action);
             if (action === "add" && described.field) setAddError(described);
             else setNotice(failureNotice(caught, action));
@@ -256,13 +275,23 @@ export function AdminPanel({
           </button>
         </div>
       </div>
-      <AdminOperationFeedback work={work} notice={notice} />
-      {context.leaseUntil && Date.parse(context.leaseUntil) > Date.parse(context.serverNow) && (
-        <p className="notice admin-lease-note">
-          Al cargar el panel, el lease estaba ocupado o en cooldown. No confirma una operación
-          activa. Revisa los diagnósticos antes de iniciar otra acción.
-        </p>
-      )}
+      <AdminOperationFeedback
+        work={work}
+        notice={notice}
+        progress={progress.observation}
+        correlated={progress.correlated}
+        problem={progress.problem}
+        players={players}
+        refresh={progress.refresh}
+      />
+      {!context.progress &&
+        context.leaseUntil &&
+        Date.parse(context.leaseUntil) > Date.parse(context.serverNow) && (
+          <p className="notice admin-lease-note">
+            Al cargar el panel, el lease estaba ocupado o en cooldown. No confirma una operación
+            activa. Revisa los diagnósticos antes de iniciar otra acción.
+          </p>
+        )}
       <details className="panel add-player" open={players.length === 0 || !!addError}>
         <summary className="admin-add-summary" id={`${ids}-add-title`}>
           <Plus size={18} aria-hidden="true" /> Añadir jugador

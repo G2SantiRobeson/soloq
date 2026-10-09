@@ -43,6 +43,13 @@
       "when": 1791520550115,
       "tag": "0005_player_sync_states",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791587693380,
+      "tag": "0006_sync_run_progress",
+      "breakpoints": true
     }
   ]
 }

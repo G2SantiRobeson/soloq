@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { db } from "@/db";
 import { players } from "@/db/schema";
 import { PLATFORMS } from "@/lib/routing";
 import { body, endpoint, HttpError, json, requireAdmin, verifyOrigin } from "@/server/http";
-import { withSyncLease } from "@/server/sync/lease";
+import { runIdentity, withSyncLease } from "@/server/sync/lease";
+import { requestCorrelation, syncWrite, LeaseLost } from "@/server/sync/progress";
 import { syncPlayer, syncBackfillPlayer } from "@/server/sync/service";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
 import { RiotError } from "@/server/riot/client";
@@ -32,53 +32,64 @@ export const POST = endpoint(async (request) => {
   verifyOrigin(request);
   await requireAdmin();
   const values = await body(request, input);
-  return withSyncLease(async (client) => {
-    const account = await client.account(values.platform, values.gameName, values.tagLine);
-    const summoner = await client.summoner(values.platform, account.puuid);
-    const [player] = await db()
-      .insert(players)
-      .values({
-        gameName: account.gameName,
-        tagLine: account.tagLine,
-        puuid: account.puuid,
-        platform: values.platform,
-        profileIconId: summoner.profileIconId,
-        scanStart: seasonStart(values.platform),
-        backfillSeason: CURRENT_SEASON.id,
-      })
-      .onConflictDoNothing({ target: players.puuid })
-      .returning({ id: players.id });
-    if (!player) throw new HttpError(409, "Esta cuenta ya está registrada (PUUID duplicado).");
-    try {
-      const result = await syncPlayer(player.id, client, { budget: 5 });
-      const backfill = await syncBackfillPlayer(player.id, client, 5);
-      return json(
-        {
-          id: player.id,
-          message:
-            result.status === "complete"
-              ? backfill.status === "complete"
-                ? "Jugador añadido y sincronizado."
-                : "Jugador añadido. Partidas recientes al día; el historial continuará importándose."
-              : "Jugador añadido. La sincronización reciente y el historial continuarán en la próxima ejecución.",
-        },
-        201,
+  const requestId = requestCorrelation(request);
+  return withSyncLease(
+    async (client) => {
+      const account = await client.account(values.platform, values.gameName, values.tagLine);
+      const summoner = await client.summoner(values.platform, account.puuid);
+      const [player] = await syncWrite(client, async (tx) =>
+        tx
+          .insert(players)
+          .values({
+            gameName: account.gameName,
+            tagLine: account.tagLine,
+            puuid: account.puuid,
+            platform: values.platform,
+            profileIconId: summoner.profileIconId,
+            scanStart: seasonStart(values.platform),
+            backfillSeason: CURRENT_SEASON.id,
+          })
+          .onConflictDoNothing({ target: players.puuid })
+          .returning({ id: players.id }),
       );
-    } catch (error) {
-      // Preserve rate-limit cooldown while returning the created account explicitly.
-      if (error instanceof RiotError && error.status === 429) {
-        error.message =
-          "Jugador añadido. Riot ha limitado la sincronización; continuará más tarde.";
-        throw error;
+      if (!player) throw new HttpError(409, "Esta cuenta ya está registrada (PUUID duplicado).");
+      try {
+        const result = await syncPlayer(player.id, client, { budget: 5 });
+        const backfill = await syncBackfillPlayer(player.id, client, 5);
+        return json(
+          {
+            ...runIdentity(client),
+            id: player.id,
+            message:
+              result.status === "complete"
+                ? backfill.status === "complete"
+                  ? "Jugador añadido y sincronizado."
+                  : "Jugador añadido. Partidas recientes al día; el historial continuará importándose."
+                : "Jugador añadido. La sincronización reciente y el historial continuarán en la próxima ejecución.",
+          },
+          201,
+        );
+      } catch (error) {
+        if (error instanceof LeaseLost) throw error;
+        // Preserve rate-limit cooldown while returning the created account explicitly.
+        if (error instanceof RiotError && error.status === 429) {
+          error.message =
+            "Jugador añadido. Riot ha limitado la sincronización; continuará más tarde.";
+          throw error;
+        }
+        return json(
+          {
+            ...runIdentity(client),
+            id: player.id,
+            message:
+              "Jugador añadido. La sincronización quedó pendiente; puedes reintentar desde el panel.",
+          },
+          201,
+        );
       }
-      return json(
-        {
-          id: player.id,
-          message:
-            "Jugador añadido. La sincronización quedó pendiente; puedes reintentar desde el panel.",
-        },
-        201,
-      );
-    }
-  }, 35_000);
+    },
+    35_000,
+    undefined,
+    { action: "player_add", requestId },
+  );
 });

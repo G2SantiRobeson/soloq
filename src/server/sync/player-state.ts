@@ -1,6 +1,5 @@
 import "server-only";
 import { eq, sql } from "drizzle-orm";
-import { db } from "@/db";
 import { players } from "@/db/schema";
 import { CURRENT_SEASON } from "@/lib/season";
 import type {
@@ -10,7 +9,8 @@ import type {
   PlayerSyncState,
   PlayerSyncStep,
 } from "@/lib/player-sync-state";
-import { RiotError, SyncDeadline } from "../riot/client";
+import { RiotClient, RiotError, SyncDeadline } from "../riot/client";
+import { syncWrite } from "./progress";
 import type { PendingReason } from "@/lib/sync-scheduling";
 
 const errorColumns = {
@@ -19,14 +19,24 @@ const errorColumns = {
   history: players.backfillError,
 };
 
-export async function beginPlayerSyncPhase(playerId: string, phase: PlayerSyncPhase) {
+export async function beginPlayerSyncPhase(
+  playerId: string,
+  phase: PlayerSyncPhase,
+  client: RiotClient,
+) {
   const attempt: PlayerSyncAttempt = {
     phase,
     startedAt: new Date().toISOString(),
     finishedAt: null,
     outcome: "running",
   };
-  await db().update(players).set({ lastSyncAttempt: attempt }).where(eq(players.id, playerId));
+  await syncWrite(
+    client,
+    async (tx) => {
+      await tx.update(players).set({ lastSyncAttempt: attempt }).where(eq(players.id, playerId));
+    },
+    { type: "phase", phase, playerId },
+  );
   return attempt;
 }
 

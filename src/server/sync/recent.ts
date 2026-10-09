@@ -9,6 +9,7 @@ import { RiotClient, RiotError } from "../riot/client";
 import { normalizeParticipant } from "../riot/normalize";
 import type { PlayerSyncAttempt } from "@/lib/player-sync-state";
 import { finishPlayerSyncPhase } from "./player-state";
+import { syncWrite } from "./progress";
 
 export const RECENT_BATCH_SIZE = 5;
 export const RECENT_OVERLAP_MS = 86400_000;
@@ -54,10 +55,12 @@ export async function importRecent(
     );
     // This remains a successful IDs response marker, separate from scheduling opportunities.
     if (!offset)
-      await db()
-        .update(players)
-        .set({ lastAttemptAt: new Date() })
-        .where(eq(players.id, player.id));
+      await syncWrite(client, async (tx) => {
+        await tx
+          .update(players)
+          .set({ lastAttemptAt: new Date() })
+          .where(eq(players.id, player.id));
+      });
     const unique = [...new Set(ids)];
     const existing = unique.length
       ? await db()
@@ -93,37 +96,52 @@ export async function importRecent(
         throw new RiotError(502);
       const stats = normalizeParticipant(match, player.puuid);
       if (!stats) throw new RiotError(502);
-      imported += await db().transaction(async (tx) => {
-        await tx
-          .insert(matches)
-          .values({
-            id,
-            queueId: match.info.queueId,
-            mapId: match.info.mapId,
-            timestamp: new Date(match.info.gameStartTimestamp),
-            duration: match.info.gameDuration,
-            isRemake: isRemake(match),
-          })
-          .onConflictDoNothing();
-        const inserted = await tx
-          .insert(playerMatches)
-          .values({ playerId: player.id, matchId: id, ...stats })
-          .onConflictDoNothing()
-          .returning({ id: playerMatches.matchId });
-        return inserted.length;
-      });
+      imported += await syncWrite(
+        client,
+        async (tx) => {
+          await tx
+            .insert(matches)
+            .values({
+              id,
+              queueId: match.info.queueId,
+              mapId: match.info.mapId,
+              timestamp: new Date(match.info.gameStartTimestamp),
+              duration: match.info.gameDuration,
+              isRemake: isRemake(match),
+            })
+            .onConflictDoNothing();
+          const inserted = await tx
+            .insert(playerMatches)
+            .values({ playerId: player.id, matchId: id, ...stats })
+            .onConflictDoNothing()
+            .returning({ id: playerMatches.matchId });
+          return inserted.length;
+        },
+        (added) => ({ type: "import", pass: "recent", playerId: player.id, imported: added }),
+      );
     }
     offset += ids.length;
     // Exactly 100 IDs still requires the next page, even when the import allowance is spent.
     if (ids.length >= 100) continue;
-    await db()
-      .update(players)
-      .set({
-        lastSyncedAt: end,
-        updatedAt: new Date(),
-        ...finishPlayerSyncPhase(attempt, "success"),
-      })
-      .where(eq(players.id, player.id));
+    await syncWrite(
+      client,
+      async (tx) => {
+        await tx
+          .update(players)
+          .set({
+            lastSyncedAt: end,
+            updatedAt: new Date(),
+            ...finishPlayerSyncPhase(attempt, "success"),
+          })
+          .where(eq(players.id, player.id));
+      },
+      {
+        type: "result",
+        pass: "recent",
+        result: { playerId: player.id, status: "complete" },
+        coveredThrough: end.toISOString(),
+      },
+    );
     return { playerId: player.id, status: "complete" as const, imported };
   }
 }

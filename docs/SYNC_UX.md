@@ -1,5 +1,10 @@
 # Fase 03.B.5 — UX y espera de sincronizaciones
 
+Este documento conserva la entrega 03.B.5. La implementación local posterior de
+03.B.6 añade GET, correlación y progreso confirmado; su contrato y despliegue están
+en [REAL_SYNC_PROGRESS.md](REAL_SYNC_PROGRESS.md). El feedback indeterminado descrito
+aquí sigue como fallback, sin sustituirlo por porcentajes inventados.
+
 ## Auditoría y cambios
 
 - `/admin`: Actualizar todos estaba debajo del formulario completo de alta. Se mueve a

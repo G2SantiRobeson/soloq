@@ -6,7 +6,9 @@ import { RANKED_QUEUES } from "@/lib/queues";
 import { RiotClient, RiotError, SyncBudget, SyncDeadline } from "../riot/client";
 import { importHistory } from "./history";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
-import { withSyncLease } from "./lease";
+import { runIdentity, withSyncLease } from "./lease";
+import { checkpoint, LeaseLost, syncWrite } from "./progress";
+import type { RunMeta } from "@/lib/sync-progress";
 import { importRecent, RECENT_OVERLAP_MS } from "./recent";
 import type { PlayerSyncStep } from "@/lib/player-sync-state";
 import { beginPlayerSyncPhase, finishPlayerSyncPhase, playerSyncError } from "./player-state";
@@ -27,7 +29,7 @@ export async function syncPlayer(
 ) {
   const [player] = await db().select().from(players).where(eq(players.id, playerId));
   if (!player?.enabled) return { status: "skipped" as const, playerId, imported: 0 };
-  const rankAttempt = await beginPlayerSyncPhase(playerId, "rank");
+  const rankAttempt = await beginPlayerSyncPhase(playerId, "rank", client);
   let step: PlayerSyncStep = "identity";
   try {
     const identity = await client.identity(player.platform, player.puuid);
@@ -37,58 +39,78 @@ export async function syncPlayer(
     const leagues = await client.leagues(player.platform, player.puuid);
     const checkedAt = new Date();
     step = "snapshots";
-    await db().transaction(async (tx) => {
-      await tx
-        .update(players)
-        .set({
-          gameName: identity.gameName,
-          tagLine: identity.tagLine,
-          profileIconId: summoner.profileIconId,
-          updatedAt: new Date(),
-          rankCheckedAt: checkedAt,
-          ...finishPlayerSyncPhase(rankAttempt, "success"),
-        })
-        .where(eq(players.id, playerId));
-      for (const queue of RANKED_QUEUES) {
-        const league = leagues.find((l) => l.queueType === queue);
-        const state = {
-          tier: league?.tier ?? "UNRANKED",
-          division: league?.rank ?? "",
-          leaguePoints: league?.leaguePoints ?? 0,
-          wins: league?.wins ?? 0,
-          losses: league?.losses ?? 0,
-        };
-        const [last] = await tx
-          .select()
-          .from(rankedSnapshots)
-          .where(and(eq(rankedSnapshots.playerId, playerId), eq(rankedSnapshots.queue, queue)))
-          .orderBy(desc(rankedSnapshots.timestamp))
-          .limit(1);
-        if (
-          !last ||
-          last.timestamp < seasonStart(player.platform) ||
-          state.tier !== last.tier ||
-          state.division !== last.division ||
-          state.leaguePoints !== last.leaguePoints ||
-          state.wins !== last.wins ||
-          state.losses !== last.losses
-        )
-          await tx.insert(rankedSnapshots).values({ playerId, queue, ...state });
-      }
-    });
+    await syncWrite(
+      client,
+      async (tx) => {
+        await tx
+          .update(players)
+          .set({
+            gameName: identity.gameName,
+            tagLine: identity.tagLine,
+            profileIconId: summoner.profileIconId,
+            updatedAt: new Date(),
+            rankCheckedAt: checkedAt,
+            ...finishPlayerSyncPhase(rankAttempt, "success"),
+          })
+          .where(eq(players.id, playerId));
+        for (const queue of RANKED_QUEUES) {
+          const league = leagues.find((l) => l.queueType === queue);
+          const state = {
+            tier: league?.tier ?? "UNRANKED",
+            division: league?.rank ?? "",
+            leaguePoints: league?.leaguePoints ?? 0,
+            wins: league?.wins ?? 0,
+            losses: league?.losses ?? 0,
+          };
+          const [last] = await tx
+            .select()
+            .from(rankedSnapshots)
+            .where(and(eq(rankedSnapshots.playerId, playerId), eq(rankedSnapshots.queue, queue)))
+            .orderBy(desc(rankedSnapshots.timestamp))
+            .limit(1);
+          if (
+            !last ||
+            last.timestamp < seasonStart(player.platform) ||
+            state.tier !== last.tier ||
+            state.division !== last.division ||
+            state.leaguePoints !== last.leaguePoints ||
+            state.wins !== last.wins ||
+            state.losses !== last.losses
+          )
+            await tx.insert(rankedSnapshots).values({ playerId, queue, ...state });
+        }
+      },
+      { type: "rank", playerId, checkedAt: checkedAt.toISOString() },
+    );
   } catch (error) {
+    if (error instanceof LeaseLost) throw error;
     const failure = playerSyncError(error, step);
-    await db()
-      .update(players)
-      .set(
-        finishPlayerSyncPhase(
-          rankAttempt,
-          error instanceof SyncDeadline ? "partial" : "failed",
-          error instanceof SyncBudget ? undefined : failure,
-          error instanceof SyncBudget ? error.reason : undefined,
-        ),
-      )
-      .where(eq(players.id, playerId));
+    await syncWrite(
+      client,
+      async (tx) => {
+        await tx
+          .update(players)
+          .set(
+            finishPlayerSyncPhase(
+              rankAttempt,
+              error instanceof SyncDeadline ? "partial" : "failed",
+              error instanceof SyncBudget ? undefined : failure,
+              error instanceof SyncBudget ? error.reason : undefined,
+            ),
+          )
+          .where(eq(players.id, playerId));
+      },
+      {
+        type: "result",
+        pass: "recent",
+        result: {
+          playerId,
+          status: error instanceof SyncDeadline ? "partial" : "error",
+          ...(error instanceof SyncBudget ? { reason: error.reason } : {}),
+        },
+        ...(error instanceof SyncBudget ? {} : { error: { code: failure.code, step } }),
+      },
+    );
     console.warn(error instanceof SyncBudget ? "player_sync_pending" : "player_sync_failed", {
       playerId,
       phase: "rank",
@@ -97,28 +119,50 @@ export async function syncPlayer(
     throw error;
   }
   if (options.rankOnly) return { status: "partial" as const, playerId, imported: 0 };
-  const recentAttempt = await beginPlayerSyncPhase(playerId, "recent");
+  const recentAttempt = await beginPlayerSyncPhase(playerId, "recent", client);
   try {
     const result = await importRecent(player, client, options.budget, recentAttempt);
     if (result.status === "partial")
-      await db()
-        .update(players)
-        .set(finishPlayerSyncPhase(recentAttempt, "partial", undefined, result.reason))
-        .where(eq(players.id, playerId));
+      await syncWrite(
+        client,
+        async (tx) => {
+          await tx
+            .update(players)
+            .set(finishPlayerSyncPhase(recentAttempt, "partial", undefined, result.reason))
+            .where(eq(players.id, playerId));
+        },
+        { type: "result", pass: "recent", result },
+      );
     return result;
   } catch (error) {
+    if (error instanceof LeaseLost) throw error;
     const failure = playerSyncError(error, "recent");
-    await db()
-      .update(players)
-      .set(
-        finishPlayerSyncPhase(
-          recentAttempt,
-          error instanceof SyncDeadline ? "partial" : "failed",
-          error instanceof SyncBudget ? undefined : failure,
-          error instanceof SyncBudget ? error.reason : undefined,
-        ),
-      )
-      .where(eq(players.id, playerId));
+    await syncWrite(
+      client,
+      async (tx) => {
+        await tx
+          .update(players)
+          .set(
+            finishPlayerSyncPhase(
+              recentAttempt,
+              error instanceof SyncDeadline ? "partial" : "failed",
+              error instanceof SyncBudget ? undefined : failure,
+              error instanceof SyncBudget ? error.reason : undefined,
+            ),
+          )
+          .where(eq(players.id, playerId));
+      },
+      {
+        type: "result",
+        pass: "recent",
+        result: {
+          playerId,
+          status: error instanceof SyncDeadline ? "partial" : "error",
+          ...(error instanceof SyncBudget ? { reason: error.reason } : {}),
+        },
+        ...(error instanceof SyncBudget ? {} : { error: { code: failure.code, step: "recent" } }),
+      },
+    );
     console.warn(error instanceof SyncBudget ? "player_sync_pending" : "player_sync_failed", {
       playerId,
       phase: "recent",
@@ -133,38 +177,61 @@ export async function syncBackfillPlayer(playerId: string, client: RiotClient, b
     .from(players)
     .where(eq(players.id, playerId));
   if (!player?.enabled) return { playerId, status: "skipped" as const, imported: 0 };
-  const attempt = await beginPlayerSyncPhase(playerId, "history");
+  const attempt = await beginPlayerSyncPhase(playerId, "history", client);
   try {
     const result = await importHistory(playerId, client, budget, attempt);
-    await db()
-      .update(players)
-      .set({
-        backfillUpdatedAt: new Date(),
-        ...(result.status === "partial"
-          ? finishPlayerSyncPhase(attempt, "partial", undefined, result.reason)
-          : {}),
-      })
-      .where(eq(players.id, playerId));
+    await syncWrite(
+      client,
+      async (tx) => {
+        await tx
+          .update(players)
+          .set({
+            backfillUpdatedAt: new Date(),
+            ...(result.status === "partial"
+              ? finishPlayerSyncPhase(attempt, "partial", undefined, result.reason)
+              : {}),
+          })
+          .where(eq(players.id, playerId));
+      },
+      { type: "result", pass: "history", result },
+    );
     return result;
   } catch (error) {
-    await db()
-      .update(players)
-      .set({
-        ...finishPlayerSyncPhase(
-          attempt,
-          error instanceof SyncDeadline ? "partial" : "failed",
-          error instanceof SyncBudget ? undefined : playerSyncError(error, "history"),
-          error instanceof SyncBudget ? error.reason : undefined,
-        ),
-        backfillStatus: sql`case when ${players.backfillStatus} = 'completed' then 'completed' else ${error instanceof SyncDeadline ? "running" : "failed"} end`,
-        backfillUpdatedAt: new Date(),
-      })
-      .where(eq(players.id, playerId));
+    if (error instanceof LeaseLost) throw error;
+    const failure = playerSyncError(error, "history");
+    await syncWrite(
+      client,
+      async (tx) => {
+        await tx
+          .update(players)
+          .set({
+            ...finishPlayerSyncPhase(
+              attempt,
+              error instanceof SyncDeadline ? "partial" : "failed",
+              error instanceof SyncBudget ? undefined : playerSyncError(error, "history"),
+              error instanceof SyncBudget ? error.reason : undefined,
+            ),
+            backfillStatus: sql`case when ${players.backfillStatus} = 'completed' then 'completed' else ${error instanceof SyncDeadline ? "running" : "failed"} end`,
+            backfillUpdatedAt: new Date(),
+          })
+          .where(eq(players.id, playerId));
+      },
+      {
+        type: "result",
+        pass: "history",
+        result: {
+          playerId,
+          status: error instanceof SyncDeadline ? "partial" : "error",
+          ...(error instanceof SyncBudget ? { reason: error.reason } : {}),
+        },
+        ...(error instanceof SyncBudget ? {} : { error: { code: failure.code, step: "history" } }),
+      },
+    );
     throw error;
   }
 }
 
-export async function syncAllPlayers() {
+export async function syncAllPlayers(meta: RunMeta = { action: "global", source: "admin" }) {
   return withSyncLease(
     async (client) => {
       const recentDeadline = Math.min(client.deadlineAt, Date.now() + RECENT_PASS_MS);
@@ -187,6 +254,7 @@ export async function syncAllPlayers() {
         .from(players)
         .where(eq(players.enabled, true));
       pending.sort(compareRecent);
+      await checkpoint(client, { type: "select", pass: "recent", ids: pending.map((p) => p.id) });
       const results: SyncPlayerResult[] = [];
       let deadline = false;
       for (const player of pending) {
@@ -202,6 +270,7 @@ export async function syncAllPlayers() {
           );
           results.push(result);
         } catch (error) {
+          if (error instanceof LeaseLost) throw error;
           results.push({
             playerId: player.id,
             status: error instanceof SyncDeadline ? "partial" : "error",
@@ -234,6 +303,7 @@ export async function syncAllPlayers() {
           reason: "execution_budget",
         });
       const complete = results.filter((r) => r.status === "complete").length;
+      await checkpointResults(client, "recent", results);
       const recent = {
         eligible: pending.length,
         visited,
@@ -259,6 +329,11 @@ export async function syncAllPlayers() {
                 p.lastSyncedAt.getTime() - RECENT_OVERLAP_MS),
         )
         .sort(compareHistory);
+      await checkpoint(client, {
+        type: "select",
+        pass: "history",
+        ids: historical.map((p) => p.id),
+      });
       const backfillResults: SyncPlayerResult[] = [];
       let cooldownMs = 0;
       // Recent work goes first, but cannot consume the reserved historical time indefinitely.
@@ -302,6 +377,7 @@ export async function syncAllPlayers() {
             ),
           );
         } catch (error) {
+          if (error instanceof LeaseLost) throw error;
           backfillResults.push({
             playerId: player.id,
             status: error instanceof SyncDeadline ? "partial" : "error",
@@ -322,6 +398,7 @@ export async function syncAllPlayers() {
         errors: backfillResults.filter((r) => r.status === "error").length,
         visited: backfillResults.filter((r) => r.attempted !== false).length,
       };
+      await checkpointResults(client, "history", backfillResults);
       console.info("sync_batch_finished", {
         recent,
         backfill: { ...backfill, results: undefined },
@@ -331,6 +408,7 @@ export async function syncAllPlayers() {
         historyPending: backfillResults.filter((r) => r.status !== "complete"),
       });
       return {
+        ...runIdentity(client),
         results,
         recent,
         backfill,
@@ -348,5 +426,19 @@ export async function syncAllPlayers() {
       cooldown: (result) => result.cooldownMs,
       outcome: (result) => result.outcome,
     },
+    meta,
   );
+}
+async function checkpointResults(
+  client: RiotClient,
+  pass: "recent" | "history",
+  results: SyncPlayerResult[],
+) {
+  const { leaseContext } = await import("./progress");
+  if (leaseContext(client)?.runId)
+    await syncWrite(
+      client,
+      async () => undefined,
+      () => results.map((result) => ({ type: "result" as const, pass, result })),
+    );
 }

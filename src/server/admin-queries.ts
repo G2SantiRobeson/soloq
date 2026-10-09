@@ -1,11 +1,12 @@
 import "server-only";
-import { desc, eq } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { db } from "@/db";
-import { players, syncLocks } from "@/db/schema";
+import { players } from "@/db/schema";
 import type { AdminPlayer, AdminSyncContext } from "@/lib/admin-sync";
 import { safeSyncError } from "@/lib/admin-sync";
 import { requireAdmin } from "./http";
 import { toPlayerSyncState } from "./sync/player-state";
+import { readSyncProgress } from "./sync/progress";
 
 export function toAdminPlayer(player: typeof players.$inferSelect): AdminPlayer {
   const state = toPlayerSyncState(player);
@@ -46,12 +47,10 @@ export async function getAdminPlayers(): Promise<AdminPlayer[]> {
 
 export async function getAdminSyncContext(): Promise<AdminSyncContext> {
   await requireAdmin();
-  const [lease] = await db()
-    .select({ expiresAt: syncLocks.expiresAt })
-    .from(syncLocks)
-    .where(eq(syncLocks.name, "riot"));
+  const progress = await readSyncProgress();
   return {
-    serverNow: new Date().toISOString(),
-    leaseUntil: lease?.expiresAt.toISOString() ?? null,
+    serverNow: progress.serverNow,
+    leaseUntil: progress.control.until,
+    progress,
   };
 }

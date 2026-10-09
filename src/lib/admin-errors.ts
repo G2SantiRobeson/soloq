@@ -7,6 +7,7 @@ export class AdminRequestError extends Error {
   constructor(
     public status: number,
     public serverMessage: string | null,
+    public runId?: string,
   ) {
     super(serverMessage ?? `HTTP ${status}`);
   }

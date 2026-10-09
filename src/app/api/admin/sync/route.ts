@@ -1,11 +1,17 @@
 import { endpoint, json, requireAdmin, verifyOrigin } from "@/server/http";
 import { syncAllPlayers } from "@/server/sync/service";
+import { requestCorrelation } from "@/server/sync/progress";
 export const maxDuration = 300;
 export const POST = endpoint(async (request) => {
   verifyOrigin(request);
   await requireAdmin();
-  const { results, recent, backfill, outcome } = await syncAllPlayers();
+  const { results, recent, backfill, outcome, runId, requestId } = await syncAllPlayers({
+    action: "global",
+    requestId: requestCorrelation(request),
+  });
   return json({
+    runId,
+    requestId,
     results,
     recent,
     backfill,

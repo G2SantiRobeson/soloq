@@ -2,6 +2,7 @@ import type { Platform } from "./routing";
 import type { PlayerSyncError, PlayerSyncState } from "./player-sync-state";
 import type { HistoryStatus } from "./season";
 import { SYNC_LEASE_MS } from "./sync-status";
+import type { ProgressDto } from "./sync-progress";
 
 export type AdminPlayer = {
   id: string;
@@ -19,7 +20,11 @@ export type AdminPlayer = {
   syncState: PlayerSyncState;
   legacyError: string | null;
 };
-export type AdminSyncContext = { serverNow: string; leaseUntil: string | null };
+export type AdminSyncContext = {
+  serverNow: string;
+  leaseUntil: string | null;
+  progress?: ProgressDto;
+};
 export type IndividualSyncResult = {
   playerId: string;
   status: "complete" | "partial" | "skipped" | "error";

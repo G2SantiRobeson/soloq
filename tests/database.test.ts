@@ -37,6 +37,15 @@ import { POST as manualBackfill } from "@/app/api/admin/players/[id]/backfill/ro
 import { PATCH as togglePlayer, DELETE as deletePlayer } from "@/app/api/admin/players/[id]/route";
 import { attemptActivity } from "@/lib/admin-sync";
 import { SYNC_LEASE_MS } from "@/lib/sync-status";
+import {
+  checkpoint,
+  leaseContext,
+  LeaseLost,
+  readSyncProgress,
+  syncWrite,
+} from "@/server/sync/progress";
+import { GET as progressRoute } from "@/app/api/admin/sync/progress/route";
+import { runIdentity } from "@/server/sync/lease";
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
 const cookieJar = vi.hoisted(() => new Map<string, string>());
@@ -2012,5 +2021,347 @@ describe("weekly ladder baselines and global sync metadata", () => {
     });
     expect((await getSyncStatus(now)).status).toBe("failed");
     expect((await getSyncStatus(now)).lastSuccessfulSyncAt).toBeNull();
+  });
+});
+
+describe("durable execution progress and fencing (local PostgreSQL)", () => {
+  const correlation = "00000000-0000-4000-8000-000000000099";
+  beforeEach(() => {
+    vi.stubEnv("APP_URL", "http://localhost");
+    vi.spyOn(RiotClient.prototype, "identity").mockImplementation(async (_p, puuid) => ({
+      puuid,
+      gameName: "Example",
+      tagLine: "LAS",
+    }));
+    vi.spyOn(RiotClient.prototype, "summoner").mockResolvedValue({ profileIconId: 23 });
+    vi.spyOn(RiotClient.prototype, "leagues").mockResolvedValue([]);
+    vi.spyOn(RiotClient.prototype, "matchIds").mockResolvedValue([]);
+    vi.spyOn(RiotClient.prototype, "match").mockRejectedValue(new RiotError(404));
+  });
+  afterEach(() => vi.restoreAllMocks());
+  const release = () => database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
+  const read = () => readSyncProgress();
+
+  it("starts atomically, returns a safe identity and retains complete global/recent coverage", async () => {
+    const p = await addPlayer();
+    const paused = await addPlayer("paused-progress");
+    await database
+      .update(schema.players)
+      .set({ enabled: false })
+      .where(eq(schema.players.id, paused.id));
+    const result = await syncAllPlayers({ action: "global", requestId: correlation });
+    const dto = await read();
+    expect(dto.run).toMatchObject({
+      runId: result.runId,
+      requestId: correlation,
+      state: "completed",
+      recentOutcome: "success",
+      recent: { eligible: 1, visited: 1, complete: 1 },
+      history: { complete: 1 },
+    });
+    const [saved] = await database.select().from(schema.players).where(eq(schema.players.id, p.id));
+    expect(dto.run?.players[0]).toMatchObject({
+      rank: { checkedAt: saved.rankCheckedAt!.toISOString() },
+      recent: { coveredThrough: saved.lastSyncedAt!.toISOString() },
+      history: { history: { scanExhausted: true } },
+    });
+    expect(JSON.stringify(dto)).not.toMatch(/leaseOwner|puuid|stable-puuid/);
+    expect((await getSyncStatus()).lastSuccessfulSyncAt).not.toBeNull();
+  });
+  it("rejects a concurrent acquisition without changing run data or executing work", async () => {
+    let finish!: () => void;
+    let ready!: () => void;
+    const acquired = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    const wait = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const first = withSyncLease(
+      async () => {
+        ready();
+        await wait;
+      },
+      230000,
+      undefined,
+      { action: "global" },
+    );
+    await acquired;
+    const before = await read();
+    const work = vi.fn();
+    await expect(
+      withSyncLease(work, 230000, undefined, { action: "global" }),
+    ).rejects.toBeInstanceOf(SyncBusy);
+    expect(await read()).toMatchObject({ run: before.run });
+    expect(work).not.toHaveBeenCalled();
+    finish();
+    await first;
+    expect((await read()).run?.state).toBe("completed");
+  });
+  it("fences a replaced owner, retains interrupted previous and never overwrites the newer result", async () => {
+    const p = await addPlayer();
+    let newerId: string | undefined;
+    let oldId: string | undefined;
+    await expect(
+      withSyncLease(
+        async (old) => {
+          oldId = runIdentity(old).runId;
+          await checkpoint(old, { type: "phase", phase: "rank", playerId: p.id });
+          await release();
+          expect((await read()).run?.state).toBe("possibly_interrupted");
+          await withSyncLease(
+            async (next) => {
+              newerId = runIdentity(next).runId;
+            },
+            230000,
+            undefined,
+            { action: "player_recent", playerId: p.id },
+          );
+          await syncWrite(old, async (tx) => {
+            await tx
+              .update(schema.players)
+              .set({ rankCheckedAt: new Date() })
+              .where(eq(schema.players.id, p.id));
+          });
+        },
+        230000,
+        undefined,
+        { action: "global" },
+      ),
+    ).rejects.toBeInstanceOf(LeaseLost);
+    expect((await read()).run).toMatchObject({ runId: newerId, state: "completed" });
+    expect((await readSyncProgress({ runId: oldId })).run).toMatchObject({
+      state: "interrupted",
+      finishedAt: null,
+    });
+    expect((await database.select().from(schema.players))[0].rankCheckedAt).toBeNull();
+  });
+  it("rolls back business and progress when expiry occurs inside a write transaction", async () => {
+    const p = await addPlayer();
+    await expect(
+      withSyncLease(
+        async (client) => {
+          await syncWrite(
+            client,
+            async (tx) => {
+              await tx
+                .update(schema.players)
+                .set({ scanPending: ["must-rollback"], backfillProcessed: 99 })
+                .where(eq(schema.players.id, p.id));
+              await tx.update(schema.syncLocks).set({ expiresAt: new Date(0) });
+            },
+            { type: "import", pass: "history", playerId: p.id, imported: 1 },
+          );
+        },
+        230000,
+        undefined,
+        { action: "player_history", playerId: p.id },
+      ),
+    ).rejects.toBeInstanceOf(LeaseLost);
+    const [row] = await database.select().from(schema.players);
+    expect(row.scanPending).toEqual([]);
+    expect(row.backfillProcessed).toBe(0);
+    expect((await read()).run?.players).toEqual([]);
+  });
+  it("rejects a stale revision even if the lease owner is unchanged", async () => {
+    const p = await addPlayer();
+    await expect(
+      withSyncLease(
+        async (client) => {
+          const context = leaseContext(client)!;
+          const e = structuredClone(context.envelope!);
+          e.latest.revision++;
+          await database.update(schema.syncLocks).set({ runProgress: e });
+          await checkpoint(client, {
+            type: "rank",
+            playerId: p.id,
+            checkedAt: new Date().toISOString(),
+          });
+        },
+        230000,
+        undefined,
+        { action: "global" },
+      ),
+    ).rejects.toBeInstanceOf(LeaseLost);
+    expect((await read()).run?.players).toEqual([]);
+  });
+  it("coalesces intermediate writes and flushes only committed counts at a result checkpoint", async () => {
+    const p = await addPlayer();
+    await withSyncLease(
+      async (client) => {
+        await checkpoint(client, { type: "select", pass: "history", ids: [p.id] });
+        const revision = (await read()).run!.revision;
+        for (let i = 0; i < 10; i++)
+          await syncWrite(
+            client,
+            async (tx) => {
+              await tx
+                .update(schema.players)
+                .set({ backfillProcessed: i + 1 })
+                .where(eq(schema.players.id, p.id));
+            },
+            { type: "import", pass: "history", playerId: p.id, imported: 1 },
+          );
+        expect((await read()).run).toMatchObject({ revision, history: { imported: 0 } });
+        await expect(
+          syncWrite(
+            client,
+            async () => {
+              throw new Error("transaction failed");
+            },
+            { type: "import", pass: "history", playerId: p.id, imported: 50 },
+          ),
+        ).rejects.toThrow("transaction failed");
+        await checkpoint(client, {
+          type: "result",
+          pass: "history",
+          result: { playerId: p.id, status: "partial", reason: "batch_limit" },
+        });
+        expect((await read()).run?.history?.imported).toBe(10);
+      },
+      230000,
+      undefined,
+      { action: "player_history", playerId: p.id },
+    );
+    expect((await read()).run?.state).toBe("partial");
+  });
+  it("preserves rank after recent failure and records a successful unchanged rank verification", async () => {
+    const p = await addPlayer();
+    await withSyncLease((c) => syncRecentPlayer(p.id, c), 230000, undefined, {
+      action: "player_recent",
+      playerId: p.id,
+    });
+    const count = (await database.select().from(schema.rankedSnapshots)).length;
+    await release();
+    vi.mocked(RiotClient.prototype.matchIds).mockRejectedValue(new RiotError(503));
+    await expect(
+      withSyncLease((c) => syncRecentPlayer(p.id, c), 230000, undefined, {
+        action: "player_recent",
+        playerId: p.id,
+      }),
+    ).rejects.toBeInstanceOf(RiotError);
+    const dto = await read();
+    expect(dto.run).toMatchObject({ state: "failed" });
+    expect(dto.run?.players[0]).toMatchObject({
+      rank: { outcome: "verified" },
+      recent: { status: "error", error: { code: 503, step: "recent" }, coveredThrough: null },
+    });
+    expect((await database.select().from(schema.rankedSnapshots)).length).toBe(count);
+  });
+  it("continues an existing historical cursor and counts unavailable IDs without invented participations", async () => {
+    const p = await addPlayer();
+    const frozen = new Date(Date.now() - 120000);
+    await database.update(schema.players).set({
+      backfillSeason: CURRENT_SEASON.id,
+      backfillStatus: "running",
+      scanEnd: frozen,
+      scanPending: ["unavailable-a", "unavailable-b"],
+      scanOffset: 2,
+      scanExhausted: true,
+      backfillDiscovered: 2,
+    });
+    const first = await withSyncLease((c) => syncBackfillPlayer(p.id, c, 1), 230000, undefined, {
+      action: "player_history",
+      playerId: p.id,
+    });
+    expect(first.status).toBe("partial");
+    expect((await database.select().from(schema.players))[0].scanPending).toEqual([
+      "unavailable-b",
+    ]);
+    expect((await read()).run?.players[0].history?.history).toMatchObject({
+      discovered: 2,
+      processed: 1,
+      unavailable: 1,
+      cursorPending: 1,
+      scanThrough: frozen.toISOString(),
+    });
+    await release();
+    await withSyncLease((c) => syncBackfillPlayer(p.id, c, 1), 230000, undefined, {
+      action: "player_history",
+      playerId: p.id,
+    });
+    expect((await read()).run?.players[0].history?.history).toMatchObject({
+      mode: "season_backfill",
+      discovered: 2,
+      processed: 2,
+      unavailable: 2,
+      scanExhausted: true,
+    });
+    expect((await read()).run?.history?.imported).toBe(0);
+    expect(RiotClient.prototype.matchIds).not.toHaveBeenCalled();
+    expect(await database.select().from(schema.playerMatches)).toEqual([]);
+  });
+  it("retains Retry-After cooldown and terminal state without marking queued players complete", async () => {
+    const p = await addPlayer();
+    vi.mocked(RiotClient.prototype.leagues).mockRejectedValue(new RiotError(429, 60000));
+    await expect(
+      syncAllPlayers({ action: "global", requestId: correlation }),
+    ).rejects.toBeInstanceOf(RiotError);
+    const dto = await read();
+    expect(dto.run).toMatchObject({
+      state: "failed",
+      players: [{ playerId: p.id, recent: { error: { code: 429 } } }],
+    });
+    expect(dto.control).toMatchObject({ state: "cooldown", reason: "riot_retry_after" });
+    expect(Date.parse(dto.control.until!) - Date.parse(dto.serverNow)).toBeGreaterThan(59000);
+    const saved = (await database.select().from(schema.syncLocks))[0].runProgress;
+    await expect(
+      withSyncLease(async () => true, 230000, undefined, { action: "global" }),
+    ).rejects.toBeInstanceOf(SyncBusy);
+    expect((await database.select().from(schema.syncLocks))[0].runProgress).toEqual(saved);
+  });
+  it("correlates individual POST with durable GET, enforces auth and keeps GET read-only/no-store", async () => {
+    const p = await addPlayer();
+    const url = `http://localhost/api/admin/sync/progress?requestId=${correlation}`;
+    expect((await progressRoute(new Request(url))).status).toBe(401);
+    await createSession();
+    const response = await individualSync(
+      new Request(`http://localhost/api/admin/players/${p.id}/sync`, {
+        method: "POST",
+        headers: { origin: "http://localhost", "X-SoloQ-Sync-Request-Id": correlation },
+      }),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.runId).toBeTruthy();
+    const before = await database.select().from(schema.syncLocks);
+    const get = await progressRoute(new Request(url));
+    expect(get.headers.get("cache-control")).toBe("no-store");
+    expect(await get.json()).toMatchObject({
+      run: { runId: body.runId, requestId: correlation, state: "completed" },
+    });
+    expect(await database.select().from(schema.syncLocks)).toEqual(before);
+    for (const query of [
+      "?runId=invalid",
+      `?requestId=${correlation}&runId=${body.runId}`,
+      "?unknown=x",
+    ])
+      expect(
+        (await progressRoute(new Request(`http://localhost/api/admin/sync/progress${query}`)))
+          .status,
+      ).toBe(400);
+    await release();
+    const work = vi.fn();
+    await expect(
+      withSyncLease(work, 230000, undefined, { action: "global", requestId: correlation }),
+    ).rejects.toBeInstanceOf(SyncBusy);
+    expect(work).not.toHaveBeenCalled();
+  });
+  it("evicts only the third-oldest execution and does not infer previous work from player timestamps", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      await withSyncLease(
+        async (c) => {
+          ids.push(runIdentity(c).runId!);
+        },
+        230000,
+        undefined,
+        { action: "global" },
+      );
+      await release();
+    }
+    expect((await readSyncProgress({ runId: ids[0] })).run).toBeNull();
+    expect((await readSyncProgress({ runId: ids[1] })).run?.runId).toBe(ids[1]);
+    expect((await read()).run?.runId).toBe(ids[2]);
   });
 });

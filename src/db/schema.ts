@@ -13,6 +13,7 @@ import {
 import type { Platform } from "../lib/routing";
 import type { RankedQueue } from "../lib/queues";
 import type { PlayerSyncAttempt, PlayerSyncError } from "../lib/player-sync-state";
+import type { ProgressEnvelope } from "../lib/sync-progress";
 const time = (name: string) => timestamp(name, { withTimezone: true });
 export const players = pgTable("players", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -119,6 +120,7 @@ export const loginAttempts = pgTable("login_attempts", {
 export const syncLocks = pgTable("sync_locks", {
   name: text("name").primaryKey(),
   owner: uuid("owner").notNull(),
+  runProgress: jsonb("run_progress").$type<ProgressEnvelope>(),
   expiresAt: time("expires_at").notNull(),
   lastSuccessfulSyncAt: time("last_successful_sync_at"),
   lastStartedAt: time("last_started_at"),

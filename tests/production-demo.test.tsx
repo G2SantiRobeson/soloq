@@ -27,6 +27,8 @@ import { POST as singleSync } from "@/app/api/admin/players/[id]/sync/route";
 import { POST as backfill } from "@/app/api/admin/players/[id]/backfill/route";
 import { GET as cron } from "@/app/api/cron/sync/route";
 import { GET as status } from "@/app/api/ladder/sync-status/route";
+import { GET as progress } from "@/app/api/admin/sync/progress/route";
+import { readSyncProgress } from "@/server/sync/progress";
 import { withSyncLease } from "@/server/sync/lease";
 import { syncPlayer, syncBackfillPlayer, syncAllPlayers } from "@/server/sync/service";
 import { authenticated, allowLogin, createSession, destroySession } from "@/server/auth";
@@ -240,6 +242,10 @@ describe("Production Demo without credentials or PostgreSQL", () => {
   it("rejects administrative reads even with a valid-looking residual session", async () => {
     expect(await authenticated()).toBe(false);
     expect((await listPlayers(new Request("http://localhost/api/admin/players"))).status).toBe(503);
+    const response = await progress(new Request("http://localhost/api/admin/sync/progress"));
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(readSyncProgress()).rejects.toThrow(/deshabilitado/);
   });
 
   it("makes residual cron calls harmless without CRON_SECRET or authorization", async () => {

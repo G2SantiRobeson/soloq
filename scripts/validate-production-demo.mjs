@@ -207,6 +207,7 @@ try {
     await check(`/dev/${dev}`, [200, 404]);
   const uuid = "123e4567-e89b-42d3-a456-426614174000";
   await check("/api/admin/players", 503);
+  await check("/api/admin/sync/progress", 503);
   for (const route of [
     "login",
     "logout",

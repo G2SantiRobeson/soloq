@@ -1,0 +1,1 @@
+ALTER TABLE "sync_locks" ADD COLUMN "run_progress" jsonb;
