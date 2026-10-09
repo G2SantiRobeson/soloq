@@ -8,6 +8,7 @@ import { GET as listPlayers, POST as addPlayer } from "@/app/api/admin/players/r
 import { PATCH, DELETE } from "@/app/api/admin/players/[id]/route";
 import { POST as sync } from "@/app/api/admin/sync/route";
 import { POST as backfill } from "@/app/api/admin/players/[id]/backfill/route";
+import { POST as syncPlayer } from "@/app/api/admin/players/[id]/sync/route";
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }));
 afterEach(() => vi.unstubAllEnvs());
 describe("server-side security boundaries", () => {
@@ -45,7 +46,7 @@ describe("server-side security boundaries", () => {
     vi.stubEnv("APP_URL", "http://localhost");
     const get = new Request("http://localhost/api/admin/players");
     expect((await listPlayers(get)).status).toBe(401);
-    for (const handler of [addPlayer, PATCH, DELETE, sync, backfill]) {
+    for (const handler of [addPlayer, PATCH, DELETE, sync, backfill, syncPlayer]) {
       const response = await handler(
         new Request("http://localhost/api/admin/players/invalid", {
           method: "POST",

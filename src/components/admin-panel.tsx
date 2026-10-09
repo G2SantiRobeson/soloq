@@ -2,8 +2,11 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { LockKeyhole, LogOut, Plus, RefreshCw, Trash2 } from "lucide-react";
-import { PLATFORMS, PLATFORM_LABELS, type Platform } from "@/lib/routing";
-import { CURRENT_SEASON, HISTORY_LABELS, type HistoryStatus } from "@/lib/season";
+import { PLATFORMS, PLATFORM_LABELS } from "@/lib/routing";
+import { CURRENT_SEASON } from "@/lib/season";
+import type { AdminPlayer, AdminSyncContext, IndividualSyncResult } from "@/lib/admin-sync";
+import { AdminPlayerDiagnostics } from "./admin-player-diagnostics";
+export type { AdminPlayer } from "@/lib/admin-sync";
 import {
   AdminRequestError,
   describeAdminError,
@@ -11,21 +14,7 @@ import {
   type AdminAction,
   type AdminError,
 } from "@/lib/admin-errors";
-export type AdminPlayer = {
-  id: string;
-  gameName: string;
-  tagLine: string;
-  platform: Platform;
-  enabled: boolean;
-  lastSyncedAt: string | null;
-  syncError: string | null;
-  backfillSeason: string | null;
-  backfillStatus: HistoryStatus["status"];
-  backfillDiscovered: number;
-  backfillProcessed: number;
-  backfillUnavailable: number;
-};
-type Result = { message?: string; results?: { status: string }[] };
+type Result = { message?: string; results?: { status: string }[]; result?: IndividualSyncResult };
 async function request(path: string, method: string, data?: unknown): Promise<Result> {
   let response: Response;
   try {
@@ -108,11 +97,21 @@ export function LoginForm({ demo }: { demo: boolean }) {
     </section>
   );
 }
-export function AdminPanel({ players }: { players: AdminPlayer[] }) {
+export function AdminPanel({
+  players,
+  context,
+}: {
+  players: AdminPlayer[];
+  context: AdminSyncContext;
+}) {
   const router = useRouter();
   const ids = useId();
   const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ message: string; error: boolean } | null>(null);
+  const [notice, setNotice] = useState<{
+    message: string;
+    error: boolean;
+    partial?: boolean;
+  } | null>(null);
   const [addError, setAddError] = useState<AdminError | null>(null);
   const [gameName, setGameName] = useState("");
   const [tagLine, setTagLine] = useState("");
@@ -121,6 +120,7 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
   const rosterHeading = useRef<HTMLHeadingElement>(null);
   const gameNameInput = useRef<HTMLInputElement>(null);
   const deleted = useRef(false);
+  const actionInFlight = useRef(false);
   const pending = pendingAction !== null;
   const fullRiotId = splitRiotId(gameName);
   useEffect(() => {
@@ -145,7 +145,8 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
     success = "Cambios guardados.",
   ) {
     // Controls stay focusable while busy (aria-disabled); this guard prevents double actions.
-    if (pendingAction) return false;
+    if (actionInFlight.current) return false;
+    actionInFlight.current = true;
     setPendingAction(key);
     setNotice(null);
     try {
@@ -153,7 +154,11 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
       const summary = result.results
         ? `${result.results.filter((r) => r.status === "complete").length} completos, ${result.results.filter((r) => r.status === "partial").length} parciales, ${result.results.filter((r) => r.status === "error").length} con error.`
         : undefined;
-      setNotice({ message: result.message ?? summary ?? success, error: false });
+      setNotice({
+        message: result.message ?? summary ?? success,
+        error: false,
+        partial: result.result?.status === "partial",
+      });
       if (action === "delete") deleted.current = true;
       setDeleting(null);
       router.refresh();
@@ -167,6 +172,7 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
       router.refresh();
       return false;
     } finally {
+      actionInFlight.current = false;
       setPendingAction(null);
     }
   }
@@ -302,7 +308,17 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
         </p>
       </section>
       <div role="status" className="notice-slot">
-        {notice && !notice.error && <div className="notice success-notice">{notice.message}</div>}
+        {pending && (
+          <div className="notice">
+            Procesando… Las consultas pueden tardar debido a los límites de Riot. Espera antes de
+            iniciar otra acción.
+          </div>
+        )}
+        {notice && !notice.error && (
+          <div className={`notice ${notice.partial ? "partial-notice" : "success-notice"}`}>
+            {notice.message}
+          </div>
+        )}
       </div>
       <div role="alert" className="notice-slot">
         {notice?.error && <div className="notice form-error">{notice.message}</div>}
@@ -333,25 +349,25 @@ export function AdminPanel({ players }: { players: AdminPlayer[] }) {
                     <span className="muted">#{p.tagLine}</span>
                   </strong>
                   <p>
-                    {PLATFORM_LABELS[p.platform]} ·{" "}
-                    {p.lastSyncedAt
-                      ? `Actualizado ${new Date(p.lastSyncedAt).toLocaleString("es-CL", { timeZone: "UTC", hour12: false })} UTC`
-                      : "Pendiente de la primera actualización"}
+                    {PLATFORM_LABELS[p.platform]} ({p.platform}) ·{" "}
+                    {p.enabled ? "Seguimiento activo" : "Seguimiento pausado"}
                   </p>
-                  <p className="history-status">
-                    Historial {CURRENT_SEASON.label}:{" "}
-                    {
-                      HISTORY_LABELS[
-                        p.backfillSeason === CURRENT_SEASON.id ? p.backfillStatus : "not_started"
-                      ]
-                    }
-                    <br />
-                    {p.backfillSeason === CURRENT_SEASON.id &&
-                      `${p.backfillProcessed} de ${p.backfillDiscovered} partidas procesadas · ${p.backfillUnavailable} sin detalle en Riot`}
-                  </p>
-                  {p.syncError && <p className="sync-error">{p.syncError}</p>}
+                  <AdminPlayerDiagnostics player={p} context={context} />
                 </div>
                 <div className="admin-actions">
+                  <button
+                    type="button"
+                    className="button secondary"
+                    disabled={!p.enabled}
+                    aria-disabled={pending || undefined}
+                    aria-describedby={nameId}
+                    onClick={() =>
+                      act(`player-sync:${p.id}`, "sync", `/api/admin/players/${p.id}/sync`, "POST")
+                    }
+                  >
+                    <RefreshCw size={15} aria-hidden="true" />
+                    {busyLabel(`player-sync:${p.id}`, "Actualizar jugador")}
+                  </button>
                   {(p.backfillStatus !== "completed" || p.backfillSeason !== CURRENT_SEASON.id) && (
                     <button
                       type="button"

@@ -91,9 +91,13 @@ en PostgreSQL efímero local; no se aplicó en Neon.
 Rollback de aplicación: volver al código previo conservando las columnas aditivas.
 No revertir destructivamente la migración. Production queda fuera de esta fase.
 
-## Pendiente para 03.B.3
+## Diagnóstico administrativo — Fase 03.B.3
 
-Exponer el contrato en administración, mostrar fases/progreso/errores y legacy sin
-clasificar, y añadir reintento individual independiente de un backfill completado.
-La UI pública mantiene su etiqueta actual hasta que se reemplace explícitamente.
-Scheduler, fairness, presupuestos y recuperación del lease quedan para tareas posteriores.
+El panel administrativo ahora expone el contrato, fases, progreso y errores, incluidos
+mensajes legacy sin clasificar. La acción individual actualiza rango y recientes incluso
+con backfill completado, mediante el lease existente y sin iniciar histórico ni alterar
+el resultado global. Ver [ADMIN_SYNC_DIAGNOSTICS.md](./ADMIN_SYNC_DIAGNOSTICS.md) para el
+contrato HTTP, mensajes sanitizados, pruebas y límites de observabilidad.
+
+La UI pública mantiene su etiqueta actual. Scheduler, fairness, presupuestos y
+recuperación del lease quedan para tareas posteriores.

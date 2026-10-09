@@ -2662,6 +2662,75 @@ dialog.confirm-dialog::backdrop {
 .admin-actions {
   flex-wrap: wrap;
 }
+.admin-player > div:first-child {
+  flex: 1;
+}
+.admin-player > .admin-actions {
+  flex: 0 1 290px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.admin-sync-summary,
+.admin-phase-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.admin-sync-summary b,
+.admin-sync-summary span {
+  display: block;
+}
+.admin-sync-summary b {
+  color: var(--text);
+}
+.admin-sync-details {
+  margin-top: var(--space-2);
+}
+.admin-sync-details summary {
+  cursor: pointer;
+  padding: var(--space-1) 0;
+  font-size: var(--fs-2);
+}
+.admin-phase-details {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: var(--space-2);
+}
+.admin-phase-details section {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-2);
+}
+.admin-phase-details h3 {
+  font-size: var(--fs-2);
+}
+.partial-notice {
+  color: var(--warning);
+}
+@media (max-width: 1000px) {
+  .admin-player {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .admin-player > .admin-actions {
+    flex-basis: auto;
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 550px) {
+  .admin-sync-summary,
+  .admin-phase-details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+  .admin-roster .panel-title {
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .admin-actions .button {
+    max-width: 100%;
+    white-space: normal;
+  }
+}
 .distribution-track {
   height: 4px;
   background: var(--line);

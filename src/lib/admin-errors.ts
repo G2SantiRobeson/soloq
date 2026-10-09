@@ -59,6 +59,8 @@ export function describeAdminError(error: unknown, action: AdminAction): AdminEr
     return {
       message: serverMessage ?? "Hay otra actualización en curso. Inténtalo en unos minutos.",
     };
+  if (action === "sync" && status === 404)
+    return { message: serverMessage ?? "Jugador o cuenta no encontrado. Recarga el panel." };
   // Curated sync/Riot messages (rate limit, partial import, invalid key) are worth keeping.
   if (status === 503 && serverMessage) return { message: serverMessage };
   if (status >= 500)

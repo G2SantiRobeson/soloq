@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { desc } from "drizzle-orm";
 import { db } from "@/db";
 import { players } from "@/db/schema";
 import { PLATFORMS } from "@/lib/routing";
@@ -8,28 +7,11 @@ import { withSyncLease } from "@/server/sync/lease";
 import { syncPlayer, syncBackfillPlayer } from "@/server/sync/service";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
 import { RiotError } from "@/server/riot/client";
+import { getAdminPlayers } from "@/server/admin-queries";
 export const maxDuration = 300;
 export const GET = endpoint(async () => {
   await requireAdmin();
-  return json(
-    await db()
-      .select({
-        id: players.id,
-        gameName: players.gameName,
-        tagLine: players.tagLine,
-        platform: players.platform,
-        enabled: players.enabled,
-        lastSyncedAt: players.lastSyncedAt,
-        syncError: players.syncError,
-        backfillSeason: players.backfillSeason,
-        backfillStatus: players.backfillStatus,
-        backfillDiscovered: players.backfillDiscovered,
-        backfillProcessed: players.backfillProcessed,
-        backfillUnavailable: players.backfillUnavailable,
-      })
-      .from(players)
-      .orderBy(desc(players.createdAt)),
-  );
+  return json(await getAdminPlayers());
 });
 const input = z.object({
   gameName: z

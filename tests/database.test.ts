@@ -10,6 +10,7 @@ import {
   syncAllPlayers,
 } from "@/server/sync/service";
 import { withSyncLease, SyncBusy } from "@/server/sync/lease";
+import * as leaseService from "@/server/sync/lease";
 import { RiotClient, RiotError } from "@/server/riot/client";
 import {
   allowLogin,
@@ -29,6 +30,12 @@ import { getSyncStatus } from "@/server/sync/status";
 import { GET as syncStatusRoute } from "@/app/api/ladder/sync-status/route";
 import { RECENT_OVERLAP_MS } from "@/server/sync/recent";
 import { toPlayerSyncState } from "@/server/sync/player-state";
+import { getAdminPlayers, getAdminSyncContext } from "@/server/admin-queries";
+import { GET as listAdminPlayers } from "@/app/api/admin/players/route";
+import { POST as individualSync } from "@/app/api/admin/players/[id]/sync/route";
+import { POST as manualBackfill } from "@/app/api/admin/players/[id]/backfill/route";
+import { PATCH as togglePlayer, DELETE as deletePlayer } from "@/app/api/admin/players/[id]/route";
+import { attemptActivity } from "@/lib/admin-sync";
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
 const cookieJar = vi.hoisted(() => new Map<string, string>());
@@ -454,6 +461,343 @@ async function addPlayer(puuid = "stable-puuid") {
       .returning()
   )[0];
 }
+describe("administrative phase diagnostics and individual synchronization", () => {
+  beforeEach(async () => {
+    vi.stubEnv("APP_URL", "http://localhost");
+    await createSession();
+    vi.spyOn(RiotClient.prototype, "identity").mockImplementation(async (_p, puuid) => ({
+      puuid,
+      gameName: "Example",
+      tagLine: "LAS",
+    }));
+    vi.spyOn(RiotClient.prototype, "summoner").mockResolvedValue({ profileIconId: 23 });
+    vi.spyOn(RiotClient.prototype, "leagues").mockResolvedValue([]);
+    vi.spyOn(RiotClient.prototype, "matchIds").mockResolvedValue([]);
+    vi.spyOn(RiotClient.prototype, "match").mockImplementation(async (_p, id) => {
+      const m = match(id);
+      m.info.gameStartTimestamp = Date.now() - 3600_000;
+      return m;
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+  const request = (id: string, suffix = "sync", origin = "http://localhost") =>
+    new Request(`http://localhost/api/admin/players/${id}/${suffix}`, {
+      method: "POST",
+      headers: { origin },
+    });
+  const row = async (id: string) =>
+    (await database.select().from(schema.players).where(eq(schema.players.id, id)))[0];
+  const update = async (id: string, values: Partial<typeof schema.players.$inferInsert>) =>
+    database.update(schema.players).set(values).where(eq(schema.players.id, id));
+  const error = (step: "recent" | "history" | "league") => ({
+    occurredAt: "2026-09-01T00:00:00.000Z",
+    code: 503,
+    step,
+    message: "old error with private SQL",
+  });
+
+  it("exposes the existing typed state without PUUID or internal legacy messages and without caching", async () => {
+    const p = await addPlayer();
+    await update(p.id, { syncError: "postgres://private-password@host", updatedAt: new Date() });
+    const response = await listAdminPlayers(new Request("http://localhost/api/admin/players"));
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const [admin] = await response.json();
+    expect(admin.syncState.rank).toEqual({ checkedAt: null, error: null });
+    expect(admin.syncState.recent.coveredThrough).toBeNull();
+    expect(admin.syncState.lastAttempt).toBeNull();
+    expect(admin.legacyError).toMatch(/sin clasificar/);
+    expect(JSON.stringify(admin)).not.toMatch(/private-password|stable-puuid|puuid/);
+    expect(admin.lastSyncedAt).toBeNull();
+  });
+
+  it("keeps rank, recent and history evidence independent across the administrative query", async () => {
+    const p = await addPlayer();
+    const checked = new Date("2026-10-08T00:00:00Z");
+    const covered = new Date("2026-10-01T00:00:00Z");
+    await update(p.id, {
+      rankCheckedAt: checked,
+      lastSyncedAt: covered,
+      recentError: error("recent"),
+      backfillSeason: CURRENT_SEASON.id,
+      backfillStatus: "completed",
+      backfillUnavailable: 2,
+    });
+    let [admin] = await getAdminPlayers();
+    expect(admin.syncState.rank.checkedAt).toBe(checked.toISOString());
+    expect(admin.syncState.recent).toMatchObject({
+      coveredThrough: covered.toISOString(),
+      error: { step: "recent" },
+    });
+    expect(admin.syncState.history).toMatchObject({
+      status: "completed",
+      unavailable: 2,
+      error: null,
+    });
+    await update(p.id, {
+      recentError: null,
+      backfillError: error("history"),
+      backfillStatus: "failed",
+    });
+    [admin] = await getAdminPlayers();
+    expect(admin.syncState.history).toMatchObject({ status: "failed", error: { step: "history" } });
+    expect(admin.syncState.rank.error).toBeNull();
+    expect(admin.syncState.recent.error).toBeNull();
+    expect(JSON.stringify(admin)).not.toContain("private SQL");
+  });
+
+  it("does not duplicate a phase mirror as an unclassified legacy error", async () => {
+    const p = await addPlayer();
+    await update(p.id, { rankError: error("league"), syncError: error("league").message });
+    const [admin] = await getAdminPlayers();
+    expect(admin.legacyError).toBeNull();
+    expect(admin.syncState.rank.error?.code).toBe(503);
+  });
+
+  it("does not assume an old running attempt is still active, including during a different lease", async () => {
+    const p = await addPlayer();
+    await update(p.id, {
+      lastSyncAttempt: {
+        phase: "recent",
+        startedAt: "2026-01-01T00:00:00Z",
+        finishedAt: null,
+        outcome: "running",
+      },
+    });
+    await database
+      .insert(schema.syncLocks)
+      .values({ name: "riot", owner: p.id, expiresAt: new Date(Date.now() + 60_000) });
+    const [admin] = await getAdminPlayers();
+    expect(attemptActivity(admin.syncState, await getAdminSyncContext())).toMatch(
+      /Posiblemente interrumpido/,
+    );
+  });
+
+  it("updates a completed-history player without changing history, another player, or global status", async () => {
+    const p = await addPlayer();
+    const other = await addPlayer("untouched");
+    const previous = new Date("2026-09-03T00:00:00Z");
+    await update(p.id, {
+      backfillSeason: CURRENT_SEASON.id,
+      backfillStatus: "completed",
+      scanOffset: 100,
+      scanPending: ["historical-id"],
+      scanEnd: previous,
+      backfillError: error("history"),
+      backfillDiscovered: 101,
+      backfillProcessed: 100,
+    });
+    await database.insert(schema.syncLocks).values({
+      name: "riot",
+      owner: p.id,
+      expiresAt: new Date(0),
+      lastSuccessfulSyncAt: previous,
+      lastStartedAt: previous,
+      lastFinishedAt: previous,
+      lastOutcome: "partial",
+    });
+    const beforeOther = await row(other.id);
+    const response = await individualSync(request(p.id));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result.status).toBe("complete");
+    expect(body.result.syncState.lastAttempt).toMatchObject({
+      phase: "recent",
+      outcome: "success",
+    });
+    expect(body.result.syncState.history.error).not.toBeNull();
+    expect(await row(p.id)).toMatchObject({
+      backfillStatus: "completed",
+      scanOffset: 100,
+      scanPending: ["historical-id"],
+      scanEnd: previous,
+      backfillDiscovered: 101,
+      backfillProcessed: 100,
+      backfillError: error("history"),
+    });
+    expect(await row(other.id)).toEqual(beforeOther);
+    const [lease] = await database.select().from(schema.syncLocks);
+    expect(lease).toMatchObject({
+      lastSuccessfulSyncAt: previous,
+      lastStartedAt: previous,
+      lastFinishedAt: previous,
+      lastOutcome: "partial",
+    });
+    expect(vi.mocked(RiotClient.prototype.matchIds)).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["invalid", 400],
+    ["123e4567-e89b-42d3-a456-426614174000", 404],
+  ])("rejects invalid or missing player %s before acquiring a lease", async (id, status) => {
+    expect((await individualSync(request(id))).status).toBe(status);
+    expect(await database.select().from(schema.syncLocks)).toHaveLength(0);
+    expect(RiotClient.prototype.identity).not.toHaveBeenCalled();
+  });
+
+  it("rejects disabled players and invalid Origin without Riot calls", async () => {
+    const p = await addPlayer();
+    await update(p.id, { enabled: false });
+    expect((await individualSync(request(p.id))).status).toBe(409);
+    expect((await individualSync(request(p.id, "sync", "https://evil.example"))).status).toBe(403);
+    expect((await individualSync(request(p.id, "sync", ""))).status).toBe(403);
+    expect(RiotClient.prototype.identity).not.toHaveBeenCalled();
+  });
+
+  it("rejects an occupied lease and retains its global state", async () => {
+    const p = await addPlayer();
+    await database.insert(schema.syncLocks).values({
+      name: "riot",
+      owner: p.id,
+      expiresAt: new Date(Date.now() + 60_000),
+      lastOutcome: "running",
+    });
+    expect((await individualSync(request(p.id))).status).toBe(409);
+    expect(RiotClient.prototype.identity).not.toHaveBeenCalled();
+    expect((await row(p.id)).lastSyncAttempt).toBeNull();
+  });
+
+  it("preserves Riot Retry-After and rejects an immediate retry", async () => {
+    const p = await addPlayer();
+    vi.mocked(RiotClient.prototype.leagues).mockRejectedValue(new RiotError(429, 60_000));
+    const response = await individualSync(request(p.id));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("60");
+    const body = await response.json();
+    expect(body.result.status).toBe("error");
+    expect(body.error).toMatch(/No se alcanzó/);
+    expect(body.result.syncState.lastAttempt.phase).toBe("rank");
+    expect(RiotClient.prototype.matchIds).not.toHaveBeenCalled();
+    const [lease] = await database.select().from(schema.syncLocks);
+    expect(lease.expiresAt.getTime()).toBeGreaterThan(Date.now() + 58_000);
+    expect(lease.lastSuccessfulSyncAt).toBeNull();
+    expect((await individualSync(request(p.id))).status).toBe(409);
+  });
+
+  it.each([401, 403, 404, 503])(
+    "returns a sanitized recoverable Riot %s failure without claiming recent work",
+    async (code) => {
+      const p = await addPlayer();
+      const failure = new RiotError(code);
+      failure.message = "private SQL and credentials";
+      vi.mocked(RiotClient.prototype.identity).mockRejectedValue(failure);
+      const response = await individualSync(request(p.id));
+      expect(response.status).toBe(code === 404 ? 404 : 503);
+      const body = await response.json();
+      expect(body.result.status).toBe("error");
+      expect(body.error).toMatch(/No se alcanzó/);
+      expect(JSON.stringify(body)).not.toMatch(/private SQL|credentials|stable-puuid/);
+      expect(RiotClient.prototype.matchIds).not.toHaveBeenCalled();
+    },
+  );
+
+  it("retains a verified rank and historical error when recent work fails", async () => {
+    const p = await addPlayer();
+    await update(p.id, {
+      backfillSeason: CURRENT_SEASON.id,
+      backfillStatus: "completed",
+      backfillError: error("history"),
+    });
+    vi.mocked(RiotClient.prototype.matchIds).mockRejectedValue(new RiotError(503));
+    const response = await individualSync(request(p.id));
+    const body = await response.json();
+    expect(response.status).toBe(503);
+    expect(body.error).toMatch(/rango se verificó/);
+    expect(body.result.syncState.rank.checkedAt).not.toBeNull();
+    expect(body.result.syncState.recent.coveredThrough).toBeNull();
+    expect(body.result.syncState.history.error).not.toBeNull();
+    expect((await row(p.id)).backfillStatus).toBe("completed");
+  });
+
+  it.each(["identity", "matchIds"] as const)(
+    "returns a deadline in %s as partial with the actual phase",
+    async (method) => {
+      const p = await addPlayer();
+      vi.mocked(RiotClient.prototype[method]).mockRejectedValue(new SyncDeadline());
+      const response = await individualSync(request(p.id));
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.result.status).toBe("partial");
+      expect(body.result.syncState.lastAttempt).toMatchObject({
+        phase: method === "identity" ? "rank" : "recent",
+        outcome: "partial",
+      });
+      expect(body.message).toMatch(/parcial/);
+      expect(body.result.syncState.recent.coveredThrough).toBeNull();
+    },
+  );
+
+  it("keeps batch exhaustion partial with checkpointed participants and an untouched history cursor", async () => {
+    const p = await addPlayer();
+    await update(p.id, { scanOffset: 10, scanPending: ["history-pending"] });
+    vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue([
+      "one",
+      "two",
+      "three",
+      "four",
+      "five",
+      "six",
+    ]);
+    const response = await individualSync(request(p.id));
+    const body = await response.json();
+    expect(body.result).toMatchObject({ status: "partial", imported: 5 });
+    expect(body.result.syncState.recent.coveredThrough).toBeNull();
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(5);
+    expect(await row(p.id)).toMatchObject({ scanOffset: 10, scanPending: ["history-pending"] });
+  });
+
+  it("reports a skipped player if it becomes disabled before the leased sync reads it", async () => {
+    const p = await addPlayer();
+    vi.spyOn(leaseService, "withSyncLease").mockImplementation(async (work) => {
+      await update(p.id, { enabled: false });
+      return work(new RiotClient());
+    });
+    const response = await individualSync(request(p.id));
+    expect(response.status).toBe(200);
+    expect((await response.json()).result.status).toBe("skipped");
+    expect(RiotClient.prototype.identity).not.toHaveBeenCalled();
+    expect((await row(p.id)).lastSyncAttempt).toBeNull();
+  });
+
+  it("sanitizes an unexpected service failure and retains its recorded phase", async () => {
+    const p = await addPlayer();
+    vi.mocked(RiotClient.prototype.identity).mockRejectedValue(
+      new Error("postgres://password@host internal trace"),
+    );
+    const response = await individualSync(request(p.id));
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body.result.status).toBe("error");
+    expect(body.result.syncState.rank.error.code).toBe("internal");
+    expect(JSON.stringify(body)).not.toMatch(/password@host|internal trace/);
+  });
+
+  it("requires authentication for both diagnostic queries", async () => {
+    cookieJar.clear();
+    await expect(getAdminPlayers()).rejects.toMatchObject({ status: 401 });
+    await expect(getAdminSyncContext()).rejects.toMatchObject({ status: 401 });
+  });
+
+  it("retains the existing enable, backfill and delete actions", async () => {
+    const p = await addPlayer();
+    const mutation = (method: string, body: unknown) =>
+      new Request(`http://localhost/api/admin/players/${p.id}`, {
+        method,
+        headers: { origin: "http://localhost", "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect((await togglePlayer(mutation("PATCH", { enabled: false }))).status).toBe(200);
+    expect((await row(p.id)).enabled).toBe(false);
+    await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
+    expect((await togglePlayer(mutation("PATCH", { enabled: true }))).status).toBe(200);
+    await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
+    expect((await manualBackfill(request(p.id, "backfill"))).status).toBe(200);
+    expect((await row(p.id)).backfillStatus).toBe("completed");
+    await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
+    expect((await deletePlayer(mutation("DELETE", { confirm: true }))).status).toBe(200);
+    expect(await row(p.id)).toBeUndefined();
+  });
+});
+
 function match(id: string): RiotMatch {
   return {
     metadata: { matchId: id },

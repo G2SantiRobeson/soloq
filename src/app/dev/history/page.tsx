@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
-import { AdminPanel, type AdminPlayer } from "@/components/admin-panel";
+import { AdminPanel } from "@/components/admin-panel";
 import { HistoryStatusLabel } from "@/components/history-status";
 import { CURRENT_SEASON, type HistoryStatus } from "@/lib/season";
+import { adminFixture } from "../admin/fixtures";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -12,23 +13,7 @@ export const metadata = {
 export default function HistoryAudit() {
   if (process.env.NODE_ENV !== "development") notFound();
   const statuses: HistoryStatus["status"][] = ["not_started", "running", "completed", "failed"];
-  const fixtures: AdminPlayer[] = statuses.map((status, i) => ({
-    id: `fixture-${i}`,
-    gameName: `Jugador ${status}`,
-    tagLine: "DEMO",
-    platform: "LA2",
-    enabled: true,
-    lastSyncedAt: null,
-    syncError:
-      status === "failed"
-        ? "Riot rechazó la clave. Actualízala y reintenta sin perder el progreso."
-        : null,
-    backfillSeason: CURRENT_SEASON.id,
-    backfillStatus: status,
-    backfillDiscovered: status === "not_started" ? 0 : 205,
-    backfillProcessed: status === "completed" ? 205 : status === "not_started" ? 0 : 75,
-    backfillUnavailable: status === "completed" ? 1 : 0,
-  }));
+  const fixtures = statuses.map((status, i) => adminFixture(i, status));
   return (
     <>
       <h1>Auditoría de historial</h1>
@@ -37,7 +22,10 @@ export default function HistoryAudit() {
         desarrollo.
       </p>
       <fieldset disabled style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-        <AdminPanel players={fixtures} />
+        <AdminPanel
+          players={fixtures}
+          context={{ serverNow: new Date().toISOString(), leaseUntil: null }}
+        />
       </fieldset>
       <h2>Estados públicos</h2>
       {fixtures.map((player) => (
