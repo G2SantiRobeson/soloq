@@ -45,7 +45,13 @@ export async function importHistory(
   // Freeze both ends until this scan has exhausted every page, even across requests.
   const end =
     player.scanEnd ?? new Date(Math.min(Date.now() - 120_000, seasonEnd()?.getTime() ?? Infinity));
-  if (end <= start) return { playerId, status: "partial" as const, imported: 0 };
+  if (end <= start)
+    return {
+      playerId,
+      status: "partial" as const,
+      imported: 0,
+      reason: "window_not_ready" as const,
+    };
   let pending = player.scanPending;
   let exhausted = player.scanExhausted;
   let offset = player.scanOffset;
@@ -88,7 +94,9 @@ export async function importHistory(
         .where(eq(players.id, playerId));
       return { playerId, status: "complete" as const, imported };
     }
-    if (processed >= budget) return { playerId, status: "partial" as const, imported };
+    client.assertBudget();
+    if (processed >= budget)
+      return { playerId, status: "partial" as const, imported, reason: "batch_limit" as const };
     if (!pending.length) {
       const ids = await client.matchIds(
         player.platform,

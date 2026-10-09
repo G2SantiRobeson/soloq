@@ -10,6 +10,6 @@ export const POST = endpoint(async (request) => {
     recent,
     backfill,
     outcome,
-    message: `${recent.complete} de ${recent.eligible} jugadores con recientes al día; ${recent.pending} pendientes. Historial: ${backfill.pending} pendientes, ${backfill.errors} con error.`,
+    message: `${recent.complete} de ${recent.eligible} jugadores con recientes al día; ${recent.budgetPending} pendientes por presupuesto, ${recent.errors} con error. Historial: ${backfill.pending} pendientes, ${backfill.errors} con error.`,
   });
 });

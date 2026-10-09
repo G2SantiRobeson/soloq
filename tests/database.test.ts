@@ -11,7 +11,7 @@ import {
 } from "@/server/sync/service";
 import { withSyncLease, SyncBusy } from "@/server/sync/lease";
 import * as leaseService from "@/server/sync/lease";
-import { RiotClient, RiotError } from "@/server/riot/client";
+import { RiotClient, RiotError, SyncBudget } from "@/server/riot/client";
 import {
   allowLogin,
   authenticated,
@@ -36,6 +36,7 @@ import { POST as individualSync } from "@/app/api/admin/players/[id]/sync/route"
 import { POST as manualBackfill } from "@/app/api/admin/players/[id]/backfill/route";
 import { PATCH as togglePlayer, DELETE as deletePlayer } from "@/app/api/admin/players/[id]/route";
 import { attemptActivity } from "@/lib/admin-sync";
+import { SYNC_LEASE_MS } from "@/lib/sync-status";
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
 const cookieJar = vi.hoisted(() => new Map<string, string>());
@@ -78,6 +79,204 @@ describe("recent-first synchronization", () => {
   async function release() {
     await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
   }
+
+  it("rotates all 18 eligible players over bounded runs and names untouched players", async () => {
+    const base = Date.now();
+    let clock = base;
+    const roster = [];
+    for (let i = 0; i < 18; i++) {
+      const p = await addPlayer(`fair-${i}`);
+      await database
+        .update(schema.players)
+        .set({
+          createdAt: new Date(base + i),
+          scanStart: new Date(base),
+          backfillSeason: CURRENT_SEASON.id,
+          backfillStatus: "completed",
+        })
+        .where(eq(schema.players.id, p.id));
+      roster.push(p);
+    }
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const visits: string[] = [];
+    vi.mocked(RiotClient.prototype.identity).mockImplementation(async (_p, puuid) => {
+      visits.push(puuid);
+      clock += 25000;
+      return { puuid, gameName: "Example", tagLine: "LAS" };
+    });
+    const first = await syncAllPlayers();
+    expect(first.outcome).toBe("partial");
+    expect(first.recent).toMatchObject({
+      eligible: 18,
+      visited: 7,
+      complete: 7,
+      budgetPending: 11,
+      errors: 0,
+    });
+    expect(first.results).toHaveLength(18);
+    expect(
+      first.results.slice(7).every((r) => r.attempted === false && r.reason === "execution_budget"),
+    ).toBe(true);
+    expect((await row(roster[7].id)).lastSyncAttempt).toBeNull();
+    expect((await getSyncStatus()).lastSuccessfulSyncAt).toBeNull();
+    for (let i = 0; i < 2; i++) {
+      await release();
+      await syncAllPlayers();
+    }
+    expect(new Set(visits.slice(0, 18))).toEqual(new Set(roster.map((p) => p.puuid)));
+  });
+
+  it("bounds excluded modes and 404 requests and continues with the next player", async () => {
+    const a = await addPlayer("excluded-backlog");
+    const b = await addPlayer("healthy");
+    await database
+      .update(schema.players)
+      .set({ createdAt: new Date(1000) })
+      .where(eq(schema.players.id, a.id));
+    await database
+      .update(schema.players)
+      .set({ createdAt: new Date(2000) })
+      .where(eq(schema.players.id, b.id));
+    vi.stubEnv("RIOT_API_KEY", "test-only-not-a-real-key");
+    // Use real client dispatch/accounting for recent requests; all responses are local fixtures.
+    vi.mocked(RiotClient.prototype.matchIds).mockRestore();
+    vi.mocked(RiotClient.prototype.match).mockRestore();
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.includes("/ids?"))
+        return Response.json(
+          url.includes(a.puuid) ? Array.from({ length: 40 }, (_, i) => `excluded_${i}`) : [],
+        );
+      if (url.endsWith("_0")) {
+        const excluded = freshMatch("excluded_0", a.puuid);
+        excluded.info.queueId = 450;
+        return Response.json(excluded);
+      }
+      return new Response("", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    // Advance only virtual pacing, no real sleeps or Riot traffic.
+    let clock = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    // Inject virtual pacing into the same serial client used by both production passes.
+    vi.spyOn(leaseService, "withSyncLease").mockImplementation(async (work) =>
+      work(
+        new RiotClient(clock + 230000, {
+          fetcher,
+          now: () => clock,
+          sleep: async (ms) => {
+            clock += ms;
+          },
+        }),
+      ),
+    );
+    try {
+      const run = await syncAllPlayers();
+      expect(run.results[0]).toMatchObject({
+        playerId: a.id,
+        status: "partial",
+        reason: "request_budget",
+      });
+      expect(run.results[1]).toMatchObject({ playerId: b.id, status: "complete" });
+      const updated = await row(a.id);
+      expect(updated.rankCheckedAt).not.toBeNull();
+      expect(updated.lastSyncedAt).toBeNull();
+      expect(updated.recentError).toBeNull();
+      // Recent and historical slots are independent; each cap includes IDs and excluded details.
+      expect(run.recent.errors).toBe(0);
+      expect(
+        fetcher.mock.calls.filter(([url]) => String(url).includes("/matches/excluded_")),
+      ).toHaveLength(16);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("reserves history progress even when the recent pass leaves players untouched", async () => {
+    const base = Date.now();
+    let clock = base;
+    for (let i = 0; i < 8; i++) await addPlayer(`reserve-${i}`);
+    vi.spyOn(Date, "now").mockImplementation(() => clock);
+    vi.mocked(RiotClient.prototype.identity).mockImplementation(async (_p, puuid) => {
+      clock += 25000;
+      return { puuid, gameName: "Example", tagLine: "LAS" };
+    });
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, _id, start) => {
+      if (start < base / 1000 - 2 * 86400) clock += 15000;
+      return [];
+    });
+    const run = await syncAllPlayers();
+    expect(run.recent).toMatchObject({ visited: 7, pending: 1, errors: 0 });
+    expect(run.backfill).toMatchObject({ visited: 3, complete: 3, pending: 5 });
+    expect(
+      run.backfill.results
+        .filter((r) => r.attempted === false)
+        .every((r) => r.reason === "execution_budget"),
+    ).toBe(true);
+    expect(clock - base).toBeLessThanOrEqual(230000);
+  });
+
+  it("keeps a historical cursor and its prior error after a scoped interruption, then resumes", async () => {
+    const p = await addPlayer();
+    const ids = ["checkpoint_saved", "checkpoint_pending"];
+    vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue(ids);
+    vi.mocked(RiotClient.prototype.match)
+      .mockResolvedValueOnce(freshMatch(ids[0]))
+      .mockRejectedValueOnce(new SyncBudget("time_budget"));
+    const oldError = {
+      occurredAt: new Date().toISOString(),
+      code: 503,
+      step: "history" as const,
+      message: "Riot no está disponible temporalmente.",
+    };
+    await database
+      .update(schema.players)
+      .set({ backfillError: oldError })
+      .where(eq(schema.players.id, p.id));
+    await expect(syncBackfillPlayer(p.id, new RiotClient())).rejects.toBeInstanceOf(SyncBudget);
+    const interrupted = await row(p.id);
+    expect(interrupted).toMatchObject({
+      scanPending: [ids[1]],
+      scanOffset: 2,
+      scanExhausted: true,
+      backfillProcessed: 1,
+      backfillError: oldError,
+    });
+    expect(interrupted.lastSyncAttempt).toMatchObject({
+      outcome: "partial",
+      pendingReason: "time_budget",
+    });
+    const frozen = interrupted.scanEnd;
+    vi.mocked(RiotClient.prototype.match).mockImplementation(async (_p, id) => freshMatch(id));
+    await syncBackfillPlayer(p.id, new RiotClient());
+    const complete = await row(p.id);
+    expect(complete).toMatchObject({
+      backfillProcessed: 2,
+      backfillDiscovered: 2,
+      backfillStatus: "completed",
+      backfillError: null,
+      scanPending: [],
+      scanEnd: null,
+    });
+    expect(complete.scanStart.getTime()).toBe(frozen!.getTime() - RECENT_OVERLAP_MS);
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(2);
+    expect(vi.mocked(RiotClient.prototype.matchIds)).toHaveBeenCalledTimes(1);
+  });
+
+  it("excludes paused players from both passes and from direct history retries", async () => {
+    const p = await addPlayer("paused");
+    await database
+      .update(schema.players)
+      .set({ enabled: false })
+      .where(eq(schema.players.id, p.id));
+    const run = await syncAllPlayers();
+    expect(run.recent.eligible).toBe(0);
+    expect(run.backfill.eligible).toBe(0);
+    expect(await syncBackfillPlayer(p.id, new RiotClient())).toMatchObject({ status: "skipped" });
+    expect((await row(p.id)).lastSyncAttempt).toBeNull();
+    expect(vi.mocked(RiotClient.prototype.identity)).not.toHaveBeenCalled();
+    expect(vi.mocked(RiotClient.prototype.matchIds)).not.toHaveBeenCalled();
+  });
 
   it("imports a newly played match without touching a frozen historical cursor", async () => {
     const p = await addPlayer();
@@ -165,7 +364,9 @@ describe("recent-first synchronization", () => {
     const run = await syncAllPlayers();
     expect(run.outcome).toBe("partial");
     expect(run.recent).toMatchObject({ complete: 1, pending: 2 });
-    expect(run.backfill.results).toEqual([]);
+    expect(
+      run.backfill.results.every((r) => r.attempted === false && r.reason === "execution_budget"),
+    ).toBe(true);
     expect((await row(a.id)).lastAttemptAt).not.toBeNull();
     expect((await row(b.id)).lastAttemptAt).toBeNull();
     expect((await row(c.id)).lastAttemptAt).toBeNull();
@@ -178,7 +379,7 @@ describe("recent-first synchronization", () => {
         .mocked(RiotClient.prototype.matchIds)
         .mock.calls.slice(0, 3)
         .map((c) => c[1]),
-    ).toEqual([b.puuid, c.puuid, a.puuid]);
+    ).toEqual([c.puuid, a.puuid, b.puuid]);
   });
 
   it("does not demote a player when the deadline precedes its first request", async () => {
@@ -249,7 +450,9 @@ describe("recent-first synchronization", () => {
     const run = await syncAllPlayers();
     expect(run.outcome).toBe("failed");
     expect(run.recent).toMatchObject({ complete: 0, pending: 1, errors: 1 });
-    expect(run.backfill.results).toEqual([]);
+    expect(run.backfill.results).toEqual([
+      { playerId: expect.any(String), status: "partial", attempted: false, reason: "recent_error" },
+    ]);
     expect((await getSyncStatus()).lastSuccessfulSyncAt).toBeNull();
   });
 
@@ -424,6 +627,7 @@ describe("recent-first synchronization", () => {
 
   it("preserves a history 429 cooldown without invalidating completed recent windows", async () => {
     await addPlayer();
+    await addPlayer("history-backoff-pending");
     vi.mocked(RiotClient.prototype.matchIds).mockImplementation(async (_p, _id, start) => {
       if (start < Date.now() / 1000 - 2 * 86400) throw new RiotError(429, 300000);
       return [];
@@ -431,6 +635,12 @@ describe("recent-first synchronization", () => {
     const run = await syncAllPlayers();
     expect(run.outcome).toBe("success");
     expect(run.backfill.errors).toBe(1);
+    expect(run.backfill.results[1]).toMatchObject({
+      status: "partial",
+      attempted: false,
+      reason: "riot_backoff",
+    });
+    expect(run.backfill.visited).toBe(1);
     expect((await getSyncStatus()).status).toBe("success");
     await expect(withSyncLease(async () => true)).rejects.toBeInstanceOf(SyncBusy);
   });
@@ -1386,6 +1596,25 @@ describe("PostgreSQL migrations and data integrity", () => {
     expect(lock.expiresAt.getTime()).toBeGreaterThan(Date.now() + 295000);
     await expect(withSyncLease(async () => true)).rejects.toBeInstanceOf(SyncBusy);
   });
+  it("recovers an expired interrupted lease and prevents its old owner from releasing the new one", async () => {
+    const oldOwner = "00000000-0000-4000-8000-000000000001";
+    await database
+      .insert(schema.syncLocks)
+      .values({ name: "riot", owner: oldOwner, expiresAt: new Date(0), lastOutcome: "running" });
+    await withSyncLease(async () => {
+      const [acquired] = await database.select().from(schema.syncLocks);
+      expect(acquired.owner).not.toBe(oldOwner);
+      expect(acquired.expiresAt.getTime()).toBeGreaterThan(Date.now() + 320000);
+      await expect(withSyncLease(async () => true)).rejects.toBeInstanceOf(SyncBusy);
+      // Simulate replacement following expiry; the prior worker's finally must not release it.
+      await database
+        .update(schema.syncLocks)
+        .set({ owner: oldOwner, expiresAt: new Date(Date.now() + 60000) });
+    });
+    const [remaining] = await database.select().from(schema.syncLocks);
+    expect(remaining.owner).toBe(oldOwner);
+    expect(remaining.expiresAt.getTime()).toBeGreaterThan(Date.now() + 58000);
+  });
   it("shares the login rate limit atomically across concurrent attempts", async () => {
     const attempts = await Promise.all(Array.from({ length: 12 }, () => allowLogin()));
     expect(attempts.filter(Boolean)).toHaveLength(10);
@@ -1778,7 +2007,7 @@ describe("weekly ladder baselines and global sync metadata", () => {
       name: "riot",
       owner: "00000000-0000-4000-8000-000000000001",
       expiresAt: new Date(0),
-      lastStartedAt: new Date(now.getTime() - 300000),
+      lastStartedAt: new Date(now.getTime() - SYNC_LEASE_MS - 1),
       lastOutcome: "running",
     });
     expect((await getSyncStatus(now)).status).toBe("failed");

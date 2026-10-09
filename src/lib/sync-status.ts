@@ -1,6 +1,7 @@
 export const LADDER_SYNC_INTERVAL_MS = 10 * 60 * 1000;
 export const SYNC_POLL_INTERVAL_MS = 15_000;
-export const SYNC_LEASE_MS = 285_000;
+// Cover the declared 300 s HTTP lifetime plus a recovery margin; normal release is immediate.
+export const SYNC_LEASE_MS = 330_000;
 export type SyncStatus = {
   lastSuccessfulSyncAt: string | null;
   nextExpectedSyncAt: string | null;

@@ -99,5 +99,11 @@ con backfill completado, mediante el lease existente y sin iniciar histórico ni
 el resultado global. Ver [ADMIN_SYNC_DIAGNOSTICS.md](./ADMIN_SYNC_DIAGNOSTICS.md) para el
 contrato HTTP, mensajes sanitizados, pruebas y límites de observabilidad.
 
-La UI pública mantiene su etiqueta actual. Scheduler, fairness, presupuestos y
-recuperación del lease quedan para tareas posteriores.
+La UI pública mantiene su etiqueta actual. La Fase 03.B.4 añade planificación justa
+y presupuestos: [FAIR_SCHEDULING.md](./FAIR_SCHEDULING.md).
+
+`lastSyncAttempt` admite ahora un `pendingReason` opcional en su JSON para una fase
+parcial por presupuesto o ventana no disponible. No crea columnas ni atribuye intentos
+a jugadores no atendidos. Un `SyncBudget` conserva los errores pendientes de todas las
+fases y registra un parcial sin error nuevo; el éxito sigue limpiando solo su propia fase.
+Las filas y lectores anteriores siguen siendo compatibles con la propiedad opcional.

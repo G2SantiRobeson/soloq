@@ -2,6 +2,7 @@ import type { AdminPlayer, AdminSyncContext } from "@/lib/admin-sync";
 import { attemptActivity } from "@/lib/admin-sync";
 import type { PlayerSyncError } from "@/lib/player-sync-state";
 import { HISTORY_LABELS } from "@/lib/season";
+import { PENDING_LABELS, type SyncPlayerResult } from "@/lib/sync-scheduling";
 
 const phaseLabels = { rank: "Rango", recent: "Recientes", history: "Histórico" };
 const outcomes = {
@@ -40,9 +41,13 @@ function ErrorDetail({
 export function AdminPlayerDiagnostics({
   player,
   context,
+  recentResult,
+  historyResult,
 }: {
   player: AdminPlayer;
   context: AdminSyncContext;
+  recentResult?: SyncPlayerResult;
+  historyResult?: SyncPlayerResult;
 }) {
   const s = player.syncState;
   const hasErrors = !!(s.rank.error || s.recent.error || s.history.error || player.legacyError);
@@ -52,6 +57,39 @@ export function AdminPlayerDiagnostics({
     s.history.status === "running" ? "En progreso; reanudable" : HISTORY_LABELS[s.history.status];
   return (
     <div className="admin-diagnostics">
+      {(recentResult || historyResult) && (
+        <p className="muted">
+          Última ejecución global solicitada desde este panel:
+          {recentResult && (
+            <>
+              <br />
+              Rango/recientes:{" "}
+              {recentResult.reason
+                ? PENDING_LABELS[recentResult.reason]
+                : recentResult.status === "complete"
+                  ? "Cobertura completada"
+                  : recentResult.status === "error"
+                    ? "Error registrado"
+                    : "Parcial o sin actualización"}
+              .
+            </>
+          )}
+          {historyResult && (
+            <>
+              <br />
+              Histórico:{" "}
+              {historyResult.reason
+                ? PENDING_LABELS[historyResult.reason]
+                : historyResult.status === "complete"
+                  ? "Exploración completada"
+                  : historyResult.status === "error"
+                    ? "Error registrado"
+                    : "Parcial o sin actualización"}
+              .
+            </>
+          )}
+        </p>
+      )}
       <div className="admin-sync-summary">
         <p>
           <b>Rango</b>
@@ -83,11 +121,13 @@ export function AdminPlayerDiagnostics({
       <p className={hasErrors ? "sync-error" : "muted"}>
         {hasErrors
           ? "Errores pendientes de revisión"
-          : unfinishedAttempt
-            ? "Última fase parcial, fallida o sin finalización; revisión pendiente"
-            : pending
-              ? "Datos pendientes o desconocidos"
-              : "Verificaciones y cobertura registradas"}
+          : s.lastAttempt?.pendingReason
+            ? PENDING_LABELS[s.lastAttempt.pendingReason]
+            : unfinishedAttempt
+              ? "Última fase parcial, fallida o sin finalización; revisión pendiente"
+              : pending
+                ? "Datos pendientes o desconocidos"
+                : "Verificaciones y cobertura registradas"}
       </p>
       <details className="admin-sync-details">
         <summary>Ver diagnóstico y fechas</summary>
@@ -148,6 +188,9 @@ export function AdminPlayerDiagnostics({
                   {date(s.lastAttempt.finishedAt)}
                 </p>
                 <p>{attemptActivity(s, context)}</p>
+                {s.lastAttempt.pendingReason && (
+                  <p>{PENDING_LABELS[s.lastAttempt.pendingReason]}</p>
+                )}
               </>
             ) : (
               <p>Desconocida; sin intento registrado.</p>

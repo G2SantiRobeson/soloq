@@ -6,6 +6,7 @@ import { PLATFORMS, PLATFORM_LABELS } from "@/lib/routing";
 import { CURRENT_SEASON } from "@/lib/season";
 import type { AdminPlayer, AdminSyncContext, IndividualSyncResult } from "@/lib/admin-sync";
 import { AdminPlayerDiagnostics } from "./admin-player-diagnostics";
+import type { SyncPlayerResult } from "@/lib/sync-scheduling";
 export type { AdminPlayer } from "@/lib/admin-sync";
 import {
   AdminRequestError,
@@ -14,7 +15,13 @@ import {
   type AdminAction,
   type AdminError,
 } from "@/lib/admin-errors";
-type Result = { message?: string; results?: { status: string }[]; result?: IndividualSyncResult };
+type Result = {
+  message?: string;
+  results?: SyncPlayerResult[];
+  backfill?: { results: SyncPlayerResult[] };
+  outcome?: "success" | "partial" | "failed";
+  result?: IndividualSyncResult;
+};
 async function request(path: string, method: string, data?: unknown): Promise<Result> {
   let response: Response;
   try {
@@ -107,6 +114,7 @@ export function AdminPanel({
   const router = useRouter();
   const ids = useId();
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [batch, setBatch] = useState<Result | null>(null);
   const [notice, setNotice] = useState<{
     message: string;
     error: boolean;
@@ -149,15 +157,17 @@ export function AdminPanel({
     actionInFlight.current = true;
     setPendingAction(key);
     setNotice(null);
+    setBatch(null);
     try {
       const result = await request(path, method, data);
+      if (result.results) setBatch(result);
       const summary = result.results
         ? `${result.results.filter((r) => r.status === "complete").length} completos, ${result.results.filter((r) => r.status === "partial").length} parciales, ${result.results.filter((r) => r.status === "error").length} con error.`
         : undefined;
       setNotice({
         message: result.message ?? summary ?? success,
-        error: false,
-        partial: result.result?.status === "partial",
+        error: result.outcome === "failed",
+        partial: result.result?.status === "partial" || result.outcome === "partial",
       });
       if (action === "delete") deleted.current = true;
       setDeleting(null);
@@ -352,7 +362,12 @@ export function AdminPanel({
                     {PLATFORM_LABELS[p.platform]} ({p.platform}) ·{" "}
                     {p.enabled ? "Seguimiento activo" : "Seguimiento pausado"}
                   </p>
-                  <AdminPlayerDiagnostics player={p} context={context} />
+                  <AdminPlayerDiagnostics
+                    player={p}
+                    context={context}
+                    recentResult={batch?.results?.find((r) => r.playerId === p.id)}
+                    historyResult={batch?.backfill?.results.find((r) => r.playerId === p.id)}
+                  />
                 </div>
                 <div className="admin-actions">
                   <button

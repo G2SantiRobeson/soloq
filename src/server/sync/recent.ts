@@ -36,8 +36,15 @@ export async function importRecent(
   );
   let imported = 0;
   let offset = 0;
-  if (end <= start) return { playerId: player.id, status: "partial" as const, imported };
+  if (end <= start)
+    return {
+      playerId: player.id,
+      status: "partial" as const,
+      imported,
+      reason: "window_not_ready" as const,
+    };
   for (;;) {
+    client.assertBudget();
     const ids = await client.matchIds(
       player.platform,
       player.puuid,
@@ -45,7 +52,7 @@ export async function importRecent(
       end.getTime() / 1000,
       offset,
     );
-    // A rejected request (including a deadline before dispatch) cannot demote this player.
+    // This remains a successful IDs response marker, separate from scheduling opportunities.
     if (!offset)
       await db()
         .update(players)
@@ -61,7 +68,14 @@ export async function importRecent(
     const saved = new Set(existing.map((row) => row.id));
     for (const id of unique) {
       if (saved.has(id)) continue;
-      if (imported >= budget) return { playerId: player.id, status: "partial" as const, imported };
+      client.assertBudget();
+      if (imported >= budget)
+        return {
+          playerId: player.id,
+          status: "partial" as const,
+          imported,
+          reason: "batch_limit" as const,
+        };
       let match;
       try {
         match = await client.match(player.platform, id);

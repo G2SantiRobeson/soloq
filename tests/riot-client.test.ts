@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { RiotClient, RiotError, retryAfterMs, SyncDeadline } from "@/server/riot/client";
+import {
+  RiotClient,
+  RiotError,
+  retryAfterMs,
+  SyncBudget,
+  SyncDeadline,
+} from "@/server/riot/client";
 afterEach(() => vi.unstubAllEnvs());
 function setup(responses: Response[]) {
   vi.stubEnv("RIOT_API_KEY", "test-only-not-a-real-key");
@@ -15,6 +21,111 @@ function setup(responses: Response[]) {
   return { client, fetcher, sleep };
 }
 describe("Riot retry and routing", () => {
+  it("caps physical requests across a slot and retains pacing in the next slot", async () => {
+    const { client, fetcher, sleep } = setup([Response.json([]), Response.json([])]);
+    await expect(
+      client.withBudget({ deadline: 30000, requests: 1 }, async () => {
+        await client.matchIds("LA2", "p", 1, 2, 0);
+        await client.matchIds("LA2", "p", 1, 2, 100);
+      }),
+    ).rejects.toMatchObject({ reason: "request_budget" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await client.withBudget({ deadline: 30000, requests: 1 }, () =>
+      client.matchIds("LA2", "q", 1, 2, 0),
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(1300);
+  });
+  it("counts retry dispatches and preserves a 429 when the slot cannot retry", async () => {
+    const { client, fetcher, sleep } = setup([
+      new Response("", { status: 429, headers: { "Retry-After": "3" } }),
+      Response.json([]),
+    ]);
+    await expect(
+      client.withBudget({ deadline: 30000, requests: 1 }, () =>
+        client.matchIds("LA2", "p", 1, 2, 0),
+      ),
+    ).rejects.toMatchObject({ status: 429, retryAfterMs: 3000 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await client.withBudget({ deadline: 30000, requests: 1 }, () =>
+      client.matchIds("LA2", "q", 1, 2, 0),
+    );
+    expect(sleep).toHaveBeenCalledWith(3000);
+  });
+  it("finishes a time slot partially without invalidating the global client", async () => {
+    const { client, fetcher } = setup([Response.json([])]);
+    await expect(
+      client.withBudget({ deadline: 11000, requests: 12 }, () =>
+        client.matchIds("LA2", "p", 1, 2, 0),
+      ),
+    ).rejects.toBeInstanceOf(SyncBudget);
+    expect(fetcher).not.toHaveBeenCalled();
+    await client.matchIds("LA2", "p", 1, 2, 0);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("does not dispatch when a pacing sleep overruns the slot", async () => {
+    vi.stubEnv("RIOT_API_KEY", "test-only-not-a-real-key");
+    let now = 0;
+    const fetcher = vi.fn<typeof fetch>(async () => Response.json([]));
+    const client = new RiotClient(120000, {
+      now: () => now,
+      fetcher,
+      sleep: async () => {
+        now = 35000;
+      },
+    });
+    await client.matchIds("LA2", "p", 1, 2, 0);
+    await expect(
+      client.withBudget({ deadline: 30000, requests: 12 }, () =>
+        client.matchIds("LA2", "q", 1, 2, 0),
+      ),
+    ).rejects.toMatchObject({ reason: "time_budget" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("does not hide a 429 when Retry-After exceeds the remaining player time", async () => {
+    const { client, fetcher } = setup([
+      new Response("", { status: 429, headers: { "Retry-After": "25" } }),
+    ]);
+    await expect(
+      client.withBudget({ deadline: 30000, requests: 12 }, () =>
+        client.matchIds("LA2", "p", 1, 2, 0),
+      ),
+    ).rejects.toMatchObject({ status: 429, retryAfterMs: 25000 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it.each(["network", "timeout", "5xx"])(
+    "keeps %s failures real when retry capacity ends",
+    async (kind) => {
+      vi.stubEnv("RIOT_API_KEY", "test-only-not-a-real-key");
+      const fetcher = vi.fn<typeof fetch>(async () => {
+        if (kind === "5xx") return new Response("", { status: 503 });
+        throw new Error(kind === "timeout" ? "AbortError" : "network failure");
+      });
+      const client = new RiotClient(30000, { fetcher, now: () => 0 });
+      await expect(
+        client.withBudget({ deadline: 30000, requests: 1 }, () =>
+          client.matchIds("LA2", "p", 1, 2, 0),
+        ),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
+  it("clamps pacing to at least 1300 ms", async () => {
+    vi.stubEnv("RIOT_API_KEY", "test-only-not-a-real-key");
+    let now = 0;
+    const sleep = vi.fn(async (ms: number) => {
+      now += ms;
+    });
+    const client = new RiotClient(30000, {
+      interval: 1,
+      sleep,
+      now: () => now,
+      fetcher: async () => Response.json([]),
+    });
+    await client.matchIds("LA2", "p", 1, 2, 0);
+    await client.matchIds("LA2", "q", 1, 2, 0);
+    expect(sleep).toHaveBeenCalledWith(1300);
+  });
   it("honors Retry-After then succeeds without exposing key in URL", async () => {
     const { client, fetcher, sleep } = setup([
       new Response("", { status: 429, headers: { "Retry-After": "3" } }),

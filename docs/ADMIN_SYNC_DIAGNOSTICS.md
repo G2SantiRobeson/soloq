@@ -84,4 +84,9 @@ acciones anteriores. Pruebas de render verifican etiquetas y controles. `/dev/ad
 No requiere migraciones adicionales. Depende de 0005, aplicada previamente en staging.
 No se ejecutan sincronizaciones reales, migraciones ni pruebas contra Neon. La comprobación
 real de la nueva operación en Vercel Preview requiere autorización posterior independiente.
-Scheduler, observabilidad durable de workers y planificación global quedan fuera de esta fase.
+La Fase 03.B.4 añade límites y planificación global; ver [FAIR_SCHEDULING.md](./FAIR_SCHEDULING.md).
+El panel muestra el motivo del último parcial persistido y, tras Actualizar todos, los
+resultados de rango/recientes e histórico de cada jugador, incluidos los no atendidos.
+Esta última respuesta es temporal y se limpia al iniciar otra acción o recargar el panel.
+Los parciales esperados no crean errores; los errores previos pendientes siguen visibles.
+Para rondas del scheduler, consultar JSON y logs: no se persiste un listado de cada batch.

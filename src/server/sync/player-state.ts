@@ -11,6 +11,7 @@ import type {
   PlayerSyncStep,
 } from "@/lib/player-sync-state";
 import { RiotError, SyncDeadline } from "../riot/client";
+import type { PendingReason } from "@/lib/sync-scheduling";
 
 const errorColumns = {
   rank: players.rankError,
@@ -51,6 +52,7 @@ export function finishPlayerSyncPhase(
   attempt: PlayerSyncAttempt,
   outcome: Exclude<PlayerSyncAttempt["outcome"], "running">,
   error?: PlayerSyncError,
+  pendingReason?: PendingReason,
 ) {
   const phase = attempt.phase;
   const complete = outcome === "success";
@@ -67,7 +69,12 @@ export function finishPlayerSyncPhase(
         >`coalesce(${sql.join(otherErrors, sql`, `)}, case when ${players.syncError} = ${errorColumns[phase]}->>'message' then null else ${players.syncError} end)`
       : undefined;
   return {
-    lastSyncAttempt: { ...attempt, finishedAt: new Date().toISOString(), outcome },
+    lastSyncAttempt: {
+      ...attempt,
+      finishedAt: new Date().toISOString(),
+      outcome,
+      ...(pendingReason ? { pendingReason } : {}),
+    },
     rankError: phase === "rank" ? (error ?? (complete ? null : undefined)) : undefined,
     recentError: phase === "recent" ? (error ?? (complete ? null : undefined)) : undefined,
     backfillError: phase === "history" ? (error ?? (complete ? null : undefined)) : undefined,

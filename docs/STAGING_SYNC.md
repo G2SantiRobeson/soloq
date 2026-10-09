@@ -5,6 +5,8 @@
 El cron y Actualizar todos usan el lease PostgreSQL existente, un cliente Riot serial,
 pacing mínimo de 1300 ms, presupuesto global de 230 s y máximo HTTP declarado de 300 s.
 No configurar otro consumidor de la misma clave que ignore el lease.
+El lease dura 330 s para cubrir ese máximo HTTP con margen; al finalizar normalmente
+se libera con el cooldown habitual, no se espera todo ese plazo.
 
 1. **Recientes:** identidad, summoner y ranked; después una ventana independiente de
    `scan_*`. Inicio: `lastSyncedAt - 24 h`, acotado al inicio de temporada. Sin cobertura
@@ -13,7 +15,12 @@ No configurar otro consumidor de la misma clave que ignore el lease.
    acotado al fin de temporada. Cada jugador puede añadir hasta cinco participaciones
    nuevas por pasada. Las ya guardadas no consumen ese cupo ni se vuelven a descargar.
    Modos excluidos y 404 no consumen el cupo, aunque sus requests sí consumen tiempo.
-2. **Historial:** solo después de recorrer la pasada reciente, y si todavía hay tiempo.
+   La pasada dispone de hasta 180 s. Cada turno global tiene hasta 30 s y 12 despachos
+   HTTP, incluyendo IDs, detalles excluidos/404 y reintentos. Se conserva el cliente
+   serial y su pacing entre turnos. Un turno acotado permite seguir con otro jugador.
+2. **Historial:** después de la pasada reciente, incluso si quedaron jugadores sin turno.
+   Usa el tiempo restante de los 230 s globales (reserva nominal de 50 s; puede aprovechar
+   tiempo reciente no utilizado), hasta 20 s y 6 despachos HTTP por jugador.
    Retoma `scan_start/end/offset/pending/exhausted`, hasta 25 IDs por jugador. Prioriza
    backfills con `backfillUpdatedAt` antiguo, sin cambiar la prioridad de recientes.
    No se vuelve a recorrer normalmente una temporada cuyo backfill ya terminó.
@@ -21,6 +28,13 @@ No configurar otro consumidor de la misma clave que ignore el lease.
    anteriores al overlap reciente: el antiguo `lastSyncedAt` podía indicar una
    finalización mucho posterior al `scanEnd` cubierto. Esto usa el cursor existente,
    sin reiniciar la temporada ni cambiar marcas recientes.
+   Un jugador con error real en rango/recientes queda excluido de esta pasada histórica.
+   Los pausados quedan fuera de ambas pasadas y del servicio de histórico individual.
+
+Los números anteriores son límites internos de trabajo, no cuotas oficiales de Riot.
+No garantizan completar toda la comunidad en una ronda. Se deja un margen de 12 s antes
+de despachar (timeout HTTP de 10 s); el tiempo de SQL depende de la base y del límite
+efectivo de la función. Detalle de auditoría y limitaciones: [FAIR_SCHEDULING.md](FAIR_SCHEDULING.md).
 
 MATCH-V5 sigue importando exclusivamente `STANDARD_QUEUES`, map 11 y modo CLASSIC.
 El historial cubre la temporada; 7d/30d siguen siendo filtros de consulta. Los snapshots
@@ -29,7 +43,10 @@ ranked siguen siendo observaciones Riot reales, independientes del backfill.
 ## Marcas de tiempo y resultados
 
 - `lastAttemptAt`: Riot devolvió correctamente una página de IDs recientes, incluso
-  vacía. Un deadline anterior a esa respuesta no baja la prioridad del jugador.
+  vacía. Su semántica permanece intacta. La planificación usa la última oportunidad
+  registrada entre esta marca, `rankCheckedAt`, errores de rango/recientes y el inicio
+  de la última fase no histórica. Ofrecer un turno fallido/interrumpido también rota
+  al jugador; los que no recibieron turno conservan prioridad.
 - `lastSyncedAt`: corte superior cuya ventana reciente se recorrió completamente.
   Ni cupo agotado, página pendiente, deadline ni error lo avanzan. Un backfill tampoco.
 - `rankCheckedAt`: última respuesta oficial LEAGUE-V4 persistida, incluso sin cambios
@@ -43,12 +60,22 @@ ranked siguen siendo observaciones Riot reales, independientes del backfill.
   Un error o deadline exclusivamente histórico se reporta en `backfill` y no invalida
   la cobertura reciente. Trabajos individuales no modifican el éxito global.
 
+Recientes ordena por oportunidad más antigua, cobertura más antigua, creación e ID.
+Histórico ordena por `backfillUpdatedAt`, creación e ID, independientemente de recientes.
+Así se evita que fallos previos a IDs mantengan permanentemente un jugador delante.
+
 El JSON conserva `results` por jugador y añade `outcome`, `recent` y `backfill`.
 `recent.eligible/complete/pending/errors` son los contadores operativos; `visited`
 cuenta llamadas al jugador, no garantiza una respuesta Riot. `pending` incluye
 incompletos, errores y jugadores que no llegaron a ejecutarse. El deadline global
 limita la pasada; quienes quedan fuera conservan prioridad y el resultado es parcial.
 El backfill incluye resultados y contadores propios. HTTP 200 no implica éxito total.
+`results` incluye ahora todos los elegibles: los no atendidos llevan `attempted:false`
+y `reason:execution_budget`. `recent.budgetPending` cuenta parciales por tiempo,
+solicitudes, lote y falta de turno; `errors` cuenta fallos reales de esta ejecución.
+Histórico incluye `visited` y razones `recent_error`/`riot_backoff` si no pudo ejecutarse.
+Los mismos IDs y motivos se registran sin datos personales en logs de finalización;
+un aborto reciente 401/403/429 registra los no atendidos antes de propagar el error.
 
 Al reintentar, se vuelve a paginar recientes desde su inicio con un nuevo corte estable
 para esa llamada. Las participaciones persistidas permiten continuar sin un cursor nuevo.
@@ -59,8 +86,11 @@ No hay cambio de schema ni migración.
 401/403/429 en recientes abortan la ejecución como antes. El cliente respeta retries
 acotados y `Retry-After`; el lease conserva cooldown incluso si el 429 aparece en
 historial después de completar recientes. No hay retries externos inmediatos.
-Un deadline reciente termina parcial sin iniciar historial; uno histórico conserva
-el éxito reciente. Al agotar el cupo reciente se continúa con el siguiente jugador.
+Un límite por jugador termina parcial y continúa con el siguiente turno; al agotar la
+pasada reciente se intenta histórico con el tiempo reservado. Un deadline global real
+impide nuevos requests. Un 429 detectado antes de agotar el turno sigue siendo un error
+Riot y conserva Retry-After; nunca se convierte en un simple parcial por presupuesto.
+Los límites no borran errores anteriores ni modifican cobertura/cursor indebidamente.
 
 ## Elegir scheduler sin tocar Production
 

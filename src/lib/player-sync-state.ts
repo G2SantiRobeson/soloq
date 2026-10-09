@@ -1,4 +1,5 @@
 import type { HistoryStatus } from "./season";
+import type { PendingReason } from "./sync-scheduling";
 
 export type PlayerSyncPhase = "rank" | "recent" | "history";
 export type PlayerSyncStep =
@@ -13,6 +14,7 @@ export type PlayerSyncError = {
 export type PlayerSyncAttempt = {
   phase: PlayerSyncPhase;
   startedAt: string;
+  pendingReason?: PendingReason;
 } & (
   | { outcome: "running"; finishedAt: null }
   | { outcome: "success" | "partial" | "failed"; finishedAt: string }

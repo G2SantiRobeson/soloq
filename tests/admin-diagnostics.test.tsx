@@ -9,6 +9,33 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 const context = { serverNow: "2026-10-09T12:00:00Z", leaseUntil: null };
 
 describe("administrative diagnosis rendering", () => {
+  it("shows persisted budget partials and unvisited batch results separately from errors", () => {
+    const player = adminFixture(0, "not_started");
+    player.syncState.lastAttempt = {
+      phase: "recent",
+      startedAt: context.serverNow,
+      finishedAt: context.serverNow,
+      outcome: "partial",
+      pendingReason: "request_budget",
+    };
+    const html = renderToStaticMarkup(
+      <AdminPlayerDiagnostics
+        player={player}
+        context={context}
+        recentResult={{
+          playerId: player.id,
+          status: "partial",
+          attempted: false,
+          reason: "execution_budget",
+        }}
+        historyResult={{ playerId: player.id, status: "partial", reason: "batch_limit" }}
+      />,
+    );
+    expect(html).toMatch(/Sin turno por presupuesto de la ejecución/);
+    expect(html).toMatch(/Pendiente por presupuesto de solicitudes/);
+    expect(html).toMatch(/Lote parcial guardado; puede continuar/);
+    expect(html).not.toMatch(/Errores pendientes de revisión/);
+  });
   it("labels unknown observations independently and does not certify success", () => {
     const html = renderToStaticMarkup(
       <AdminPlayerDiagnostics player={adminFixture(0, "not_started")} context={context} />,
@@ -65,7 +92,7 @@ describe("administrative diagnosis rendering", () => {
       attemptActivity(player.syncState, { ...context, leaseUntil: "2026-10-09T12:01:00Z" }),
     ).toMatch(/no confirma este intento activo/);
     expect(
-      attemptActivity(player.syncState, { ...context, serverNow: "2026-10-09T12:05:00Z" }),
+      attemptActivity(player.syncState, { ...context, serverNow: "2026-10-09T12:06:00Z" }),
     ).toMatch(/Posiblemente interrumpido/);
   });
   it("retains all management controls and individual sync for completed history", () => {
