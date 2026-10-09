@@ -64,7 +64,9 @@ el éxito reciente. Al agotar el cupo reciente se continúa con el siguiente jug
 
 ## Elegir scheduler sin tocar Production
 
-`vercel.json` conserva el cron diario de Production. Vercel Cron no programa Preview.
+RC1 elimina el cron diario de `vercel.json`: Production será una demo sin sincronización.
+Las invocaciones residuales en demo devuelven `skipped` antes de consultar secretos.
+Vercel Cron no programa Preview; su eliminación no altera un scheduler externo de staging.
 `LADDER_SCHEDULER_ENABLED` solo informa a la UI: no crea trabajos.
 
 No añadir un workflow scheduled únicamente a `staging`: GitHub ejecuta `schedule`

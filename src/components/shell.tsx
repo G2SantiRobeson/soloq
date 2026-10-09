@@ -20,7 +20,8 @@ export function Header() {
 export function DemoBanner() {
   return isDemo() ? (
     <div className="demo-banner">
-      <span className="demo-pill">DEMO</span> Estás viendo jugadores y estadísticas ficticios.{" "}
+      <span className="demo-pill">DEMO</span> Jugadores, partidas, rangos y LP ficticios. No son
+      datos reales de Riot ni se sincronizan cuentas.
     </div>
   ) : null;
 }

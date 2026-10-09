@@ -31,6 +31,7 @@ export function Leaderboard({
   version,
   champions,
   sync,
+  demo = false,
   initialFilters = parseLadderFilters(view, {}),
 }: {
   players: PublicPlayer[];
@@ -38,6 +39,7 @@ export function Leaderboard({
   version: string | null;
   champions: ChampionCatalog;
   sync?: SyncStatus;
+  demo?: boolean;
   initialFilters?: LadderFilters;
 }) {
   const ids = useId();
@@ -174,7 +176,11 @@ export function Leaderboard({
           </div>
         </div>
       </div>
-      {sync && <SyncCountdown initial={sync} />}
+      {demo ? (
+        <p className="page-note">Demo pública · sin sincronización de cuentas reales.</p>
+      ) : (
+        sync && <SyncCountdown initial={sync} />
+      )}
       <div className="mobile-sort">
         <label>
           Ordenar por{" "}
@@ -228,8 +234,8 @@ export function Leaderboard({
                 "LP"
               ) : (
                 <InfoTip term="LP">
-                  LP oficiales actuales. Debajo: cambio neto entre los últimos registros comparables
-                  del mismo tier y división.
+                  {demo ? "LP ficticios de demo" : "LP oficiales actuales"}. Debajo: cambio neto
+                  entre los últimos registros comparables del mismo tier y división.
                 </InfoTip>
               )}
             </th>

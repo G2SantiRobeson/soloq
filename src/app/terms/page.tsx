@@ -1,20 +1,29 @@
 import type { Metadata } from "next";
+import { isDemo } from "@/server/env";
 export const metadata: Metadata = { title: "Términos de uso" };
+export const dynamic = "force-dynamic";
 export default function Terms() {
+  const demo = isDemo();
   return (
     <article className="legal-page">
-      <div className="eyebrow">DOCUMENTO INICIAL · PROTOTIPO</div>
+      <div className="eyebrow">{demo ? "DEMOSTRACIÓN PÚBLICA" : "INFORMACIÓN DEL SERVICIO"}</div>
       <h1>Términos de uso</h1>
       <p className="legal-lead">
-        SoloQ es un proyecto independiente para consultar el progreso de una comunidad de League of
+        SoloQ es un proyecto independiente para visualizar el progreso de una comunidad de League of
         Legends.
+        {demo && " Esta instancia es una demostración pública con datos ficticios."}
       </p>
       <h2>Servicio y datos</h2>
       <p>
-        El sitio se ofrece como prototipo. Los datos pueden estar incompletos, retrasados o
-        temporalmente no disponibles. El rango mostrado procede de Riot; SoloQ no calcula MMR ni
-        ofrece un sistema alternativo de ELO. Las estadísticas de combate se limitan al historial
-        importado.
+        {demo ? (
+          "Los jugadores, partidas, rangos, LP y premios mostrados son simulados. No son observaciones oficiales de Riot ni resultados de personas reales. La demo no importa historiales, verifica cuentas ni permite administración o sincronización. No calcula MMR."
+        ) : (
+          <>
+            Los datos pueden estar incompletos, retrasados o temporalmente no disponibles. El rango
+            mostrado procede de Riot; SoloQ no calcula MMR ni ofrece un sistema alternativo de ELO.
+            Las estadísticas de combate se limitan al historial importado.
+          </>
+        )}
       </p>
       <h2>Uso permitido</h2>
       <p>
@@ -25,20 +34,21 @@ export default function Terms() {
       <h2>Propiedad intelectual</h2>
       <p>
         League of Legends, sus personajes e imágenes son propiedad de Riot Games. SoloQ no está
-        avalado ni patrocinado por Riot. Los recursos del juego se usan conforme a las políticas
-        para desarrolladores.
+        avalado ni patrocinado por Riot. Mostrar esta demo no implica aprobación de Riot, acceso
+        autorizado a su API ni validación del producto por Riot.
       </p>
       <h2>Disponibilidad y cambios</h2>
       <p>
-        El responsable de esta instancia puede modificar o interrumpir el prototipo y corregir o
-        eliminar datos. Estos términos no limitan los derechos que te conceda la legislación
-        aplicable.
+        {demo
+          ? "Los fixtures y la presentación de la demo pueden cambiar o dejar de estar disponibles."
+          : "El responsable de esta instancia puede modificar o interrumpir el servicio y corregir o eliminar datos."}{" "}
+        Estos términos no limitan los derechos que te conceda la legislación aplicable.
       </p>
       <h2>Antes del lanzamiento</h2>
       <p>
-        El operador debe completar su identidad, contacto y condiciones específicas, revisar la
-        política de privacidad y registrar el producto en el Riot Developer Portal. Este documento
-        inicial debe revisarse antes de ofrecer un servicio de producción.
+        El propietario debe completar su identidad, contacto y condiciones aplicables, revisar
+        privacidad y alojamiento, y confirmar el estado del registro y la revisión del producto en
+        Riot Developer Portal. No se afirma que esos pasos estén completados.
       </p>
     </article>
   );

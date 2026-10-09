@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { adminSessions, loginAttempts } from "@/db/schema";
-import { requiredSecret } from "./env";
+import { isDemo, requiredSecret } from "./env";
 export const sessionCookie =
   process.env.NODE_ENV === "production" ? "__Host-soloq_admin" : "soloq_admin";
 export const cookieOptions = {
@@ -23,6 +23,7 @@ function hashToken(token: string) {
   return createHmac("sha256", requiredSecret("ADMIN_SESSION_SECRET")).update(token).digest("hex");
 }
 export async function authenticated() {
+  if (isDemo()) return false;
   const token = (await cookies()).get(sessionCookie)?.value;
   if (!token || !/^[a-f0-9]{64}$/.test(token)) return false;
   const [session] = await db()

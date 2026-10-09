@@ -29,6 +29,7 @@ import {
 import { computeAwards, formExtremes, formRanking } from "@/lib/awards";
 import { kda } from "@/lib/stats";
 import { signedLp } from "@/lib/lp-metrics";
+import { isDemo } from "@/server/env";
 export const metadata: Metadata = { title: "Métricas" };
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export default async function MetricsPage({
   searchParams: Promise<{ queue?: string; period?: string }>;
 }) {
   const params = await searchParams;
+  const demo = isDemo();
   const view = parseView(params.queue);
   const period = parsePeriod(params.period);
   const [players, overview, assets] = await Promise.all([
@@ -129,8 +131,10 @@ export default async function MetricsPage({
           <li className="chip-warning">
             <InfoTip align="start" term={<>{partial} con historial parcial</>}>
               El historial de {partial} jugadores está incompleto o incluye partidas no disponibles.
-              Los premios usan solo los datos importados y pueden cambiar al completarse. Los
-              filtros solo cambian la consulta.
+              {demo
+                ? "Los estados de cobertura son simulados y los premios usan únicamente fixtures ficticios."
+                : "Los premios usan solo los datos importados y pueden cambiar al completarse."}{" "}
+              Los filtros solo cambian la consulta.
             </InfoTip>
           </li>
         )}
@@ -141,14 +145,18 @@ export default async function MetricsPage({
           <Block
             title="Líder ranked"
             className="span-hero"
-            info="El líder se ordena por tier, división y LP oficiales actuales; no se reconstruye rango histórico con partidas."
+            info={
+              demo
+                ? "Clasificación con tier, división y LP ficticios para demostrar la aplicación."
+                : "El líder se ordena por tier, división y LP oficiales actuales; no se reconstruye rango histórico con partidas."
+            }
           >
             <HeroStat
               value={leader?.rank ? `${leader.rank.leaguePoints} LP` : "—"}
               badge={leader?.rank && <RankDisplay rank={leader.rank} emblem={false} />}
               player={leader}
               view={view}
-              note="Rango oficial actual"
+              note={demo ? "Rango ficticio de demo" : "Rango oficial actual"}
               aside={leader && <RankEmblem tier={leader.rank?.tier} size={64} decorative />}
             />
           </Block>
@@ -234,7 +242,7 @@ export default async function MetricsPage({
         <Block
           title="Salón de honor"
           className="span-half awards-honor"
-          info={`Premios del período seleccionado con mínimo ${HIGHLIGHT_MIN_GAMES} partidas válidas. Rachas, diversidad y rendimiento sobre el historial importado; LP solo entre snapshots oficiales comparables dentro del período.`}
+          info={`Premios del período seleccionado con mínimo ${HIGHLIGHT_MIN_GAMES} partidas válidas. Rachas, diversidad y rendimiento sobre el historial ${demo ? "ficticio" : "importado"}; LP solo entre snapshots ${demo ? "ficticios" : "oficiales"} comparables dentro del período.`}
         >
           <p className="awards-tagline">
             Hazañas de la Grieta · {PERIODS.find((p) => p.key === period)?.label}
@@ -340,7 +348,11 @@ export default async function MetricsPage({
           <Block
             title="Distribución de rangos"
             className="span-ranks"
-            info="Rango oficial actual de cada jugador."
+            info={
+              demo
+                ? "Rangos ficticios de los fixtures de demo."
+                : "Rango oficial actual de cada jugador."
+            }
           >
             {distribution.length ? (
               <ul className="rank-bars">

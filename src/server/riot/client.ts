@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { accountRouting, platformRouting, regionalRouting, type Platform } from "@/lib/routing";
 import { accountSchema, leagueSchema, matchSchema, summonerSchema } from "./schemas";
+import { isDemo } from "../env";
 export class RiotError extends Error {
   constructor(
     public status: number,
@@ -55,6 +56,8 @@ export class RiotClient {
       deps.interval ?? (Number.isFinite(configured) ? Math.max(1300, configured) : 1300);
   }
   async request<T>(host: string, path: string, schema: z.ZodType<T>): Promise<T> {
+    if (isDemo())
+      throw new Error("Las consultas autenticadas a Riot están deshabilitadas en modo demo.");
     const key = process.env.RIOT_API_KEY;
     if (!key) throw new RiotError(401);
     for (let attempt = 0; attempt < 3; attempt++) {

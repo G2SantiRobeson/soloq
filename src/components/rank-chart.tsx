@@ -101,7 +101,14 @@ function TrajectoryCursor({
   );
 }
 
-export function RankChart({ history }: { history: (Rank & { timestamp: string })[] }) {
+export function RankChart({
+  history,
+  demo = false,
+}: {
+  history: (Rank & { timestamp: string })[];
+  demo?: boolean;
+}) {
+  const snapshotLabel = demo ? "Snapshot ficticio de demo" : "Snapshot oficial de Riot";
   const [cursor, setCursor] = useState<RankCursor | null>(null);
   const [hovering, setHovering] = useState(false);
   const fillId = useId();
@@ -134,7 +141,7 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
   const highest = ranked.reduce((a, b) => (b.order > a.order ? b : a));
   const lowest = ranked.reduce((a, b) => (b.order < a.order ? b : a));
   const trend = net > 0 ? "sube" : net < 0 ? "baja" : "se mantiene";
-  const summary = `Rango oficial: ${trend} de ${ranked[0].label} a ${ranked.at(-1)?.label}. Punto más alto: ${highest.label} (${highest.date} UTC); más bajo: ${lowest.label} (${lowest.date} UTC). ${data.length} registros. La trayectoria entre puntos es aproximada; los intervalos indeterminados no se conectan.`;
+  const summary = `${demo ? "Rango ficticio" : "Rango oficial"}: ${trend} de ${ranked[0].label} a ${ranked.at(-1)?.label}. Punto más alto: ${highest.label} (${highest.date} UTC); más bajo: ${lowest.label} (${lowest.date} UTC). ${data.length} registros. La trayectoria entre puntos es aproximada; los intervalos indeterminados no se conectan.`;
   return (
     <figure className="chart">
       <figcaption className="chart-range">
@@ -155,7 +162,7 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
                 <strong>{cursor.label}</strong>
                 <span>
                   {cursor.official
-                    ? "Snapshot oficial de Riot"
+                    ? snapshotLabel
                     : "Interpolación aproximada · no es un registro de Riot"}
                 </span>
               </>
@@ -220,7 +227,7 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
                     {new Date(payload[0].payload.time).toLocaleString("es-CL", { timeZone: "UTC" })}{" "}
                     UTC
                     <strong>{payload[0].payload.label}</strong>
-                    Snapshot oficial de Riot
+                    {snapshotLabel}
                   </div>
                 ) : null
               }
@@ -250,14 +257,19 @@ export function RankChart({ history }: { history: (Rank & { timestamp: string })
         </ResponsiveContainer>
       </div>
       <ChartDataTable
-        caption="Registros de rango oficiales (fecha UTC)"
+        caption={
+          demo
+            ? "Registros ficticios de demo (fecha UTC)"
+            : "Registros de rango oficiales (fecha UTC)"
+        }
         columns={["Fecha", "Rango y LP"]}
         rows={data.map((d) => [`${d.date} UTC`, d.label] as const)}
       />
       <p className="chart-note">
-        Puntos sólidos: snapshots oficiales. Línea: interpolación aproximada, no LP reales de Riot
-        ni resultados de partidas. Las bandas representan tier y división. Cambios de rango,
-        Unranked, datos inválidos, reinicios y huecos de más de 7 días no se conectan.
+        Puntos sólidos: {demo ? "snapshots ficticios de demo" : "snapshots oficiales"}. Línea:
+        interpolación aproximada, no LP reales de Riot ni resultados de partidas. Las bandas
+        representan tier y división. Cambios de rango, Unranked, datos inválidos, reinicios y huecos
+        de más de 7 días no se conectan.
       </p>
     </figure>
   );

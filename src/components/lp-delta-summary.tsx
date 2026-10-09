@@ -1,11 +1,17 @@
 import { signedLp } from "@/lib/lp-metrics";
 import type { LpObservation } from "@/lib/history";
-export function LpDeltaSummary({ observations }: { observations: LpObservation[] }) {
+export function LpDeltaSummary({
+  observations,
+  demo = false,
+}: {
+  observations: LpObservation[];
+  demo?: boolean;
+}) {
   return (
     <section className="lp-summary" aria-labelledby="lp-summary-heading">
       <div className="section-heading">
         <h2 id="lp-summary-heading">Cambios de LP observados</h2>
-        <span>ENTRE REGISTROS REALES</span>
+        <span>{demo ? "ENTRE REGISTROS FICTICIOS" : "ENTRE REGISTROS REALES"}</span>
       </div>
       {!observations.length ? (
         <p className="metric-note">
@@ -38,10 +44,10 @@ export function LpDeltaSummary({ observations }: { observations: LpObservation[]
       )}
       <p className="metric-note">
         Confianza alta: una partida coincide temporalmente con el intervalo y con los contadores
-        oficiales, sin cambio de rango. Agregado: varias partidas; no se reparte el cambio entre
-        ellas. Ascensos, descensos o datos incompletos: indeterminado. Incluso una observación
-        aislada puede incluir ajustes externos; no es la cantidad de LP que Riot asignó a esa
-        partida.
+        {demo ? "simulados" : "oficiales"}, sin cambio de rango. Agregado: varias partidas; no se
+        reparte el cambio entre ellas. Ascensos, descensos o datos incompletos: indeterminado.
+        Incluso una observación aislada puede incluir ajustes externos; no es la cantidad de LP que
+        Riot asignó a esa partida.
       </p>
     </section>
   );

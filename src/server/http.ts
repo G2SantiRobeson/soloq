@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authenticated } from "./auth";
 import { RiotError, SyncDeadline } from "./riot/client";
 import { SyncBusy } from "./sync/lease";
+import { isDemo } from "./env";
 export class HttpError extends Error {
   constructor(
     public status: number,
@@ -12,6 +13,8 @@ export class HttpError extends Error {
   }
 }
 export async function requireAdmin() {
+  if (isDemo())
+    throw new HttpError(503, "La administración está deshabilitada en esta demo pública.");
   if (!(await authenticated())) throw new HttpError(401, "Inicia sesión como administrador.");
 }
 export function verifyOrigin(request: Request) {

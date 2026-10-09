@@ -31,16 +31,20 @@ import {
   PlayerSignatureSkeleton,
 } from "@/components/player-signature-section";
 import { toSignaturePlayer } from "@/lib/signature";
+import { isDemo } from "@/server/env";
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ queue?: string }> };
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { id } = await params;
   const player = await getProfile(id, parseView((await searchParams).queue));
   const title = player ? `${player.gameName}#${player.tagLine}` : "Jugador no encontrado";
-  const description = `Rango, campeones y partidas de ${title} en SoloQ.`;
+  const description = isDemo()
+    ? `Perfil ficticio de ${title} en la demo de SoloQ. Rangos, LP y partidas simulados.`
+    : `Rango, campeones y partidas de ${title} en SoloQ.`;
   return { title, description, openGraph: { title: `${title} | SoloQ`, description } };
 }
 export default async function PlayerPage({ params, searchParams }: Props) {
+  const demo = isDemo();
   const { id } = await params;
   const view = parseView((await searchParams).queue);
   const [player, assets] = await Promise.all([getProfile(id, view), getAssets()]);
@@ -201,7 +205,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
             <h2>
               <TrendingUp size={17} /> Progresión de rango
             </h2>
-            <span>REGISTROS OFICIALES</span>
+            <span>{demo ? "REGISTROS FICTICIOS" : "REGISTROS OFICIALES"}</span>
           </div>
           {view === "5v5" ? (
             <div className="chart-empty">
@@ -215,7 +219,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
                   ? `Seguimiento de rango desde ${new Date(player.trackingSince).toLocaleDateString("es-CL", { timeZone: "UTC" })}. No hay LP históricos anteriores a esta fecha.`
                   : "Aún no hay registros de rango en esta temporada."}
               </p>
-              <RankChart key={`${id}-${view}`} history={player.history} />
+              <RankChart key={`${id}-${view}`} history={player.history} demo={demo} />
             </>
           )}
         </section>
@@ -229,7 +233,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
             {seasonStart(player.platform).toLocaleDateString("es-CL", { timeZone: "UTC" })}. Este
             historial puede preceder al seguimiento de rango.
           </p>
-          <HistoryStatusLabel history={player.seasonHistory} />
+          <HistoryStatusLabel history={player.seasonHistory} demo={demo} />
           <div className="season-record">
             <strong>{player.stats.games} partidas</strong>
             <span>
@@ -246,11 +250,12 @@ export default async function PlayerPage({ params, searchParams }: Props) {
       </div>
       {view !== "5v5" && (
         <details className="profile-extra lp-history-details">
-          <summary>Cambios de LP entre registros oficiales</summary>
-          <LpDeltaSummary observations={player.lpObservations} />
+          <summary>Cambios de LP entre registros {demo ? "ficticios" : "oficiales"}</summary>
+          <LpDeltaSummary observations={player.lpObservations} demo={demo} />
         </details>
       )}
       <MatchHistory
+        demo={demo}
         key={`${id}-${view}`}
         rows={player.recent.map((m) => (
           <article
@@ -294,8 +299,10 @@ export default async function PlayerPage({ params, searchParams }: Props) {
         ))}
       />
       <p className="page-note">
-        Las estadísticas de combate y campeones corresponden al historial importado; pueden cubrir
-        menos partidas que el registro ranked de la temporada. Fechas en UTC.
+        {demo
+          ? "Las estadísticas de combate y campeones corresponden al historial ficticio de demo."
+          : "Las estadísticas de combate y campeones corresponden al historial importado; pueden cubrir menos partidas que el registro ranked de la temporada."}{" "}
+        Fechas en UTC.
       </p>
     </>
   );

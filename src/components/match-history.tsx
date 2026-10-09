@@ -4,7 +4,7 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import { matchPage, MATCH_SUMMARY_SIZE } from "@/lib/match-pagination";
 
 /** Keep the existing server-rendered match rows; only their visible window changes. */
-export function MatchHistory({ rows }: { rows: ReactNode[] }) {
+export function MatchHistory({ rows, demo = false }: { rows: ReactNode[]; demo?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [page, setPage] = useState(0);
   const id = useId();
@@ -28,8 +28,10 @@ export function MatchHistory({ rows }: { rows: ReactNode[] }) {
         <span>{rows.length} RESULTADOS DISPONIBLES</span>
       </div>
       <p className="metric-note">
-        Los remakes se conservan en el historial y se excluyen de las estadísticas importadas. Los
-        contadores ranked son los oficiales de Riot.
+        Los remakes se conservan en el historial y se excluyen de las estadísticas
+        {demo
+          ? " de demostración. Los contadores ranked son ficticios."
+          : " importadas. Los contadores ranked son los oficiales de Riot."}
       </p>
       {rows.length ? (
         <>
@@ -67,7 +69,11 @@ export function MatchHistory({ rows }: { rows: ReactNode[] }) {
           </div>
         </>
       ) : (
-        <p className="empty-copy">Las nuevas partidas aparecerán después de sincronizar.</p>
+        <p className="empty-copy">
+          {demo
+            ? "Este fixture no contiene partidas."
+            : "Las nuevas partidas aparecerán después de sincronizar."}
+        </p>
       )}
     </section>
   );

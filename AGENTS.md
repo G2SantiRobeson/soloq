@@ -28,9 +28,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Git branch: `main`
 - Vercel Production
 - Public URL: `https://soloq-teal.vercel.app`
-- Neon branch: `production`
+- Public demo only: `DEMO_MODE=true`, fictional fixtures, no PostgreSQL connection or migrations.
+- No database, Riot, admin, session, or cron credentials are needed for this demo.
 - Vercel Functions region: `gru1` / São Paulo
-- Do not use a Riot Development API key in Production.
+- Do not configure Riot Development API keys or synchronization jobs in Production Demo.
 
 ### Staging / Preview
 
@@ -72,7 +73,7 @@ SoloQ uses PostgreSQL on Neon with Drizzle ORM.
 - Do not generate a migration unless the Drizzle schema actually changed.
 - Always inspect generated SQL before applying a migration.
 - New migrations must be tested against Neon `staging` first.
-- Production must later receive the exact same reviewed migration.
+- Any future real-data Production must receive the exact same reviewed migration; the public demo does not require migrations.
 - Do not apply migrations against Production during ordinary development tasks.
 - Preserve historical match and ranked snapshot data.
 

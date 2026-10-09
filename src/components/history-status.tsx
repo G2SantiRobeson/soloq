@@ -1,6 +1,22 @@
 import { CURRENT_SEASON, HISTORY_LABELS, type HistoryStatus } from "@/lib/season";
-export function HistoryStatusLabel({ history }: { history?: HistoryStatus }) {
+export function HistoryStatusLabel({
+  history,
+  demo = false,
+}: {
+  history?: HistoryStatus;
+  demo?: boolean;
+}) {
   const status = history?.status ?? "not_started";
+  if (demo)
+    return (
+      <div className={`history-status history-${status}`}>
+        <strong>{CURRENT_SEASON.label} · Historial ficticio de demo</strong>
+        <span>
+          La cobertura y los estados de importación son simulados; no se consulta el historial de
+          Riot.
+        </span>
+      </div>
+    );
   return (
     <div className={`history-status history-${status}`}>
       <strong>
