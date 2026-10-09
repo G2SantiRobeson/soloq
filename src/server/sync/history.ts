@@ -7,6 +7,8 @@ import { isStandardMatch } from "@/lib/queues";
 import { isRemake } from "@/lib/match-outcome";
 import { RiotClient, RiotError } from "../riot/client";
 import { normalizeParticipant } from "../riot/normalize";
+import type { PlayerSyncAttempt } from "@/lib/player-sync-state";
+import { finishPlayerSyncPhase } from "./player-state";
 
 export const MATCH_PAGE_SIZE = 100;
 export const HISTORY_BATCH_SIZE = 25;
@@ -15,6 +17,7 @@ export async function importHistory(
   playerId: string,
   client: RiotClient,
   budget = HISTORY_BATCH_SIZE,
+  attempt: PlayerSyncAttempt,
 ) {
   const [original] = await db().select().from(players).where(eq(players.id, playerId));
   const start = seasonStart(original.platform);
@@ -52,7 +55,6 @@ export async function importHistory(
     .update(players)
     .set({
       scanEnd: end,
-      syncError: null,
       ...(backfill
         ? {
             backfillStatus: "running" as const,
@@ -73,7 +75,7 @@ export async function importHistory(
           scanOffset: 0,
           scanPending: [],
           scanExhausted: false,
-          syncError: null,
+          ...finishPlayerSyncPhase(attempt, "success"),
           updatedAt: new Date(),
           ...(backfill
             ? {

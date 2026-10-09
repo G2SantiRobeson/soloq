@@ -28,6 +28,7 @@ import { getWeeklyLp } from "@/server/weekly-lp";
 import { getSyncStatus } from "@/server/sync/status";
 import { GET as syncStatusRoute } from "@/app/api/ladder/sync-status/route";
 import { RECENT_OVERLAP_MS } from "@/server/sync/recent";
+import { toPlayerSyncState } from "@/server/sync/player-state";
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
 const cookieJar = vi.hoisted(() => new Map<string, string>());
@@ -528,6 +529,289 @@ async function syncPlayer(
   if (options.rankOnly || rank.status === "skipped") return rank;
   return syncBackfillPlayer(id, riot, options.budget);
 }
+describe("independent player synchronization state", () => {
+  afterEach(() => vi.restoreAllMocks());
+  async function row(id: string) {
+    return (await database.select().from(schema.players).where(eq(schema.players.id, id)))[0];
+  }
+
+  it("keeps the verified rank when recent imports fail, without advancing coverage or history", async () => {
+    const player = await addPlayer();
+    const coverage = new Date("2026-09-30T00:00:00Z");
+    await database
+      .update(schema.players)
+      .set({ lastSyncedAt: coverage, scanPending: ["historical_pending"], scanOffset: 100 })
+      .where(eq(schema.players.id, player.id));
+    const riot = client();
+    vi.mocked(riot.matchIds).mockRejectedValue(new RiotError(503));
+    await expect(syncRecentPlayer(player.id, riot)).rejects.toMatchObject({ status: 503 });
+    const saved = await row(player.id);
+    expect(saved.rankCheckedAt).not.toBeNull();
+    expect(saved).toMatchObject({
+      rankError: null,
+      recentError: { code: 503, step: "recent" },
+      backfillError: null,
+      lastSyncedAt: coverage,
+      scanPending: ["historical_pending"],
+      scanOffset: 100,
+      backfillStatus: "not_started",
+      lastAttemptAt: null,
+      lastSyncAttempt: { phase: "recent", outcome: "failed" },
+    });
+    expect(saved.lastSyncAttempt?.finishedAt).not.toBeNull();
+    expect(await database.select().from(schema.rankedSnapshots)).toHaveLength(2);
+    expect(toPlayerSyncState(saved).rank.checkedAt).toBe(saved.rankCheckedAt!.toISOString());
+    expect(toPlayerSyncState(saved).recent.coveredThrough).toBe(coverage.toISOString());
+  });
+
+  it("records a new rank check without inserting unchanged snapshots", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    await syncRecentPlayer(player.id, riot, { rankOnly: true });
+    const snapshots = await database.select().from(schema.rankedSnapshots);
+    const oldCheck = new Date("2026-09-01T00:00:00Z");
+    await database
+      .update(schema.players)
+      .set({ rankCheckedAt: oldCheck })
+      .where(eq(schema.players.id, player.id));
+    await syncRecentPlayer(player.id, riot, { rankOnly: true });
+    const saved = await row(player.id);
+    expect(saved.rankCheckedAt!.getTime()).toBeGreaterThan(oldCheck.getTime());
+    expect(saved.lastSyncAttempt).toMatchObject({ phase: "rank", outcome: "success" });
+    expect(saved.lastSyncedAt).toBeNull();
+    expect(saved.recentError).toBeNull();
+    expect(await database.select().from(schema.rankedSnapshots)).toEqual(snapshots);
+  });
+
+  it("preserves a historical error after successful rank and recent coverage", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    vi.mocked(riot.matchIds).mockRejectedValue(new RiotError(503));
+    await expect(syncBackfillPlayer(player.id, riot)).rejects.toThrow();
+    const failed = await row(player.id);
+    vi.mocked(riot.matchIds).mockResolvedValue([]);
+    await syncRecentPlayer(player.id, riot);
+    const saved = await row(player.id);
+    expect(saved.backfillError).toEqual(failed.backfillError);
+    expect(saved.backfillStatus).toBe("failed");
+    expect(saved.backfillUpdatedAt).toEqual(failed.backfillUpdatedAt);
+    expect(saved.scanEnd).toEqual(failed.scanEnd);
+    expect(saved.syncError).toBe(failed.backfillError?.message);
+    expect(saved.lastSyncAttempt).toMatchObject({ phase: "recent", outcome: "success" });
+    expect(saved.recentError).toBeNull();
+    expect(saved.lastSyncedAt).not.toBeNull();
+  });
+
+  it("does not let historical success erase a recent error", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    vi.mocked(riot.matchIds).mockRejectedValue(new RiotError(503));
+    await expect(syncRecentPlayer(player.id, riot)).rejects.toThrow();
+    const failed = await row(player.id);
+    vi.mocked(riot.matchIds).mockResolvedValue([]);
+    await syncBackfillPlayer(player.id, riot);
+    const saved = await row(player.id);
+    expect(saved.recentError).toEqual(failed.recentError);
+    expect(saved.rankCheckedAt).toEqual(failed.rankCheckedAt);
+    expect(saved.lastSyncedAt).toBeNull();
+    expect(saved.backfillError).toBeNull();
+    expect(saved.backfillStatus).toBe("completed");
+    expect(saved.syncError).toBe(failed.recentError?.message);
+    expect(saved.lastSyncAttempt).toMatchObject({ phase: "history", outcome: "success" });
+  });
+
+  it("clears only the resolved phase and retires classified legacy errors after all recover", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    vi.mocked(riot.matchIds).mockRejectedValue(new RiotError(404));
+    await expect(syncBackfillPlayer(player.id, riot)).rejects.toThrow();
+    vi.mocked(riot.matchIds).mockRejectedValue(new RiotError(503));
+    await expect(syncRecentPlayer(player.id, riot)).rejects.toThrow();
+    vi.mocked(riot.leagues).mockRejectedValue(new RiotError(403));
+    await expect(syncRecentPlayer(player.id, riot)).rejects.toThrow();
+    const failed = await row(player.id);
+    expect(failed.rankError).toMatchObject({ code: 403, step: "league" });
+    vi.mocked(riot.leagues).mockResolvedValue([]);
+    await syncRecentPlayer(player.id, riot, { rankOnly: true });
+    const rankRecovered = await row(player.id);
+    expect(rankRecovered.rankError).toBeNull();
+    expect(rankRecovered.recentError).toEqual(failed.recentError);
+    expect(rankRecovered.backfillError).toEqual(failed.backfillError);
+    vi.mocked(riot.matchIds).mockResolvedValue([]);
+    await syncRecentPlayer(player.id, riot);
+    const recentRecovered = await row(player.id);
+    expect(recentRecovered.recentError).toBeNull();
+    expect(recentRecovered.backfillError).toEqual(failed.backfillError);
+    expect(recentRecovered.syncError).toBe(failed.backfillError?.message);
+    await syncBackfillPlayer(player.id, riot);
+    const recovered = await row(player.id);
+    expect(recovered).toMatchObject({
+      rankError: null,
+      recentError: null,
+      backfillError: null,
+      syncError: null,
+    });
+  });
+
+  it("keeps old attempts and rank checks unknown, without classifying legacy errors", async () => {
+    const player = await addPlayer();
+    await database
+      .update(schema.players)
+      .set({
+        syncError: "Unclassified old error",
+        updatedAt: new Date(),
+        lastSyncedAt: new Date("2026-09-01T00:00:00Z"),
+      })
+      .where(eq(schema.players.id, player.id));
+    const unknown = toPlayerSyncState(await row(player.id));
+    expect(unknown.rank).toEqual({ checkedAt: null, error: null });
+    expect(unknown.lastAttempt).toBeNull();
+    expect(unknown.recent.coveredThrough).toBe("2026-09-01T00:00:00.000Z");
+    const riot = client();
+    vi.mocked(riot.matchIds).mockResolvedValue([]);
+    await syncRecentPlayer(player.id, riot);
+    await syncBackfillPlayer(player.id, riot);
+    expect((await row(player.id)).syncError).toBe("Unclassified old error");
+  });
+
+  it("preserves recent partial progress and the historical cursor across retries", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    vi.mocked(riot.matchIds).mockResolvedValue(["new_a", "new_b"]);
+    vi.mocked(riot.match).mockImplementation(async (_platform, id) => ({
+      ...match(id),
+      info: { ...match(id).info, gameStartTimestamp: Date.now() - 3600_000 },
+    }));
+    expect(await syncRecentPlayer(player.id, riot, { budget: 1 })).toMatchObject({
+      status: "partial",
+      imported: 1,
+    });
+    const partial = await row(player.id);
+    expect(partial.lastSyncedAt).toBeNull();
+    expect(partial.lastSyncAttempt).toMatchObject({ phase: "recent", outcome: "partial" });
+    expect(partial.scanStart).toEqual(player.scanStart);
+    expect(partial.scanEnd).toBeNull();
+    expect(partial.backfillStatus).toBe("not_started");
+    expect(await syncRecentPlayer(player.id, riot, { budget: 1 })).toMatchObject({
+      status: "complete",
+      imported: 1,
+    });
+    const saved = await row(player.id);
+    expect(saved.lastSyncedAt).not.toBeNull();
+    expect(saved.lastSyncAttempt).toMatchObject({ phase: "recent", outcome: "success" });
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(2);
+    expect(riot.match).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves historical partial cursors, distinguishes deadlines and recovers without duplicates", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    vi.mocked(riot.matchIds).mockResolvedValue(["old_a", "old_b", "old_c"]);
+    expect(await syncBackfillPlayer(player.id, riot, 1)).toMatchObject({
+      status: "partial",
+      imported: 1,
+    });
+    const partial = await row(player.id);
+    expect(partial).toMatchObject({
+      scanPending: ["old_b", "old_c"],
+      scanOffset: 3,
+      backfillProcessed: 1,
+      backfillDiscovered: 3,
+      backfillError: null,
+      lastSyncAttempt: { phase: "history", outcome: "partial" },
+    });
+    vi.mocked(riot.match).mockRejectedValue(new SyncDeadline());
+    await expect(syncBackfillPlayer(player.id, riot)).rejects.toBeInstanceOf(SyncDeadline);
+    const paused = await row(player.id);
+    expect(paused.scanPending).toEqual(partial.scanPending);
+    expect(paused.scanEnd).toEqual(partial.scanEnd);
+    expect(paused.backfillProcessed).toBe(1);
+    expect(paused).toMatchObject({
+      backfillStatus: "running",
+      backfillError: { code: "deadline" },
+      lastSyncAttempt: { phase: "history", outcome: "partial" },
+    });
+    vi.mocked(riot.match).mockImplementation(async (_platform, id) => match(id));
+    await syncBackfillPlayer(player.id, riot);
+    const saved = await row(player.id);
+    expect(saved).toMatchObject({
+      backfillStatus: "completed",
+      backfillProcessed: 3,
+      scanPending: [],
+      backfillError: null,
+      syncError: null,
+      lastSyncedAt: null,
+    });
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(3);
+    expect(riot.matchIds).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not clear an unresolved error on a merely partial retry", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    vi.mocked(riot.matchIds).mockRejectedValue(new RiotError(503));
+    await expect(syncBackfillPlayer(player.id, riot)).rejects.toThrow();
+    const failed = await row(player.id);
+    vi.mocked(riot.matchIds).mockResolvedValue(["pending_a", "pending_b"]);
+    await syncBackfillPlayer(player.id, riot, 1);
+    const partial = await row(player.id);
+    expect(partial.backfillError).toEqual(failed.backfillError);
+    expect(partial.syncError).toBe(failed.syncError);
+    expect(partial.lastSyncAttempt).toMatchObject({ phase: "history", outcome: "partial" });
+    expect(partial.backfillProcessed).toBe(1);
+  });
+
+  it("records a preparation failure without pretending LEAGUE-V4 was checked", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    vi.mocked(riot.identity).mockRejectedValue(new RiotError(404));
+    await expect(syncRecentPlayer(player.id, riot)).rejects.toThrow();
+    expect(await row(player.id)).toMatchObject({
+      rankCheckedAt: null,
+      rankError: { code: 404, step: "identity" },
+      lastSyncAttempt: { phase: "rank", outcome: "failed" },
+      lastAttemptAt: null,
+      lastSyncedAt: null,
+    });
+    expect(riot.leagues).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the check timestamp with snapshots if rank persistence fails", async () => {
+    const player = await addPlayer();
+    const riot = client();
+    await syncRecentPlayer(player.id, riot, { rankOnly: true });
+    const checkedAt = new Date("2026-09-01T00:00:00Z");
+    await database
+      .update(schema.players)
+      .set({ rankCheckedAt: checkedAt })
+      .where(eq(schema.players.id, player.id));
+    const snapshots = await database.select().from(schema.rankedSnapshots);
+    await pg.exec(
+      "alter table ranked_snapshots add constraint test_lp_limit check (league_points <= 100)",
+    );
+    try {
+      vi.mocked(riot.leagues).mockResolvedValue([
+        {
+          queueType: "RANKED_SOLO_5x5",
+          tier: "DIAMOND",
+          rank: "II",
+          leaguePoints: 200,
+          wins: 11,
+          losses: 5,
+        },
+      ]);
+      await expect(syncRecentPlayer(player.id, riot, { rankOnly: true })).rejects.toThrow();
+      expect(await row(player.id)).toMatchObject({
+        rankCheckedAt: checkedAt,
+        rankError: { code: "internal", step: "snapshots" },
+        lastSyncAttempt: { phase: "rank", outcome: "failed" },
+      });
+      expect(await database.select().from(schema.rankedSnapshots)).toEqual(snapshots);
+    } finally {
+      await pg.exec("alter table ranked_snapshots drop constraint test_lp_limit");
+    }
+  });
+});
 describe("PostgreSQL migrations and data integrity", () => {
   it("keeps remakes visible in history while excluding them from public combat aggregates", async () => {
     const player = await addPlayer();

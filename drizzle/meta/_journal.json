@@ -36,6 +36,13 @@
       "when": 1791317502399,
       "tag": "0004_far_wiccan",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791520550115,
+      "tag": "0005_player_sync_states",
+      "breakpoints": true
     }
   ]
 }

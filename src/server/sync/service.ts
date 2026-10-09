@@ -8,6 +8,8 @@ import { importHistory } from "./history";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
 import { withSyncLease } from "./lease";
 import { importRecent, RECENT_OVERLAP_MS } from "./recent";
+import type { PlayerSyncStep } from "@/lib/player-sync-state";
+import { beginPlayerSyncPhase, finishPlayerSyncPhase, playerSyncError } from "./player-state";
 export async function syncPlayer(
   playerId: string,
   client: RiotClient,
@@ -15,10 +17,16 @@ export async function syncPlayer(
 ) {
   const [player] = await db().select().from(players).where(eq(players.id, playerId));
   if (!player?.enabled) return { status: "skipped" as const, playerId, imported: 0 };
+  const rankAttempt = await beginPlayerSyncPhase(playerId, "rank");
+  let step: PlayerSyncStep = "identity";
   try {
     const identity = await client.identity(player.platform, player.puuid);
+    step = "summoner";
     const summoner = await client.summoner(player.platform, player.puuid);
+    step = "league";
     const leagues = await client.leagues(player.platform, player.puuid);
+    const checkedAt = new Date();
+    step = "snapshots";
     await db().transaction(async (tx) => {
       await tx
         .update(players)
@@ -27,6 +35,8 @@ export async function syncPlayer(
           tagLine: identity.tagLine,
           profileIconId: summoner.profileIconId,
           updatedAt: new Date(),
+          rankCheckedAt: checkedAt,
+          ...finishPlayerSyncPhase(rankAttempt, "success"),
         })
         .where(eq(players.id, playerId));
       for (const queue of RANKED_QUEUES) {
@@ -56,47 +66,72 @@ export async function syncPlayer(
           await tx.insert(rankedSnapshots).values({ playerId, queue, ...state });
       }
     });
-    if (options.rankOnly) return { status: "partial" as const, playerId, imported: 0 };
-    return await importRecent(player, client, options.budget);
   } catch (error) {
-    const message =
-      error instanceof RiotError || error instanceof SyncDeadline
-        ? error.message
-        : "Error de sincronización; consulta el registro del servidor.";
+    const failure = playerSyncError(error, step);
     await db()
       .update(players)
-      .set({
-        syncError: message,
-      })
+      .set(
+        finishPlayerSyncPhase(
+          rankAttempt,
+          error instanceof SyncDeadline ? "partial" : "failed",
+          failure,
+        ),
+      )
       .where(eq(players.id, playerId));
     console.warn("player_sync_failed", {
       playerId,
-      code:
-        error instanceof RiotError
-          ? error.status
-          : error instanceof SyncDeadline
-            ? "deadline"
-            : "internal",
+      phase: "rank",
+      code: failure.code,
     });
+    throw error;
+  }
+  if (options.rankOnly) return { status: "partial" as const, playerId, imported: 0 };
+  const recentAttempt = await beginPlayerSyncPhase(playerId, "recent");
+  try {
+    const result = await importRecent(player, client, options.budget, recentAttempt);
+    if (result.status === "partial")
+      await db()
+        .update(players)
+        .set(finishPlayerSyncPhase(recentAttempt, "partial"))
+        .where(eq(players.id, playerId));
+    return result;
+  } catch (error) {
+    const failure = playerSyncError(error, "recent");
+    await db()
+      .update(players)
+      .set(
+        finishPlayerSyncPhase(
+          recentAttempt,
+          error instanceof SyncDeadline ? "partial" : "failed",
+          failure,
+        ),
+      )
+      .where(eq(players.id, playerId));
+    console.warn("player_sync_failed", { playerId, phase: "recent", code: failure.code });
     throw error;
   }
 }
 export async function syncBackfillPlayer(playerId: string, client: RiotClient, budget?: number) {
+  const attempt = await beginPlayerSyncPhase(playerId, "history");
   try {
-    const result = await importHistory(playerId, client, budget);
+    const result = await importHistory(playerId, client, budget, attempt);
     await db()
       .update(players)
-      .set({ backfillUpdatedAt: new Date() })
+      .set({
+        backfillUpdatedAt: new Date(),
+        ...(result.status === "partial" ? finishPlayerSyncPhase(attempt, "partial") : {}),
+      })
       .where(eq(players.id, playerId));
     return result;
   } catch (error) {
     await db()
       .update(players)
       .set({
-        syncError:
-          error instanceof RiotError || error instanceof SyncDeadline
-            ? error.message
-            : "Error de importación histórica; consulta el registro del servidor.",
+        ...finishPlayerSyncPhase(
+          attempt,
+          error instanceof SyncDeadline ? "partial" : "failed",
+          playerSyncError(error, "history"),
+        ),
         backfillStatus: sql`case when ${players.backfillStatus} = 'completed' then 'completed' else ${error instanceof SyncDeadline ? "running" : "failed"} end`,
         backfillUpdatedAt: new Date(),
       })

@@ -7,6 +7,8 @@ import { seasonStart, seasonEnd } from "@/lib/season";
 import { isRemake } from "@/lib/match-outcome";
 import { RiotClient, RiotError } from "../riot/client";
 import { normalizeParticipant } from "../riot/normalize";
+import type { PlayerSyncAttempt } from "@/lib/player-sync-state";
+import { finishPlayerSyncPhase } from "./player-state";
 
 export const RECENT_BATCH_SIZE = 5;
 export const RECENT_OVERLAP_MS = 86400_000;
@@ -17,6 +19,7 @@ export async function importRecent(
   player: typeof players.$inferSelect,
   client: RiotClient,
   budget = RECENT_BATCH_SIZE,
+  attempt: PlayerSyncAttempt,
 ) {
   const end = new Date(
     Math.floor(
@@ -101,7 +104,11 @@ export async function importRecent(
     if (ids.length >= 100) continue;
     await db()
       .update(players)
-      .set({ lastSyncedAt: end, syncError: null, updatedAt: new Date() })
+      .set({
+        lastSyncedAt: end,
+        updatedAt: new Date(),
+        ...finishPlayerSyncPhase(attempt, "success"),
+      })
       .where(eq(players.id, player.id));
     return { playerId: player.id, status: "complete" as const, imported };
   }

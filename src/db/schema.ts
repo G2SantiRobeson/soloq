@@ -12,6 +12,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type { Platform } from "../lib/routing";
 import type { RankedQueue } from "../lib/queues";
+import type { PlayerSyncAttempt, PlayerSyncError } from "../lib/player-sync-state";
 const time = (name: string) => timestamp(name, { withTimezone: true });
 export const players = pgTable("players", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -24,8 +25,16 @@ export const players = pgTable("players", {
   createdAt: time("created_at").defaultNow().notNull(),
   updatedAt: time("updated_at").defaultNow().notNull(),
   lastSyncedAt: time("last_synced_at"),
+  // Successful first recent-ID page; retain its scheduling semantics.
   lastAttemptAt: time("last_attempt_at"),
+  // Deprecated compatibility summary; unclassified legacy messages remain here.
   syncError: text("sync_error"),
+  // Validated LEAGUE-V4 observation, never inferred from updatedAt or matches.
+  rankCheckedAt: time("rank_checked_at"),
+  rankError: jsonb("rank_error").$type<PlayerSyncError>(),
+  recentError: jsonb("recent_error").$type<PlayerSyncError>(),
+  backfillError: jsonb("backfill_error").$type<PlayerSyncError>(),
+  lastSyncAttempt: jsonb("last_sync_attempt").$type<PlayerSyncAttempt>(),
   scanStart: time("scan_start").notNull(),
   scanEnd: time("scan_end"),
   scanOffset: integer("scan_offset").default(0).notNull(),

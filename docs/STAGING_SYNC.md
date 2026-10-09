@@ -32,6 +32,10 @@ ranked siguen siendo observaciones Riot reales, independientes del backfill.
   vacía. Un deadline anterior a esa respuesta no baja la prioridad del jugador.
 - `lastSyncedAt`: corte superior cuya ventana reciente se recorrió completamente.
   Ni cupo agotado, página pendiente, deadline ni error lo avanzan. Un backfill tampoco.
+- `rankCheckedAt`: última respuesta oficial LEAGUE-V4 persistida, incluso sin cambios
+  de LP. Los errores de rango, recientes e histórico se guardan por separado, junto
+  con el último intento de fase. Contrato, transición de `syncError` y despliegue
+  aditivo antes del código: [PLAYER_SYNC_STATE.md](PLAYER_SYNC_STATE.md).
 - `lastSuccessfulSyncAt`: fin de una ejecución global con todos los jugadores
   elegibles completos en recientes. Puede avanzar con historial todavía pendiente.
 - `lastOutcome`: `running`, `success`, `partial` o `failed`. `partial` indica recientes
