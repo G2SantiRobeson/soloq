@@ -19,6 +19,7 @@ import { ChampionIdentity } from "@/components/champion-identity";
 import { Freshness } from "@/components/freshness";
 import { QueueTabs } from "@/components/queue-tabs";
 import { BackToLadder } from "@/components/back-link";
+import { MatchHistory } from "@/components/match-history";
 import { RankChart } from "@/components/rank-chart";
 import { PerformanceChart } from "@/components/performance-chart";
 import { HistoryStatusLabel } from "@/components/history-status";
@@ -51,6 +52,25 @@ export default async function PlayerPage({ params, searchParams }: Props) {
   );
   const record = view !== "5v5" && player.rank ? player.rank : player.stats;
   const rate = winrate(record.wins, record.losses);
+  const championRows = player.champions.map((c) => (
+    <div className="champion-row" key={c.championId}>
+      <ChampionIdentity {...championAsset(c.championId, c.champion, assets.champions)}>
+        {c.games} partidas · {kda(c.kills, c.deaths, c.assists).toFixed(2)} KDA
+      </ChampionIdentity>
+      <div className="champion-rate">
+        <strong
+          className={
+            c.games >= HIGHLIGHT_MIN_GAMES && winrate(c.wins, c.losses) >= 50 ? "positive" : ""
+          }
+        >
+          {c.games >= HIGHLIGHT_MIN_GAMES ? `${winrate(c.wins, c.losses).toFixed(0)}%` : "— WR"}
+        </strong>
+        <span>
+          {c.wins} V / {c.losses} D
+        </span>
+      </div>
+    </div>
+  ));
   return (
     <>
       <BackToLadder view={view} />
@@ -108,6 +128,74 @@ export default async function PlayerPage({ params, searchParams }: Props) {
             <RecentChampionForm matches={player.recent} champions={assets.champions} />
           </div>
         </section>
+        <div className="competitive-overview">
+          <section className="stat-strip" aria-label="Estadísticas del historial importado">
+            <div>
+              <span>KDA</span>
+              <strong>
+                {player.stats.games
+                  ? kda(player.stats.kills, player.stats.deaths, player.stats.assists).toFixed(2)
+                  : "—"}
+              </strong>
+            </div>
+            <div>
+              <span>CS / MIN</span>
+              <strong>
+                {player.stats.duration
+                  ? (player.stats.cs / (player.stats.duration / 60)).toFixed(1)
+                  : "—"}
+              </strong>
+            </div>
+            <div>
+              <span>DAÑO / PARTIDA</span>
+              <strong>
+                {player.stats.games
+                  ? Math.round(player.stats.damage / player.stats.games).toLocaleString("es-CL")
+                  : "—"}
+              </strong>
+            </div>
+            <div>
+              <span>PARTIDAS IMPORTADAS</span>
+              <strong>{player.stats.games}</strong>
+            </div>
+          </section>
+          <section className="panel champion-panel">
+            <div className="panel-title">
+              <h2>Pool de campeones</h2>
+              <span>HISTORIAL IMPORTADO</span>
+            </div>
+            {player.champions.length ? (
+              <>
+                {championRows.slice(0, 3)}
+                {championRows.length > 3 && (
+                  <details className="profile-extra">
+                    <summary>Ver pool completo ({championRows.length} campeones)</summary>
+                    {championRows.slice(3)}
+                  </details>
+                )}
+              </>
+            ) : (
+              <p className="empty-copy">Aún no hay partidas importadas en esta cola.</p>
+            )}
+            <p className="metric-note">
+              Winrate por campeón desde {HIGHLIGHT_MIN_GAMES} partidas; muestras menores muestran
+              V/D.
+            </p>
+          </section>
+          <details className="profile-extra">
+            <summary>Firma competitiva del jugador</summary>
+            <Suspense fallback={<PlayerSignatureSkeleton name={player.gameName} />}>
+              <PlayerSignatureSection
+                input={signatureInput}
+                view={view}
+                name={player.gameName}
+                tier={view === "5v5" ? null : (player.rank?.tier ?? null)}
+              />
+            </Suspense>
+          </details>
+        </div>
+      </div>
+      <div className="profile-progression-grid">
         <section className="panel evolution-panel">
           <div className="panel-title">
             <h2>
@@ -127,168 +215,84 @@ export default async function PlayerPage({ params, searchParams }: Props) {
                   ? `Seguimiento de rango desde ${new Date(player.trackingSince).toLocaleDateString("es-CL", { timeZone: "UTC" })}. No hay LP históricos anteriores a esta fecha.`
                   : "Aún no hay registros de rango en esta temporada."}
               </p>
-              <RankChart history={player.history} />
+              <RankChart key={`${id}-${view}`} history={player.history} />
             </>
           )}
         </section>
-      </div>
-      <Suspense fallback={<PlayerSignatureSkeleton name={player.gameName} />}>
-        <PlayerSignatureSection
-          input={signatureInput}
-          view={view}
-          name={player.gameName}
-          tier={view === "5v5" ? null : (player.rank?.tier ?? null)}
-        />
-      </Suspense>
-      {view !== "5v5" && <LpDeltaSummary observations={player.lpObservations} />}
-      <section className="panel season-performance">
-        <div className="panel-title">
-          <h2>Rendimiento de temporada</h2>
-          <span>{CURRENT_SEASON.label.toUpperCase()}</span>
-        </div>
-        <p className="metric-note">
-          Partidas desde{" "}
-          {seasonStart(player.platform).toLocaleDateString("es-CL", { timeZone: "UTC" })}. Este
-          historial puede preceder al seguimiento de rango.
-        </p>
-        <HistoryStatusLabel history={player.seasonHistory} />
-        <div className="season-record">
-          <strong>{player.stats.games} partidas</strong>
-          <span>
-            {player.stats.wins} V / {player.stats.losses} D
-          </span>
-          <strong>
-            {player.stats.games
-              ? `${winrate(player.stats.wins, player.stats.losses).toFixed(1)}% WR`
-              : "— WR"}
-          </strong>
-        </div>
-        <PerformanceChart points={player.performance} />
-      </section>
-      <section className="stat-strip" aria-label="Estadísticas del historial importado">
-        <div>
-          <span>KDA</span>
-          <strong>
-            {player.stats.games
-              ? kda(player.stats.kills, player.stats.deaths, player.stats.assists).toFixed(2)
-              : "—"}
-          </strong>
-        </div>
-        <div>
-          <span>CS / MIN</span>
-          <strong>
-            {player.stats.duration
-              ? (player.stats.cs / (player.stats.duration / 60)).toFixed(1)
-              : "—"}
-          </strong>
-        </div>
-        <div>
-          <span>DAÑO / PARTIDA</span>
-          <strong>
-            {player.stats.games
-              ? Math.round(player.stats.damage / player.stats.games).toLocaleString("es-CL")
-              : "—"}
-          </strong>
-        </div>
-        <div>
-          <span>PARTIDAS IMPORTADAS</span>
-          <strong>{player.stats.games}</strong>
-        </div>
-      </section>
-      <div className="profile-detail-grid">
-        <section className="panel champion-panel">
+        <section className="panel season-performance">
           <div className="panel-title">
-            <h2>Pool de campeones</h2>
-            <span>HISTORIAL IMPORTADO</span>
-          </div>
-          {player.champions.length ? (
-            player.champions.map((c) => (
-              <div className="champion-row" key={c.championId}>
-                <ChampionIdentity {...championAsset(c.championId, c.champion, assets.champions)}>
-                  {c.games} partidas · {kda(c.kills, c.deaths, c.assists).toFixed(2)} KDA
-                </ChampionIdentity>
-                <div className="champion-rate">
-                  <strong
-                    className={
-                      c.games >= HIGHLIGHT_MIN_GAMES && winrate(c.wins, c.losses) >= 50
-                        ? "positive"
-                        : ""
-                    }
-                  >
-                    {c.games >= HIGHLIGHT_MIN_GAMES
-                      ? `${winrate(c.wins, c.losses).toFixed(0)}%`
-                      : "— WR"}
-                  </strong>
-                  <span>
-                    {c.wins} V / {c.losses} D
-                  </span>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="empty-copy">Aún no hay partidas importadas en esta cola.</p>
-          )}
-          <p className="metric-note">
-            Winrate por campeón desde {HIGHLIGHT_MIN_GAMES} partidas; muestras menores muestran V/D.
-          </p>
-        </section>
-        <section className="panel match-panel">
-          <div className="panel-title">
-            <h2>Últimas partidas</h2>
-            <span>HASTA 40 RESULTADOS</span>
+            <h2>Rendimiento de temporada</h2>
+            <span>{CURRENT_SEASON.label.toUpperCase()}</span>
           </div>
           <p className="metric-note">
-            Los remakes se conservan en el historial y se excluyen de las estadísticas importadas.
-            Los contadores ranked son los oficiales de Riot.
+            Partidas desde{" "}
+            {seasonStart(player.platform).toLocaleDateString("es-CL", { timeZone: "UTC" })}. Este
+            historial puede preceder al seguimiento de rango.
           </p>
-          {player.recent.length ? (
-            player.recent.map((m) => (
-              <article
-                className={`match-row ${m.isRemake ? "match-remake" : m.win ? "match-win" : "match-loss"}`}
-                key={m.matchId}
-              >
-                <div className="match-outcome">
-                  <strong>{matchOutcome(m).toUpperCase()}</strong>
-                  <span>
-                    {Math.floor(m.duration / 60)}:{String(m.duration % 60).padStart(2, "0")}
-                  </span>
-                </div>
-                <ChampionIdentity {...championAsset(m.championId, m.champion, assets.champions)}>
-                  {m.position}
-                </ChampionIdentity>
-                <div className="match-kda">
-                  <strong>
-                    {m.kills} <i>/ {m.deaths} /</i> {m.assists}
-                  </strong>
-                  <span>K / D / A</span>
-                </div>
-                <div className="match-detail">
-                  <strong>
-                    {m.cs} CS{" "}
-                    <i>
-                      ·{" "}
-                      {m.killParticipation === null
-                        ? "—"
-                        : `${Math.round(m.killParticipation * 100)}%`}{" "}
-                      KP
-                    </i>
-                  </strong>
-                  <span>
-                    {STANDARD_QUEUES[m.queueId as keyof typeof STANDARD_QUEUES] ?? m.queueId} ·{" "}
-                    {new Date(m.timestamp).toLocaleDateString("es-CL", {
-                      timeZone: "UTC",
-                      day: "numeric",
-                      month: "short",
-                    })}
-                  </span>
-                </div>
-              </article>
-            ))
-          ) : (
-            <p className="empty-copy">Las nuevas partidas aparecerán después de sincronizar.</p>
-          )}
+          <HistoryStatusLabel history={player.seasonHistory} />
+          <div className="season-record">
+            <strong>{player.stats.games} partidas</strong>
+            <span>
+              {player.stats.wins} V / {player.stats.losses} D
+            </span>
+            <strong>
+              {player.stats.games
+                ? `${winrate(player.stats.wins, player.stats.losses).toFixed(1)}% WR`
+                : "— WR"}
+            </strong>
+          </div>
+          <PerformanceChart points={player.performance} />
         </section>
       </div>
+      {view !== "5v5" && (
+        <details className="profile-extra lp-history-details">
+          <summary>Cambios de LP entre registros oficiales</summary>
+          <LpDeltaSummary observations={player.lpObservations} />
+        </details>
+      )}
+      <MatchHistory
+        key={`${id}-${view}`}
+        rows={player.recent.map((m) => (
+          <article
+            className={`match-row ${m.isRemake ? "match-remake" : m.win ? "match-win" : "match-loss"}`}
+            key={m.matchId}
+          >
+            <div className="match-outcome">
+              <strong>{matchOutcome(m).toUpperCase()}</strong>
+              <span>
+                {Math.floor(m.duration / 60)}:{String(m.duration % 60).padStart(2, "0")}
+              </span>
+            </div>
+            <ChampionIdentity {...championAsset(m.championId, m.champion, assets.champions)}>
+              {m.position}
+            </ChampionIdentity>
+            <div className="match-kda">
+              <strong>
+                {m.kills} <i>/ {m.deaths} /</i> {m.assists}
+              </strong>
+              <span>K / D / A</span>
+            </div>
+            <div className="match-detail">
+              <strong>
+                {m.cs} CS{" "}
+                <i>
+                  ·{" "}
+                  {m.killParticipation === null ? "—" : `${Math.round(m.killParticipation * 100)}%`}{" "}
+                  KP
+                </i>
+              </strong>
+              <span>
+                {STANDARD_QUEUES[m.queueId as keyof typeof STANDARD_QUEUES] ?? m.queueId} ·{" "}
+                {new Date(m.timestamp).toLocaleDateString("es-CL", {
+                  timeZone: "UTC",
+                  day: "numeric",
+                  month: "short",
+                })}
+              </span>
+            </div>
+          </article>
+        ))}
+      />
       <p className="page-note">
         Las estadísticas de combate y campeones corresponden al historial importado; pueden cubrir
         menos partidas que el registro ranked de la temporada. Fechas en UTC.
