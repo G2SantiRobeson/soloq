@@ -153,11 +153,45 @@ describe("Production Demo without credentials or PostgreSQL", () => {
     const privacy = renderToStaticMarkup(<Privacy />);
     const terms = renderToStaticMarkup(<Terms />);
     expect(privacy).toMatch(/únicamente.*ficticios/);
-    expect(privacy).toMatch(/pendientes de publicación/);
+    expect(privacy).toMatch(/revisión de alojamiento, conservación y jurisdicción/);
     expect(privacy).not.toMatch(/Guardamos Riot ID/);
     expect(terms).toMatch(/No son observaciones oficiales/);
     expect(terms).not.toMatch(/rango mostrado procede de Riot/);
   });
+
+  it.each(["true", "false"])(
+    "publishes the authorized contact and preserves legal and mode distinctions with DEMO_MODE=%s",
+    (mode) => {
+      vi.stubEnv("DEMO_MODE", mode);
+      const privacy = renderToStaticMarkup(<Privacy />);
+      const terms = renderToStaticMarkup(<Terms />);
+      const footer = renderToStaticMarkup(<Footer />);
+      for (const markup of [privacy, terms, footer]) {
+        expect(markup).toContain("Yuusha1");
+        expect(markup).toContain('href="mailto:drg1212yt@gmail.com"');
+        expect(markup).not.toMatch(/contacto.*pendientes de publicación/);
+      }
+      for (const markup of [privacy, terms]) {
+        expect(markup).toContain(
+          "no sustituye la identidad legal del responsable cuando sea exigible",
+        );
+        expect(markup).toMatch(/pendientes/);
+      }
+      expect(terms).toContain("No se afirma que esos pasos estén");
+      expect(terms).toContain("Riot Developer Portal");
+      expect(footer).toMatch(/isn.*endorsed by Riot Games/);
+      if (mode === "true") {
+        expect(privacy).toMatch(/únicamente.*ficticios/);
+        expect(privacy).not.toContain("Guardamos Riot ID");
+        expect(terms).toContain("No son observaciones oficiales");
+      } else {
+        expect(privacy).toContain("Guardamos Riot ID");
+        expect(privacy).toContain("cookie de sesión HttpOnly");
+        expect(terms).toContain("mostrado procede de Riot");
+        expect(terms).not.toContain("No son observaciones oficiales");
+      }
+    },
+  );
 
   it("labels synthetic LP records instead of presenting demo snapshots as official Riot data", async () => {
     const profile = (await getProfile("demo-1", "soloq"))!;

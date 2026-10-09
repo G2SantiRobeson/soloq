@@ -8,12 +8,15 @@ Preview conserva la integración real con Neon staging y Riot.
 ## Resultado y límites
 
 **GO técnico para la demo aislada. NO-GO para el lanzamiento público hasta resolver
-los datos del responsable y verificar manualmente la configuración de Vercel.**
+las verificaciones legales aplicables y la configuración de Production en Vercel.**
 
 El código puede servir las rutas de demo sin PostgreSQL, sin Riot API Key y sin
-migraciones. No se ha publicado ni desplegado este RC1. No se han consultado secretos,
+migraciones. El RC1 `d4cf66ab359bd740dcae6cf63c7b418d038605ba` fue publicado en
+`origin/staging`; el propietario informa que fue validado en Vercel Preview.
+Este ajuste de contacto se prepara localmente y requiere autorización para publicarse.
+No se han consultado secretos,
 ejecutado migraciones, sincronizado cuentas ni accedido a Neon. La configuración
-efectiva de Vercel y el registro/revisión del producto por Riot no se han verificado.
+efectiva de Production en Vercel y el registro/revisión del producto por Riot no se han verificado en esta tarea.
 
 ## Hallazgos clasificados
 
@@ -24,7 +27,7 @@ efectiva de Vercel y el registro/revisión del producto por Riot no se han verif
 | Media                         | Banner genérico y etiquetas de LP, snapshots, contadores e importación presentaban fixtures como registros oficiales o cobertura de Riot. Metadatos y documentos públicos no describían claramente esta instancia.                                    | Banner, metadatos, notas, gráfica, historial y cobertura distinguen datos ficticios. Privacidad/términos describen las operaciones técnicas y los pendientes del propietario. |
 | Media, riesgo potencial       | `getSignatureBaseline` usaba una caché cuya entrada no distinguía el modo de datos. No hay evidencia operacional de reutilización incorrecta o exposición.                                                                                            | El modo `demo`/`live` es argumento de la función cacheada. La rama demo agrega fixtures directamente.                                                                         |
 | Defensa adicional             | La fábrica `db()` y `RiotClient.request()` no bloqueaban llamadas internas directas en demo. No se encontró una ruta pública demo que necesitara usarlas.                                                                                             | Rechazo antes de crear un cliente PostgreSQL o hacer una solicitud Riot, incluso con credenciales configuradas accidentalmente.                                               |
-| Bloqueo previo al lanzamiento | Identidad/contacto del responsable, conservación de registros del alojamiento y revisión del producto no están acreditados en el repositorio.                                                                                                         | Se identifican explícitamente como pendientes; no se inventan datos ni aprobaciones.                                                                                          |
+| Bloqueo previo al lanzamiento | El contacto público ya fue definido: Yuusha1, drg1212yt@gmail.com. La identificación legal aplicable, conservación del alojamiento y revisión del producto siguen pendientes.                                                                         | El contacto autorizado se publica; los pendientes legales y de Riot se mantienen sin inventar datos ni aprobaciones.                                                          |
 
 No se afirma que estos caminos hayan sido explotados en Production ni que existiera
 una filtración. Los hallazgos sobre accesos proceden de la revisión del código; las
@@ -160,7 +163,7 @@ cualquier acceso SQL o Riot autenticado hace fallar la suite demo. Incluyen cook
 residuales, JSON/IDs inválidos y credenciales dummy accidentalmente presentes. Las
 pruebas existentes de modo real utilizan dobles o bases efímeras locales.
 
-Resultados de RC1:
+Resultados de la auditoría original de RC1:
 
 - `npm run lint`: pasa.
 - `npm run typecheck`: pasa.
@@ -171,6 +174,15 @@ Resultados de RC1:
 - Navegador: búsqueda de un jugador, enlace al perfil, resumen de cinco partidas,
   expansión a diez, página siguiente y regreso; navegación a métricas, filtro 7d y
   cambio SoloQ/Flex manteniendo período; gráficos y premios presentes.
+
+Validación del ajuste de contacto público:
+
+- Lint y typecheck: pasan.
+- Test: 263 pruebas, 20 archivos; las dos regresiones adicionales comprueban contacto,
+  enlaces `mailto:`, pendientes legales, disclaimer y textos de ambos modos.
+- Build: pasa con `npm run build` en la copia aislada sin secretos, Node 24.19.0.
+- Las 39 comprobaciones HTTP de la demo siguen pasando sin conexiones PostgreSQL
+  o Riot autenticado. No se ejecutaron migraciones ni sincronizaciones reales.
 
 ## Archivos del ajuste
 
@@ -188,7 +200,11 @@ Resultados de RC1:
 
 ## Pendientes y recomendación
 
-El propietario debe completar identidad y contacto, confirmar las condiciones de
+El nombre público del desarrollador es **Yuusha1** y el correo de contacto autorizado
+es **[drg1212yt@gmail.com](mailto:drg1212yt@gmail.com)**. Se publican en `/privacy`, `/terms` y el footer.
+El nickname no sustituye una identidad legal cuando esta sea exigible.
+
+El propietario debe completar la identificación legal aplicable, confirmar las condiciones de
 alojamiento/conservación y la revisión aplicable a su jurisdicción, y acreditar el
 estado del producto en Riot Developer Portal. La demo no afirma aprobación de Riot.
 También debe revisar los scopes reales de Vercel: `DEMO_MODE=false` accidental en
@@ -196,10 +212,11 @@ Production no se transforma automáticamente en demo y exige las dependencias re
 
 La dependencia permitida de Data Dragon/CDN puede afectar imágenes o catálogo si
 está indisponible; los emblemas y campeones siguen teniendo recursos locales. No se
-validó un deployment remoto ni una sincronización real de staging en esta fase.
+inspeccionó un deployment remoto ni se ejecutó una sincronización real en este ajuste.
+La validación del RC1 publicado en Preview fue informada por el propietario.
 
 Recomendación: cerrar los pendientes del propietario, autorizar por separado la
-publicación del commit en `origin/staging` y validar Vercel Preview. Promocionar a
+publicación del ajuste de contacto en `origin/staging` y validar ese nuevo commit en Vercel Preview. Promocionar a
 `main` solo con autorización explícita posterior y configuración Production Demo
 revisada. No aplicar 0004/0005 en Production para servir esta demo. No avanzar a
 03.B.4 dentro del release candidate.

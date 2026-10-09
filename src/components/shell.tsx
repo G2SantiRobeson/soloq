@@ -37,6 +37,7 @@ export function Footer() {
           <Link href="/admin">Administración</Link>
           <Link href="/privacy">Privacidad</Link>
           <Link href="/terms">Términos</Link>
+          <a href="mailto:drg1212yt@gmail.com">Contacto · Yuusha1</a>
         </nav>
       </div>
       <p lang="en">

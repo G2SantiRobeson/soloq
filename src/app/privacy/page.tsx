@@ -62,12 +62,17 @@ export default function Privacy() {
           </>
         )}
       </p>
-      <h2>Solicitudes y responsable</h2>
+      <h2>Desarrollador y contacto público</h2>
       <p>
-        La identidad del responsable y su medio de contacto todavía están pendientes de publicación
-        por el propietario. Deben completarse antes del lanzamiento público, junto con la
-        información aplicable al alojamiento, conservación y jurisdicción. Esta página describe el
-        funcionamiento técnico; no afirma que esa revisión esté completada.
+        El desarrollador de SoloQ utiliza el nombre público <strong>Yuusha1</strong>. Para consultas
+        sobre la aplicación o privacidad, puedes escribir a{" "}
+        <a href="mailto:drg1212yt@gmail.com">drg1212yt@gmail.com</a>.
+      </p>
+      <p>
+        Este nickname no sustituye la identidad legal del responsable cuando sea exigible. La
+        identificación legal aplicable y la revisión de alojamiento, conservación y jurisdicción
+        siguen pendientes. Esta página describe el funcionamiento técnico; no afirma que esa
+        revisión esté completada.
       </p>
     </article>
   );

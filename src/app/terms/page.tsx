@@ -44,11 +44,18 @@ export default function Terms() {
           : "El responsable de esta instancia puede modificar o interrumpir el servicio y corregir o eliminar datos."}{" "}
         Estos términos no limitan los derechos que te conceda la legislación aplicable.
       </p>
-      <h2>Antes del lanzamiento</h2>
+      <h2>Desarrollador y contacto público</h2>
       <p>
-        El propietario debe completar su identidad, contacto y condiciones aplicables, revisar
-        privacidad y alojamiento, y confirmar el estado del registro y la revisión del producto en
-        Riot Developer Portal. No se afirma que esos pasos estén completados.
+        El desarrollador de SoloQ utiliza el nombre público <strong>Yuusha1</strong>. Puedes
+        contactar por correo en <a href="mailto:drg1212yt@gmail.com">drg1212yt@gmail.com</a>. Este
+        nickname no sustituye la identidad legal del responsable cuando sea exigible.
+      </p>
+      <h2>Verificaciones pendientes</h2>
+      <p>
+        Siguen pendientes la identificación legal aplicable, la revisión de las condiciones del
+        servicio, privacidad, alojamiento y conservación, y la confirmación del estado del registro
+        y la revisión del producto en Riot Developer Portal. No se afirma que esos pasos estén
+        completados.
       </p>
     </article>
   );
