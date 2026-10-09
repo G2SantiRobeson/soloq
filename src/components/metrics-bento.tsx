@@ -3,12 +3,13 @@ import type { ReactNode } from "react";
 import {
   CloudRain,
   Flame,
-  Gamepad2,
-  Ghost,
-  Skull,
-  Snowflake,
-  Swords,
-  ThumbsDown,
+  Layers,
+  Wheat,
+  Sprout,
+  Crosshair,
+  HandHeart,
+  HeartCrack,
+  Bird,
   TrendingDown,
   TrendingUp,
   Trophy,
@@ -89,18 +90,18 @@ export function HeroStat({
 }
 
 const ICONS: Record<string, LucideIcon> = {
-  "best-winrate": Trophy,
-  "best-kda": Swords,
-  "best-form": Flame,
   "best-climb": TrendingUp,
-  "most-games": Gamepad2,
   "win-streak": Zap,
-  "worst-winrate": ThumbsDown,
-  "worst-kda": Skull,
-  "worst-form": Snowflake,
+  "champion-diversity": Layers,
+  "best-farm": Wheat,
+  "damage-per-minute": Flame,
+  "most-assists": HandHeart,
+  "least-assists": HeartCrack,
   "worst-drop": TrendingDown,
-  "most-deaths": Ghost,
+  "most-deaths": Crosshair,
   "loss-streak": CloudRain,
+  "worst-farm": Sprout,
+  "zero-kills": Bird,
 };
 
 export function AwardList({ awards, view }: { awards: Award[]; view: View }) {
@@ -111,13 +112,21 @@ export function AwardList({ awards, view }: { awards: Award[]; view: View }) {
         return (
           <li key={award.key}>
             <Icon size={18} aria-hidden="true" className="award-icon" />
-            <span className="award-title">{award.title}</span>
+            <span className="award-title">
+              {award.title}
+              <InfoTip label={`Cómo se calcula: ${award.title}`} align="start">
+                {award.criterion}
+                {award.partial &&
+                  " Muestra parcial: el premio puede cambiar cuando se complete el historial."}
+              </InfoTip>
+            </span>
             {award.player ? (
               <>
                 <PlayerLink player={award.player} view={view} />
                 <span className="award-value">
                   {award.value}
                   {award.detail && <small>{award.detail}</small>}
+                  {award.partial && <small className="award-partial">Historial parcial</small>}
                 </span>
               </>
             ) : (

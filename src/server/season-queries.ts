@@ -11,6 +11,10 @@ import type { ResultSequence } from "@/lib/awards";
 import { seasonFilter } from "./season-filter";
 import { isDemo } from "./env";
 import { demoPlayers } from "./demo";
+import { getAwardMatchStats, getAwardLpIntervals } from "./award-queries";
+import { longestStreaks, type AwardMatchStats, type AwardLpInterval } from "@/lib/awards";
+import { comparableRankInterval } from "@/lib/rank-trajectory";
+import { periodStart } from "@/lib/season";
 
 export async function getPerformance(id: string, view: View): Promise<PerformancePoint[]> {
   // Compute the rolling last-20 window before selecting the final observation of each UTC day.
@@ -38,6 +42,7 @@ export async function getPerformance(id: string, view: View): Promise<Performanc
   }));
 }
 export async function getSeasonOverview(view: View, period: MetricsPeriod) {
+  const now = Date.now();
   if (isDemo()) {
     const roster = demoPlayers(view, period);
     const games = roster.flatMap((p) => p.recent).filter((m) => !m.isRemake);
@@ -70,6 +75,46 @@ export async function getSeasonOverview(view: View, period: MetricsPeriod) {
       activity: continuousActivity([...weeks.values()]),
       champions: [...champions.values()].sort((a, b) => b.games - a.games).slice(0, 8),
       uniqueGames: new Set(games.map((m) => m.matchId)).size,
+      awardStats: roster.map((p): AwardMatchStats => {
+        const valid = p.recent.filter((m) => !m.isRemake && m.duration > 0);
+        const streaks = longestStreaks(valid.toReversed().map((m) => m.win));
+        return {
+          playerId: p.id,
+          games: valid.length,
+          champions: new Set(valid.map((m) => m.championId)).size,
+          zeroKills: valid.filter((m) => m.kills === 0).length,
+          winStreak: streaks.win,
+          lossStreak: streaks.loss,
+          cs: valid.reduce((n, m) => n + m.cs, 0),
+          duration: valid.reduce((n, m) => n + m.duration, 0),
+          damage: valid.reduce((n, m) => n + m.damage, 0),
+          deaths: valid.reduce((n, m) => n + m.deaths, 0),
+          assists: valid.reduce((n, m) => n + m.assists, 0),
+        };
+      }),
+      lpIntervals:
+        view === "5v5"
+          ? []
+          : roster.flatMap((p): AwardLpInterval[] => {
+              const history = p.history.filter(
+                (s) =>
+                  Date.parse(s.timestamp) >= periodStart(p.platform, period, now).getTime() &&
+                  Date.parse(s.timestamp) < now,
+              );
+              return history.flatMap((after, index) => {
+                const before = history[index - 1];
+                return before && comparableRankInterval(before, after)
+                  ? [
+                      {
+                        playerId: p.id,
+                        delta: after.leaguePoints - before.leaguePoints,
+                        from: before.timestamp,
+                        to: after.timestamp,
+                      },
+                    ]
+                  : [];
+              });
+            }),
       recentForm: roster.map((p) => {
         const recent = p.recent.filter((m) => !m.isRemake).slice(0, RECENT_FORM_GAMES);
         return { playerId: p.id, games: recent.length, wins: recent.filter((m) => m.win).length };
@@ -78,6 +123,7 @@ export async function getSeasonOverview(view: View, period: MetricsPeriod) {
         playerId: p.id,
         results: p.recent
           .filter((m) => !m.isRemake)
+          .slice(0, RECENT_FORM_GAMES)
           .toReversed()
           .map((m) => m.win),
       })),
@@ -86,24 +132,11 @@ export async function getSeasonOverview(view: View, period: MetricsPeriod) {
   const filter = and(
     eq(players.enabled, true),
     inArray(matches.queueId, queueIds(view)),
-    seasonFilter(matches.timestamp, players.platform, period),
+    seasonFilter(matches.timestamp, players.platform, period, now),
     sql`coalesce(${matches.isRemake},false) = false`,
   );
   const week = sql`date_trunc('week', ${matches.timestamp} at time zone 'UTC')`;
-  const orderedResults = db()
-    .select({
-      playerId: playerMatches.playerId,
-      win: playerMatches.win,
-      n: sql<number>`row_number() over (partition by ${playerMatches.playerId} order by ${matches.timestamp} desc, ${matches.id} desc)`.as(
-        "n",
-      ),
-    })
-    .from(playerMatches)
-    .innerJoin(matches, eq(matches.id, playerMatches.matchId))
-    .innerJoin(players, eq(players.id, playerMatches.playerId))
-    .where(filter)
-    .as("ordered_results");
-  const [activity, champions, unique, recentForm, sequences] = await Promise.all([
+  const [activity, champions, unique, awardData, lpIntervals] = await Promise.all([
     db()
       .select({
         timestamp: sql<string>`${week}::text`,
@@ -137,28 +170,8 @@ export async function getSeasonOverview(view: View, period: MetricsPeriod) {
       .innerJoin(matches, eq(matches.id, playerMatches.matchId))
       .innerJoin(players, eq(players.id, playerMatches.playerId))
       .where(filter),
-    db()
-      .select({
-        playerId: orderedResults.playerId,
-        games: sql<number>`count(*)`.mapWith(Number),
-        wins: sql<number>`count(*) filter (where ${orderedResults.win})`.mapWith(Number),
-      })
-      .from(orderedResults)
-      .where(sql`${orderedResults.n} <= ${RECENT_FORM_GAMES}`)
-      .groupBy(orderedResults.playerId),
-    // Chronological results per player (same filter): streaks and recent-form dots.
-    db()
-      .select({
-        playerId: playerMatches.playerId,
-        results: sql<
-          boolean[]
-        >`array_agg(${playerMatches.win} order by ${matches.timestamp}, ${matches.id})`,
-      })
-      .from(playerMatches)
-      .innerJoin(matches, eq(matches.id, playerMatches.matchId))
-      .innerJoin(players, eq(players.id, playerMatches.playerId))
-      .where(filter)
-      .groupBy(playerMatches.playerId),
+    getAwardMatchStats(view, period, now),
+    getAwardLpIntervals(view, period, now),
   ]);
   return {
     activity: continuousActivity(
@@ -169,10 +182,13 @@ export async function getSeasonOverview(view: View, period: MetricsPeriod) {
     ),
     champions,
     uniqueGames: unique[0]?.n ?? 0,
-    recentForm,
-    sequences: sequences.map((s): ResultSequence => ({
+    recentForm: awardData.sequences.map((s) => ({
       playerId: s.playerId,
-      results: (s.results as unknown[]).map((v) => v === true || v === "t" || v === "true"),
+      games: s.results.length,
+      wins: s.results.filter(Boolean).length,
     })),
+    sequences: awardData.sequences,
+    awardStats: awardData.stats,
+    lpIntervals,
   };
 }

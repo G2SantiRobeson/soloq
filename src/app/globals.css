@@ -3060,13 +3060,14 @@ dialog.confirm-dialog::backdrop {
   list-style: none;
 }
 .award-list li {
+  position: relative;
   display: grid;
-  grid-template-columns: 20px minmax(9.5rem, auto) minmax(0, 1fr) auto;
-  grid-template-areas: "icon title player value";
+  grid-template-columns: 20px minmax(0, 1fr) minmax(0, 45%);
+  grid-template-areas: "icon title value" "icon player value";
   align-items: center;
   column-gap: var(--space-2);
-  min-height: 36px;
-  padding: 2px 0;
+  min-height: 52px;
+  padding: var(--space-1) 0;
   border-top: 1px solid var(--line);
 }
 .award-list li:first-child {
@@ -3085,6 +3086,17 @@ dialog.confirm-dialog::backdrop {
   grid-area: title;
   color: var(--muted);
   font-size: var(--fs-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-half);
+}
+.award-title .info-tip {
+  position: static;
+}
+.award-title .info-tip-bubble[data-align="start"] {
+  left: 0;
+  right: auto;
+  max-width: 100%;
 }
 .award-list .bento-player {
   grid-area: player;
@@ -3098,7 +3110,9 @@ dialog.confirm-dialog::backdrop {
   font-variant-numeric: tabular-nums;
 }
 .award-value small {
-  margin-left: var(--space-1);
+  display: block;
+  margin-top: var(--space-half);
+  overflow-wrap: anywhere;
   color: var(--muted);
   font:
     400 var(--fs-1) var(--font-body),
@@ -3106,7 +3120,10 @@ dialog.confirm-dialog::backdrop {
 }
 .award-list .award-empty {
   grid-area: player;
-  grid-column: 3 / -1;
+  grid-column: 2 / -1;
+}
+.award-value .award-partial {
+  color: var(--warm);
 }
 .form-groups {
   display: grid;
@@ -3322,7 +3339,7 @@ dialog.confirm-dialog::backdrop {
     grid-template-columns: minmax(0, 1fr) 3rem;
   }
   .award-list li {
-    grid-template-columns: 20px minmax(0, 1fr) auto;
+    grid-template-columns: 20px minmax(0, 1fr) minmax(0, 43%);
     grid-template-areas:
       "icon title value"
       "icon player value";

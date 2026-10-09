@@ -1,21 +1,33 @@
 import type { PublicPlayer } from "./types";
 import type { View } from "./queues";
 import { HIGHLIGHT_MIN_GAMES, RECENT_FORM_GAMES } from "./global-metrics";
-import { kda, winrate } from "./stats";
 import { signedLp } from "./lp-metrics";
 
-/** Chronological results (oldest first) of each player in the selected queue and period. */
 export type ResultSequence = { playerId: string; results: boolean[] };
-
 export type Award = {
   key: string;
   title: string;
   player: PublicPlayer | null;
   value: string;
   detail?: string;
-  /** One-line empty state when nobody qualifies. */
   empty: string;
+  criterion: string;
+  partial: boolean;
 };
+export type AwardMatchStats = {
+  playerId: string;
+  games: number;
+  champions: number;
+  zeroKills: number;
+  winStreak: number;
+  lossStreak: number;
+  cs: number;
+  duration: number;
+  damage: number;
+  deaths: number;
+  assists: number;
+};
+export type AwardLpInterval = { playerId: string; delta: number; from: string; to: string };
 
 export function longestStreaks(results: readonly boolean[]) {
   let win = 0,
@@ -28,15 +40,12 @@ export function longestStreaks(results: readonly boolean[]) {
   }
   return { win, loss };
 }
-
-/** Last results, most recent first, capped at the recent-form window. */
 export function recentResults(results: readonly boolean[]) {
   return results.slice(-RECENT_FORM_GAMES).toReversed();
 }
-
-type Scored = { player: PublicPlayer; score: number; games: number; wins?: number };
-/** Deterministic ranking: score, then more games, then name, then id. */
-function rank(rows: Scored[], direction: "high" | "low") {
+type Scored = { player: PublicPlayer; score: number; games: number };
+/** Deterministic tie breaks: score, sample size, name, ID. */
+function rank<T extends Scored>(rows: T[], direction: "high" | "low") {
   return rows.toSorted(
     (a, b) =>
       (direction === "high" ? b.score - a.score : a.score - b.score) ||
@@ -45,218 +54,248 @@ function rank(rows: Scored[], direction: "high" | "low") {
       a.player.id.localeCompare(b.player.id),
   );
 }
-
 export type FormRow = { player: PublicPlayer; games: number; wins: number; results: boolean[] };
-/** Players with enough recent games, best recent winrate first. */
 export function formRanking(players: PublicPlayer[], sequences: ResultSequence[]): FormRow[] {
   const byId = new Map(players.map((p) => [p.id, p]));
-  const rows = sequences.flatMap(({ playerId, results }) => {
-    const player = byId.get(playerId);
-    const recent = recentResults(results);
-    if (!player || recent.length < HIGHLIGHT_MIN_GAMES) return [];
-    const wins = recent.filter(Boolean).length;
-    return [{ player, games: recent.length, wins, results: recent }];
-  });
   return rank(
-    rows.map((r) => ({ player: r.player, score: r.wins / r.games, games: r.games })),
+    sequences.flatMap(({ playerId, results }) => {
+      const player = byId.get(playerId),
+        recent = recentResults(results);
+      if (!player || recent.length < HIGHLIGHT_MIN_GAMES) return [];
+      const wins = recent.filter(Boolean).length;
+      return [{ player, games: recent.length, wins, results: recent, score: wins / recent.length }];
+    }),
     "high",
-  ).map(({ player }) => rows.find((r) => r.player === player)!);
+  ).map(({ player, games, wins, results }) => ({ player, games, wins, results }));
 }
-
-/** Top and bottom of the form ranking without showing anyone twice. */
 export function formExtremes(rows: FormRow[], size = 3) {
   const top = rows.slice(0, size);
-  const bottom = rows.slice(top.length).slice(-size).toReversed();
-  return { top, bottom };
+  return { top, bottom: rows.slice(top.length).slice(-size).toReversed() };
+}
+function partial(player: PublicPlayer | undefined) {
+  return (
+    !!player?.seasonHistory &&
+    (player.seasonHistory.status !== "completed" || player.seasonHistory.unavailable > 0)
+  );
 }
 
-const percent = (value: number) => `${value.toFixed(1)}%`;
-
+/** Match aggregates and official intervals are scoped to the selected queue and period upstream. */
 export function computeAwards(
   players: PublicPlayer[],
   view: View,
-  sequences: ResultSequence[],
+  stats: AwardMatchStats[],
+  intervals: AwardLpInterval[],
 ): { honor: Award[]; shame: Award[] } {
-  const minimum = `Mínimo ${HIGHLIGHT_MIN_GAMES} partidas`;
-  const eligible = players.filter((p) => p.stats.games >= HIGHLIGHT_MIN_GAMES);
-  const rate = eligible.map((p) => ({
-    player: p,
-    score: winrate(p.stats.wins, p.stats.losses),
-    games: p.stats.games,
-  }));
-  const ratio = eligible.map((p) => ({
-    player: p,
-    score: kda(p.stats.kills, p.stats.deaths, p.stats.assists),
-    games: p.stats.games,
-  }));
-  const deaths = eligible.map((p) => ({
-    player: p,
-    score: p.stats.deaths / p.stats.games,
-    games: p.stats.games,
-  }));
-  const form = formRanking(players, sequences);
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const eligible = stats.flatMap((s) => {
+    const player = byId.get(s.playerId);
+    return player && s.games >= HIGHLIGHT_MIN_GAMES ? [{ player, stats: s }] : [];
+  });
+  const scores = (value: (s: AwardMatchStats) => number) =>
+    eligible.flatMap((r) => {
+      const score = value(r.stats);
+      return Number.isFinite(score) && score >= 0
+        ? [{ player: r.player, score, games: r.stats.games }]
+        : [];
+    });
+  const farming = scores((s) => (s.duration > 0 ? (s.cs * 60) / s.duration : NaN));
+  const damage = scores((s) => (s.duration > 0 ? (s.damage * 60) / s.duration : NaN));
+  const minimum =
+    "Mínimo 10 partidas válidas en la cola y período seleccionados. Remakes excluidos. Empates: más partidas, nombre y luego ID.";
+  const make = (
+    key: string,
+    title: string,
+    rows: Scored[],
+    direction: "high" | "low",
+    negative: boolean,
+    format: (score: number) => string,
+    criterion: string,
+    minimumScore = 0,
+  ): Award => {
+    const candidate = !negative || rows.length >= 2 ? rank(rows, direction)[0] : undefined;
+    const row =
+      candidate && candidate.score >= minimumScore && (key !== "zero-kills" || candidate.score > 0)
+        ? candidate
+        : undefined;
+    return {
+      key,
+      title,
+      player: row?.player ?? null,
+      value: row ? format(row.score) : "—",
+      detail: row ? row.games + " partidas" : undefined,
+      empty:
+        candidate && key === "zero-kills" && candidate.score === 0
+          ? "Nadie terminó una partida sin kills"
+          : minimumScore && candidate
+            ? "Sin rachas de 2 o más"
+            : negative
+              ? "Hacen falta 2 jugadores con 10 partidas válidas"
+              : "Sin muestra de 10 partidas válidas",
+      criterion:
+        criterion +
+        " " +
+        minimum +
+        (negative ? " Requiere al menos dos jugadores elegibles para esta métrica." : ""),
+      partial: partial(row?.player),
+    };
+  };
   const lp =
     view === "5v5"
       ? []
-      : players
-          .filter((p) => p.momentum?.net != null && p.momentum.games >= HIGHLIGHT_MIN_GAMES)
-          .map((p) => ({ player: p, score: p.momentum!.net!, games: p.momentum!.games }));
-  const byId = new Map(players.map((p) => [p.id, p]));
-  const streaks = sequences.flatMap(({ playerId, results }) => {
-    const player = byId.get(playerId);
-    return player ? [{ player, ...longestStreaks(results), games: results.length }] : [];
-  });
-  // A "worst" award needs a real comparison: with one eligible player it would just repeat the best.
-  const pair = <T>(rows: T[]) => rows.length >= 2;
-  const award = (
-    key: string,
-    title: string,
-    row: Scored | undefined,
-    value: (r: Scored) => string,
-    detail: (r: Scored) => string | undefined,
-    empty: string,
-  ): Award => ({
-    key,
-    title,
-    player: row?.player ?? null,
-    value: row ? value(row) : "—",
-    detail: row ? detail(row) : undefined,
-    empty,
-  });
-  const record = (r: Scored) => `${r.player.stats.wins} V / ${r.player.stats.losses} D`;
-  const formRow = (row: FormRow | undefined) =>
-    row && { player: row.player, score: row.wins / row.games, games: row.games, wins: row.wins };
-  const formDetail = (r: Scored) => `${r.wins} V / ${r.games - (r.wins ?? 0)} D`;
-  const bestStreak = rank(
-    streaks
-      .filter((s) => s.win >= 2)
-      .map((s) => ({ player: s.player, score: s.win, games: s.games })),
-    "high",
-  )[0];
-  const worstStreak = rank(
-    streaks
-      .filter((s) => s.loss >= 2)
-      .map((s) => ({ player: s.player, score: s.loss, games: s.games })),
-    "high",
-  )[0];
-  const honor: Award[] = [
-    award(
-      "best-winrate",
-      "Mejor winrate",
-      rank(rate, "high")[0],
-      (r) => percent(r.score),
-      record,
-      `Nadie llega a ${HIGHLIGHT_MIN_GAMES} partidas`,
-    ),
-    award(
-      "best-kda",
-      "Mejor KDA",
-      rank(ratio, "high")[0],
-      (r) => r.score.toFixed(2),
-      () => minimum,
-      `Nadie llega a ${HIGHLIGHT_MIN_GAMES} partidas`,
-    ),
-    award(
-      "best-form",
-      "Mejor forma",
-      formRow(form[0]),
-      (r) => percent(r.score * 100),
-      formDetail,
-      "Sin muestra reciente suficiente",
-    ),
-    ...(view === "5v5"
-      ? []
-      : [
-          award(
-            "best-climb",
-            "Mayor subida de LP",
-            rank(
-              lp.filter((r) => r.score > 0),
-              "high",
-            )[0],
-            (r) => `${signedLp(r.score)} LP`,
-            (r) => `${r.games} partidas`,
-            "Nadie subió en el período observado",
-          ),
-        ]),
-    award(
-      "most-games",
-      "Más partidas",
-      rank(
-        players
-          .filter((p) => p.stats.games > 0)
-          .map((p) => ({ player: p, score: p.stats.games, games: p.stats.games })),
+      : eligible.flatMap(({ player, stats }) =>
+          intervals
+            .filter((i) => i.playerId === player.id && Number.isFinite(i.delta))
+            .map((i) => ({ player, score: i.delta, games: stats.games, interval: i })),
+        );
+  const lpPlayers = new Set(lp.map((r) => r.player.id)).size;
+  const date = (iso: string) =>
+    new Date(iso).toLocaleString("es-CL", {
+      timeZone: "UTC",
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  const lpAward = (negative: boolean): Award => {
+    const candidates = lp.filter((r) => (negative ? r.score < 0 : r.score > 0));
+    const row =
+      !negative || lpPlayers >= 2
+        ? candidates.toSorted(
+            (a, b) =>
+              (negative ? a.score - b.score : b.score - a.score) ||
+              b.games - a.games ||
+              a.player.gameName.localeCompare(b.player.gameName) ||
+              a.player.id.localeCompare(b.player.id) ||
+              b.interval.to.localeCompare(a.interval.to) ||
+              b.interval.from.localeCompare(a.interval.from),
+          )[0]
+        : undefined;
+    return {
+      key: negative ? "worst-drop" : "best-climb",
+      title: negative ? "Caída libre" : "Escalador",
+      player: row?.player ?? null,
+      value: row ? signedLp(row.score) + " LP" : "—",
+      detail: row ? date(row.interval.from) + " → " + date(row.interval.to) + " UTC" : undefined,
+      empty:
+        negative && lpPlayers < 2
+          ? "Hacen falta 2 jugadores con intervalos comparables"
+          : lp.length
+            ? negative
+              ? "Sin bajadas observadas"
+              : "Sin subidas observadas"
+            : "Sin intervalos oficiales comparables",
+      criterion:
+        "Mayor " +
+        (negative ? "pérdida" : "subida") +
+        " en un único intervalo entre snapshots oficiales: mismo tier y división, sin reinicio de contadores ni huecos de más de 7 días. Ambos extremos deben estar dentro del período. No es LP por partida; puede incluir ajustes. " +
+        minimum +
+        (negative
+          ? " Requiere dos jugadores con intervalos comparables, aunque solo uno haya bajado."
+          : ""),
+      partial: partial(row?.player),
+    };
+  };
+  return {
+    honor: [
+      make(
+        "win-streak",
+        "Imparable",
+        scores((s) => s.winStreak),
         "high",
-      )[0],
-      (r) => String(r.score),
-      () => "Partidas del período",
-      "Todavía no hay partidas",
-    ),
-    award(
-      "win-streak",
-      "Mayor racha de victorias",
-      bestStreak,
-      (r) => `${r.score} seguidas`,
-      () => "En el período",
-      "Ninguna racha de 2 o más",
-    ),
-  ];
-  const shame: Award[] = [
-    award(
-      "worst-winrate",
-      "Peor winrate",
-      pair(rate) ? rank(rate, "low")[0] : undefined,
-      (r) => percent(r.score),
-      record,
-      "Hacen falta 2 jugadores con muestra",
-    ),
-    award(
-      "worst-kda",
-      "Peor KDA",
-      pair(ratio) ? rank(ratio, "low")[0] : undefined,
-      (r) => r.score.toFixed(2),
-      () => minimum,
-      "Hacen falta 2 jugadores con muestra",
-    ),
-    award(
-      "worst-form",
-      "Peor forma",
-      pair(form) ? formRow(form.at(-1)) : undefined,
-      (r) => percent(r.score * 100),
-      formDetail,
-      "Hacen falta 2 jugadores con muestra",
-    ),
-    ...(view === "5v5"
-      ? []
-      : [
-          award(
-            "worst-drop",
-            "Mayor caída de LP",
-            rank(
-              lp.filter((r) => r.score < 0),
-              "low",
-            )[0],
-            (r) => `${signedLp(r.score)} LP`,
-            (r) => `${r.games} partidas`,
-            "Nadie bajó en el período observado",
-          ),
-        ]),
-    award(
-      "most-deaths",
-      "Más muertes por partida",
-      pair(deaths) ? rank(deaths, "high")[0] : undefined,
-      (r) => r.score.toFixed(1),
-      () => minimum,
-      "Hacen falta 2 jugadores con muestra",
-    ),
-    award(
-      "loss-streak",
-      "Mayor racha de derrotas",
-      worstStreak,
-      (r) => `${r.score} seguidas`,
-      () => "En el período",
-      "Ninguna racha de 2 o más",
-    ),
-  ];
-  return { honor, shame };
+        false,
+        (v) => v + " seguidas",
+        "Mayor racha de victorias consecutivas del historial importado del período. Los remakes se ignoran sin cortar la racha.",
+        2,
+      ),
+      view === "5v5"
+        ? make(
+            "most-assists",
+            "Ángel de la Grieta",
+            scores((s) => s.assists / s.games),
+            "high",
+            false,
+            (v) => v.toFixed(1) + " asist.",
+            "Asistencias totales / partidas válidas; premia el apoyo al equipo.",
+          )
+        : lpAward(false),
+      make(
+        "champion-diversity",
+        "Arsenal infinito",
+        scores((s) => s.champions),
+        "high",
+        false,
+        (v) => v + " campeones",
+        "Número de IDs de campeón distintos utilizados en partidas válidas del período.",
+      ),
+      make(
+        "best-farm",
+        "Rey del farmeo",
+        farming,
+        "high",
+        false,
+        (v) => v.toFixed(2) + " CS/min",
+        "CS total × 60 / duración total en segundos. Media ponderada por duración, no promedio de ratios individuales.",
+      ),
+      make(
+        "damage-per-minute",
+        "Máquina de daño",
+        damage,
+        "high",
+        false,
+        (v) => v.toLocaleString("es-CL", { maximumFractionDigits: 0 }) + " daño/min",
+        "Daño total a campeones × 60 / duración total en segundos. Media ponderada por duración.",
+      ),
+    ],
+    shame: [
+      make(
+        "loss-streak",
+        "La maldición",
+        scores((s) => s.lossStreak),
+        "high",
+        true,
+        (v) => v + " seguidas",
+        "Mayor racha de derrotas consecutivas del período. Los remakes se ignoran sin cortar la racha.",
+        2,
+      ),
+      view === "5v5"
+        ? make(
+            "least-assists",
+            "¿Y el equipo?",
+            scores((s) => s.assists / s.games),
+            "low",
+            true,
+            (v) => v.toFixed(1) + " asist.",
+            "Menor promedio de asistencias por partida válida; compara el juego en equipo.",
+          )
+        : lpAward(true),
+      make(
+        "most-deaths",
+        "Imán de habilidades",
+        scores((s) => s.deaths / s.games),
+        "high",
+        true,
+        (v) => v.toFixed(1) + " muertes",
+        "Muertes totales / partidas válidas del período.",
+      ),
+      make(
+        "worst-farm",
+        "La cosecha perdida",
+        farming,
+        "low",
+        true,
+        (v) => v.toFixed(2) + " CS/min",
+        "Menor CS total × 60 / duración total en segundos. Compara roles distintos; no evalúa la calidad personal del jugador.",
+      ),
+      make(
+        "zero-kills",
+        "Pacifista involuntario",
+        scores((s) => (100 * s.zeroKills) / s.games),
+        "high",
+        true,
+        (v) => v.toFixed(1) + "% sin kills",
+        "Partidas con exactamente cero asesinatos / partidas válidas. El rol influye; no mide el aporte al equipo.",
+      ),
+    ],
+  };
 }

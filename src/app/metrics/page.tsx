@@ -52,12 +52,14 @@ export default async function MetricsPage({
     getAssets(),
   ]);
   const ranked = view !== "5v5";
-  const partial = players.filter((p) => p.seasonHistory?.status !== "completed").length;
+  const partial = players.filter(
+    (p) => p.seasonHistory?.status !== "completed" || (p.seasonHistory?.unavailable ?? 0) > 0,
+  ).length;
   const games = players.reduce((n, p) => n + p.stats.games, 0);
   const classified = players.filter((p) => p.rank && p.rank.tier !== "UNRANKED").length;
   const stats = globalMetrics(players, view, "matches");
   const highlights = recentHighlights(players, overview.recentForm);
-  const awards = computeAwards(players, view, overview.sequences);
+  const awards = computeAwards(players, view, overview.awardStats, overview.lpIntervals);
   const form = formExtremes(formRanking(players, overview.sequences));
   const leader = stats.leader?.player;
   const minimum = `Mínimo ${HIGHLIGHT_MIN_GAMES} partidas`;
@@ -126,8 +128,9 @@ export default async function MetricsPage({
         {partial > 0 && (
           <li className="chip-warning">
             <InfoTip align="start" term={<>{partial} con historial parcial</>}>
-              Todavía se está importando el historial de {partial} jugadores: las cifras crecerán al
-              completarse. Los filtros solo cambian la consulta.
+              El historial de {partial} jugadores está incompleto o incluye partidas no disponibles.
+              Los premios usan solo los datos importados y pueden cambiar al completarse. Los
+              filtros solo cambian la consulta.
             </InfoTip>
           </li>
         )}
@@ -231,8 +234,11 @@ export default async function MetricsPage({
         <Block
           title="Salón de honor"
           className="span-half awards-honor"
-          info={`Winrate, KDA y forma exigen ${HIGHLIGHT_MIN_GAMES} partidas. Forma = últimas ${RECENT_FORM_GAMES}. LP: último tramo comparable del mismo tier y división. Empates: más partidas, luego nombre.`}
+          info={`Premios del período seleccionado con mínimo ${HIGHLIGHT_MIN_GAMES} partidas válidas. Rachas, diversidad y rendimiento sobre el historial importado; LP solo entre snapshots oficiales comparables dentro del período.`}
         >
+          <p className="awards-tagline">
+            Hazañas de la Grieta · {PERIODS.find((p) => p.key === period)?.label}
+          </p>
           <AwardList awards={awards.honor} view={view} />
         </Block>
         <Block
