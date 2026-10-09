@@ -32,7 +32,7 @@ servidor al cargar el panel, visible en el detalle. Recargar actualiza esa evide
 
 1. Valida Origin mediante `verifyOrigin`, sesión, UUID, existencia y seguimiento habilitado.
 2. Ejecuta `withSyncLease(client => syncPlayer(id, client))`, con los valores por defecto
-   existentes: deadline 230 s, lease 285 s, lote reciente de cinco detalles y Riot serial.
+   existentes: deadline 230 s, lease 330 s desde 03.B.4, lote reciente de cinco detalles y Riot serial.
 3. No llama a `syncBackfillPlayer`, no mueve cursores ni usa callbacks de resultado global.
    El histórico completado no impide actualizar rango y recientes. El lease actualiza
    únicamente sus campos habituales de exclusión/cooldown; no el resultado global.
@@ -90,3 +90,16 @@ resultados de rango/recientes e histórico de cada jugador, incluidos los no ate
 Esta última respuesta es temporal y se limpia al iniciar otra acción o recargar el panel.
 Los parciales esperados no crean errores; los errores previos pendientes siguen visibles.
 Para rondas del scheduler, consultar JSON y logs: no se persiste un listado de cada batch.
+
+## UX de espera — Fase 03.B.5
+
+El indicador de ejecución es indeterminado. Identifica la acción iniciada en esta página,
+muestra tiempo local transcurrido y mensajes a los 60/180 s. No lee ni atribuye progreso
+al servidor mientras espera, ni calcula porcentajes o tiempo restante. Se apaga al
+recibir respuesta o error. Un resultado de conexión perdida se marca sin confirmar:
+el trabajo puede seguir en el servidor. Recargar conserva el diagnóstico persistido,
+pero pierde ese contador local. El aviso de lease solo describe la evidencia al cargar.
+
+Se mantienen acciones, errores y detalles; el alta se pliega para priorizar Actualizar
+todos, las acciones tienen zonas táctiles de 44 px y Eliminar tiene texto y confirmación.
+Ver [SYNC_UX.md](./SYNC_UX.md) para auditoría, pruebas y propuesta separada de progreso real.

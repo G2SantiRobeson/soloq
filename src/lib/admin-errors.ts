@@ -2,7 +2,7 @@ export type AdminAction = "login" | "add" | "sync" | "backfill" | "toggle" | "de
 export type AdminErrorField = "riotId" | "password";
 export type AdminError = { message: string; field?: AdminErrorField };
 
-/** Thrown by the admin client; status 0 means the request never reached the server. */
+/** Status 0 means no usable response: whether the server executed the request is unknown. */
 export class AdminRequestError extends Error {
   constructor(
     public status: number,
@@ -18,7 +18,10 @@ export function describeAdminError(error: unknown, action: AdminAction): AdminEr
     return { message: "Algo salió mal. Recarga la página e inténtalo de nuevo." };
   const { status, serverMessage } = error;
   if (status === 0)
-    return { message: "No hay conexión con el servidor. Revisa tu conexión e inténtalo de nuevo." };
+    return {
+      message:
+        "No hay conexión confirmada con el servidor. La acción pudo llegar a ejecutarse: recarga el panel y revisa los diagnósticos antes de reintentar.",
+    };
   if (action === "login") {
     if (status === 401)
       return {

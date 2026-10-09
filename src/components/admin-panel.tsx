@@ -1,43 +1,28 @@
 "use client";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { LockKeyhole, LogOut, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { History, LockKeyhole, LogOut, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { PLATFORMS, PLATFORM_LABELS } from "@/lib/routing";
 import { CURRENT_SEASON } from "@/lib/season";
-import type { AdminPlayer, AdminSyncContext, IndividualSyncResult } from "@/lib/admin-sync";
+import type { AdminPlayer, AdminSyncContext } from "@/lib/admin-sync";
 import { AdminPlayerDiagnostics } from "./admin-player-diagnostics";
-import type { SyncPlayerResult } from "@/lib/sync-scheduling";
+import { AdminOperationFeedback, type AdminWork } from "./admin-operation-feedback";
+import {
+  actionTitle,
+  createAdminActionRunner,
+  failureNotice,
+  requestAdmin as request,
+  resultNotice,
+  type AdminNotice,
+  type AdminResponse,
+} from "@/lib/admin-operation";
 export type { AdminPlayer } from "@/lib/admin-sync";
 import {
-  AdminRequestError,
   describeAdminError,
   splitRiotId,
   type AdminAction,
   type AdminError,
 } from "@/lib/admin-errors";
-type Result = {
-  message?: string;
-  results?: SyncPlayerResult[];
-  backfill?: { results: SyncPlayerResult[] };
-  outcome?: "success" | "partial" | "failed";
-  result?: IndividualSyncResult;
-};
-async function request(path: string, method: string, data?: unknown): Promise<Result> {
-  let response: Response;
-  try {
-    response = await fetch(path, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: data === undefined ? undefined : JSON.stringify(data),
-    });
-  } catch {
-    throw new AdminRequestError(0, null);
-  }
-  // A proxy or crash page may not be JSON; never show the parser's message.
-  const result = (await response.json().catch(() => null)) as (Result & { error?: string }) | null;
-  if (!response.ok) throw new AdminRequestError(response.status, result?.error ?? null);
-  return result ?? {};
-}
 export function LoginForm({ demo }: { demo: boolean }) {
   const router = useRouter();
   const ids = useId();
@@ -113,13 +98,10 @@ export function AdminPanel({
 }) {
   const router = useRouter();
   const ids = useId();
-  const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [batch, setBatch] = useState<Result | null>(null);
-  const [notice, setNotice] = useState<{
-    message: string;
-    error: boolean;
-    partial?: boolean;
-  } | null>(null);
+  const [work, setWork] = useState<AdminWork | null>(null);
+  const pendingAction = work?.key ?? null;
+  const [batch, setBatch] = useState<AdminResponse | null>(null);
+  const [notice, setNotice] = useState<AdminNotice | null>(null);
   const [addError, setAddError] = useState<AdminError | null>(null);
   const [gameName, setGameName] = useState("");
   const [tagLine, setTagLine] = useState("");
@@ -128,7 +110,7 @@ export function AdminPanel({
   const rosterHeading = useRef<HTMLHeadingElement>(null);
   const gameNameInput = useRef<HTMLInputElement>(null);
   const deleted = useRef(false);
-  const actionInFlight = useRef(false);
+  const runAction = useRef(createAdminActionRunner());
   const pending = pendingAction !== null;
   const fullRiotId = splitRiotId(gameName);
   useEffect(() => {
@@ -152,39 +134,45 @@ export function AdminPanel({
     data?: unknown,
     success = "Cambios guardados.",
   ) {
-    // Controls stay focusable while busy (aria-disabled); this guard prevents double actions.
-    if (actionInFlight.current) return false;
-    actionInFlight.current = true;
-    setPendingAction(key);
-    setNotice(null);
-    setBatch(null);
-    try {
-      const result = await request(path, method, data);
-      if (result.results) setBatch(result);
-      const summary = result.results
-        ? `${result.results.filter((r) => r.status === "complete").length} completos, ${result.results.filter((r) => r.status === "partial").length} parciales, ${result.results.filter((r) => r.status === "error").length} con error.`
-        : undefined;
-      setNotice({
-        message: result.message ?? summary ?? success,
-        error: result.outcome === "failed",
-        partial: result.result?.status === "partial" || result.outcome === "partial",
-      });
-      if (action === "delete") deleted.current = true;
-      setDeleting(null);
-      router.refresh();
-      return true;
-    } catch (caught) {
-      const described = describeAdminError(caught, action);
-      if (action === "add" && described.field) setAddError(described);
-      else setNotice({ message: described.message, error: true });
-      // A modal dialog hides the page notice, so close it and show the error there.
-      if (action === "delete") setDeleting(null);
-      router.refresh();
-      return false;
-    } finally {
-      actionInFlight.current = false;
-      setPendingAction(null);
-    }
+    return (
+      (await runAction.current(
+        () => {
+          const playerId = key.split(":")[1];
+          const player = players.find((p) => p.id === playerId);
+          setWork({
+            key,
+            title: actionTitle(
+              key,
+              action,
+              player ? `${player.gameName}#${player.tagLine}` : undefined,
+            ),
+            startedAt: Date.now(),
+          });
+          setNotice(null);
+          setBatch(null);
+        },
+        async () => {
+          try {
+            const result = await request(path, method, data);
+            if (result.results) setBatch(result);
+            setNotice(resultNotice(result, success));
+            if (action === "delete") deleted.current = true;
+            setDeleting(null);
+            router.refresh();
+            return true;
+          } catch (caught) {
+            const described = describeAdminError(caught, action);
+            if (action === "add" && described.field) setAddError(described);
+            else setNotice(failureNotice(caught, action));
+            // A modal dialog hides the page notice, so close it and show the error there.
+            if (action === "delete") setDeleting(null);
+            router.refresh();
+            return false;
+          }
+        },
+        () => setWork(null),
+      )) ?? false
+    );
   }
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -221,33 +209,64 @@ export function AdminPanel({
   ]
     .filter(Boolean)
     .join(" ");
-  const busyLabel = (key: string, idle: string) => (pendingAction === key ? "Procesando…" : idle);
+  const busyLabel = (key: string, idle: string) =>
+    pendingAction !== key
+      ? idle
+      : key === "sync" || key.startsWith("player-sync:")
+        ? "Actualizando…"
+        : key.startsWith("backfill:")
+          ? "Continuando historial…"
+          : key === "add"
+            ? "Añadiendo…"
+            : key.startsWith("toggle:")
+              ? "Guardando…"
+              : key.startsWith("delete:")
+                ? "Eliminando…"
+                : "Cerrando sesión…";
   return (
     <>
       <div className="admin-heading">
         <div>
           <div className="eyebrow">CENTRO DE CONTROL</div>
           <h1>Tu comunidad.</h1>
-          <p className="muted">Gestiona los jugadores y mantén los datos al día.</p>
+          <p className="muted">Rango y recientes primero. El histórico continúa por lotes.</p>
         </div>
-        <button
-          type="button"
-          aria-disabled={pending || undefined}
-          className="button secondary"
-          onClick={() =>
-            act("logout", "logout", "/api/admin/logout", "POST", undefined, "Sesión cerrada.")
-          }
-        >
-          <LogOut size={16} aria-hidden="true" /> {busyLabel("logout", "Cerrar sesión")}
-        </button>
+        <div className="admin-heading-actions">
+          <button
+            type="button"
+            className="button primary"
+            aria-disabled={pending || players.every((p) => !p.enabled) || undefined}
+            onClick={() => {
+              if (players.some((p) => p.enabled))
+                void act("sync", "sync", "/api/admin/sync", "POST");
+            }}
+          >
+            <RefreshCw size={18} aria-hidden="true" />
+            {busyLabel("sync", "Actualizar todos")}
+          </button>
+          <button
+            type="button"
+            aria-disabled={pending || undefined}
+            className="button secondary"
+            onClick={() =>
+              act("logout", "logout", "/api/admin/logout", "POST", undefined, "Sesión cerrada.")
+            }
+          >
+            <LogOut size={16} aria-hidden="true" /> {busyLabel("logout", "Cerrar sesión")}
+          </button>
+        </div>
       </div>
-      <section className="panel add-player" aria-labelledby={`${ids}-add-title`}>
-        <div className="panel-title">
-          <h2 id={`${ids}-add-title`}>
-            <Plus size={18} aria-hidden="true" /> Añadir jugador
-          </h2>
-          <span>RIOT ID</span>
-        </div>
+      <AdminOperationFeedback work={work} notice={notice} />
+      {context.leaseUntil && Date.parse(context.leaseUntil) > Date.parse(context.serverNow) && (
+        <p className="notice admin-lease-note">
+          Al cargar el panel, el lease estaba ocupado o en cooldown. No confirma una operación
+          activa. Revisa los diagnósticos antes de iniciar otra acción.
+        </p>
+      )}
+      <details className="panel add-player" open={players.length === 0 || !!addError}>
+        <summary className="admin-add-summary" id={`${ids}-add-title`}>
+          <Plus size={18} aria-hidden="true" /> Añadir jugador
+        </summary>
         <form className="add-form" onSubmit={add}>
           <label>
             Nombre del Riot ID
@@ -284,7 +303,7 @@ export function AdminPanel({
           </label>
           <label>
             Región
-            <select name="platform" defaultValue="LA2">
+            <select name="platform" defaultValue="LA2" disabled={pending}>
               {PLATFORMS.map((p) => (
                 <option value={p} key={p}>
                   {PLATFORM_LABELS[p]} ({p})
@@ -303,7 +322,14 @@ export function AdminPanel({
               Parece que escribiste el Riot ID completo. El nombre es «{fullRiotId.gameName}» y el
               tag «{fullRiotId.tagLine}».
             </p>
-            <button type="button" className="button secondary" onClick={applySplit}>
+            <button
+              type="button"
+              className="button secondary"
+              aria-disabled={pending || undefined}
+              onClick={() => {
+                if (!pending) applySplit();
+              }}
+            >
               Separar nombre y tag
             </button>
           </div>
@@ -316,37 +342,20 @@ export function AdminPanel({
           añadirlo se guardan su perfil y su rango actual, y empieza a importarse su historial de la
           temporada; las siguientes actualizaciones continúan desde donde quedó.
         </p>
-      </section>
-      <div role="status" className="notice-slot">
-        {pending && (
-          <div className="notice">
-            Procesando… Las consultas pueden tardar debido a los límites de Riot. Espera antes de
-            iniciar otra acción.
-          </div>
-        )}
-        {notice && !notice.error && (
-          <div className={`notice ${notice.partial ? "partial-notice" : "success-notice"}`}>
-            {notice.message}
-          </div>
-        )}
-      </div>
-      <div role="alert" className="notice-slot">
-        {notice?.error && <div className="notice form-error">{notice.message}</div>}
-      </div>
-      <section className="panel admin-roster" aria-labelledby={`${ids}-roster-title`}>
+      </details>
+      <section
+        className="panel admin-roster"
+        aria-labelledby={`${ids}-roster-title`}
+        aria-busy={pending}
+      >
         <div className="panel-title">
           <h2 id={`${ids}-roster-title`} ref={rosterHeading} tabIndex={-1}>
             Jugadores <span className="count-tag">{players.length}</span>
           </h2>
-          <button
-            type="button"
-            className="button secondary"
-            aria-disabled={pending || undefined}
-            onClick={() => act("sync", "sync", "/api/admin/sync", "POST")}
-          >
-            <RefreshCw size={15} aria-hidden="true" />
-            {busyLabel("sync", "Actualizar todos")}
-          </button>
+          <span>
+            {players.filter((p) => p.enabled).length} activos ·{" "}
+            {players.filter((p) => !p.enabled).length} pausados
+          </span>
         </div>
         {players.length ? (
           players.map((p) => {
@@ -358,9 +367,11 @@ export function AdminPanel({
                     {p.gameName}
                     <span className="muted">#{p.tagLine}</span>
                   </strong>
-                  <p>
+                  <p className="admin-player-meta">
                     {PLATFORM_LABELS[p.platform]} ({p.platform}) ·{" "}
-                    {p.enabled ? "Seguimiento activo" : "Seguimiento pausado"}
+                    <span className={`tracking-label ${p.enabled ? "active" : "paused"}`}>
+                      {p.enabled ? "Seguimiento activo" : "Seguimiento pausado"}
+                    </span>
                   </p>
                   <AdminPlayerDiagnostics
                     player={p}
@@ -386,7 +397,7 @@ export function AdminPanel({
                   {(p.backfillStatus !== "completed" || p.backfillSeason !== CURRENT_SEASON.id) && (
                     <button
                       type="button"
-                      className="button secondary"
+                      className="button history-action"
                       disabled={!p.enabled}
                       aria-disabled={pending || undefined}
                       aria-describedby={nameId}
@@ -399,6 +410,7 @@ export function AdminPanel({
                         )
                       }
                     >
+                      <History size={16} aria-hidden="true" />
                       {busyLabel(
                         `backfill:${p.id}`,
                         p.backfillStatus === "failed"
@@ -433,7 +445,7 @@ export function AdminPanel({
                   </button>
                   <button
                     type="button"
-                    className="icon-button danger"
+                    className="button danger-button admin-delete"
                     aria-label={`Eliminar a ${p.gameName}`}
                     aria-disabled={pending || undefined}
                     onClick={() => {
@@ -441,6 +453,7 @@ export function AdminPanel({
                     }}
                   >
                     <Trash2 size={17} aria-hidden="true" />
+                    Eliminar
                   </button>
                 </div>
               </div>
@@ -484,6 +497,11 @@ export function AdminPanel({
             Se eliminarán su perfil, su historial de rango y sus estadísticas. Las partidas que
             comparte con otros jugadores se conservan. Esta acción no se puede deshacer.
           </p>
+          {work?.key.startsWith("delete:") && (
+            <section>
+              <AdminOperationFeedback work={work} notice={null} />
+            </section>
+          )}
           <div>
             <button
               type="button"

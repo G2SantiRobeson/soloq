@@ -2735,6 +2735,234 @@ dialog.confirm-dialog::backdrop {
   height: 4px;
   background: var(--line);
 }
+/* Administrative operation feedback: honest indeterminate work, no invented percentage. */
+.admin-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.admin-heading-actions .primary {
+  box-shadow: none;
+}
+.admin-heading .button,
+.admin-actions .button,
+.admin-actions .tracking-switch,
+.admin-add-summary,
+.admin-sync-details summary,
+.admin-batch-summary summary {
+  min-height: 44px;
+}
+.admin-add-summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+  padding-block: var(--space-1);
+}
+.admin-add-summary svg {
+  display: inline;
+  vertical-align: middle;
+  margin-right: var(--space-1);
+}
+.add-player[open] .add-form {
+  margin-top: var(--space-2);
+}
+.admin-feedback.visible {
+  position: sticky;
+  top: var(--space-1);
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  margin-bottom: var(--space-3);
+}
+.admin-operation {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-left: 3px solid var(--accent);
+}
+.admin-operation > svg {
+  flex-shrink: 0;
+  margin-top: var(--space-half);
+}
+.admin-operation p {
+  color: var(--muted);
+  font-size: var(--fs-2);
+  margin-top: var(--space-half);
+}
+.admin-operation.success {
+  border-color: var(--win);
+}
+.admin-operation.success > svg {
+  color: var(--win);
+}
+.admin-operation.partial,
+.admin-operation.cooldown,
+.admin-operation.uncertain {
+  border-color: var(--warning);
+}
+.admin-operation.partial > svg,
+.admin-operation.cooldown > svg,
+.admin-operation.uncertain > svg {
+  color: var(--warning);
+}
+.admin-operation.error {
+  border-color: var(--loss);
+}
+.admin-operation.error > svg {
+  color: var(--loss);
+}
+.admin-progress-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) var(--space-2);
+  font-size: var(--fs-2);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.indeterminate-track {
+  height: 4px;
+  max-width: 240px;
+  flex: 1;
+  overflow: hidden;
+  background: var(--line);
+}
+.indeterminate-track::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 40%;
+  background: var(--accent);
+  animation: sync-travel 1.6s ease-in-out infinite alternate;
+}
+.sync-spinner {
+  color: var(--accent);
+  animation: sync-spin 1.2s linear infinite;
+}
+.confirm-dialog .admin-feedback.visible {
+  position: static;
+}
+@media (prefers-reduced-motion: reduce) {
+  .indeterminate-track::after {
+    width: 100%;
+    opacity: 0.65;
+  }
+}
+@keyframes sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes sync-travel {
+  to {
+    transform: translateX(150%);
+  }
+}
+.admin-actions .history-action {
+  background: var(--surface);
+  border-color: var(--warm);
+  color: var(--warm);
+}
+.admin-actions .history-action:hover {
+  background: var(--warning-bg);
+}
+.admin-actions .admin-delete {
+  margin-left: var(--space-2);
+}
+.tracking-label {
+  font-weight: 600;
+}
+.tracking-label.active {
+  color: var(--win);
+}
+.tracking-label.paused {
+  color: var(--warning);
+}
+.admin-player .admin-player-state {
+  padding-left: var(--space-1);
+  border-left: 2px solid var(--border);
+  color: var(--text);
+}
+.admin-player .admin-player-state.error {
+  border-color: var(--loss);
+  color: var(--loss);
+}
+.admin-player .admin-player-state.partial {
+  border-color: var(--warning);
+}
+.admin-player .admin-player-state.success {
+  border-color: var(--win);
+}
+.admin-player .sync-error {
+  color: var(--loss);
+}
+.admin-sync-summary small {
+  display: block;
+  margin-top: var(--space-half);
+  color: var(--muted);
+}
+.admin-batch-summary {
+  margin-bottom: var(--space-1);
+  font-size: var(--fs-2);
+}
+.admin-batch-summary summary {
+  cursor: pointer;
+  padding-block: var(--space-1);
+}
+@media (max-width: 550px) {
+  .admin-heading-actions {
+    width: 100%;
+  }
+  .admin-heading-actions > .primary {
+    flex: 1;
+  }
+  .admin-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-actions .button,
+  .admin-actions .tracking-switch {
+    width: 100%;
+    padding-inline: var(--space-1);
+  }
+  .admin-actions .admin-delete {
+    margin: 0;
+  }
+  .admin-sync-summary p {
+    display: grid;
+    grid-template-columns: 85px minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+  .admin-operation {
+    gap: var(--space-1);
+  }
+  .admin-progress-meta {
+    flex-wrap: wrap;
+  }
+  .admin-sync-summary {
+    gap: 0;
+  }
+}
+/* Verified touch-target gaps in public leaderboard filters and profile controls. */
+.button,
+.clear-search {
+  min-height: 44px;
+}
+.clear-search {
+  width: 44px;
+  height: 44px;
+  flex-basis: 44px;
+}
+.search-input,
+.region-filter {
+  height: 46px;
+}
+@media (max-width: 1100px) {
+  .mobile-sort select,
+  .mobile-sort button {
+    min-height: 44px;
+  }
+}
 .distribution-track > span {
   display: block;
   height: 100%;

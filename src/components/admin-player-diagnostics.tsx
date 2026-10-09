@@ -50,54 +50,63 @@ export function AdminPlayerDiagnostics({
   historyResult?: SyncPlayerResult;
 }) {
   const s = player.syncState;
-  const hasErrors = !!(s.rank.error || s.recent.error || s.history.error || player.legacyError);
-  const pending = !s.rank.checkedAt || !s.recent.coveredThrough || s.history.status !== "completed";
+  const hasErrors = !!(
+    s.rank.error ||
+    s.recent.error ||
+    s.history.error ||
+    player.legacyError ||
+    recentResult?.status === "error" ||
+    historyResult?.status === "error"
+  );
+  const unknown = !s.rank.checkedAt || !s.recent.coveredThrough;
+  const pendingReason = recentResult?.reason ?? s.lastAttempt?.pendingReason;
   const unfinishedAttempt = s.lastAttempt && s.lastAttempt.outcome !== "success";
   const historyLabel =
     s.history.status === "running" ? "En progreso; reanudable" : HISTORY_LABELS[s.history.status];
   return (
     <div className="admin-diagnostics">
       {(recentResult || historyResult) && (
-        <p className="muted">
-          Última ejecución global solicitada desde este panel:
-          {recentResult && (
-            <>
-              <br />
-              Rango/recientes:{" "}
-              {recentResult.reason
-                ? PENDING_LABELS[recentResult.reason]
-                : recentResult.status === "complete"
-                  ? "Cobertura completada"
-                  : recentResult.status === "error"
-                    ? "Error registrado"
-                    : "Parcial o sin actualización"}
-              .
-            </>
-          )}
-          {historyResult && (
-            <>
-              <br />
-              Histórico:{" "}
-              {historyResult.reason
-                ? PENDING_LABELS[historyResult.reason]
-                : historyResult.status === "complete"
-                  ? "Exploración completada"
-                  : historyResult.status === "error"
-                    ? "Error registrado"
-                    : "Parcial o sin actualización"}
-              .
-            </>
-          )}
-        </p>
+        <details className="admin-batch-summary">
+          <summary>Resultado global de este panel</summary>
+          <p className="muted">
+            Última ejecución global solicitada desde este panel:
+            {recentResult && (
+              <>
+                <br />
+                Rango/recientes:{" "}
+                {recentResult.reason
+                  ? PENDING_LABELS[recentResult.reason]
+                  : recentResult.status === "complete"
+                    ? "Cobertura completada"
+                    : recentResult.status === "error"
+                      ? "Error registrado"
+                      : "Parcial o sin actualización"}
+                .
+              </>
+            )}
+            {historyResult && (
+              <>
+                <br />
+                Histórico:{" "}
+                {historyResult.reason
+                  ? PENDING_LABELS[historyResult.reason]
+                  : historyResult.status === "complete"
+                    ? "Exploración completada"
+                    : historyResult.status === "error"
+                      ? "Error registrado"
+                      : "Parcial o sin actualización"}
+                .
+              </>
+            )}
+          </p>
+        </details>
       )}
       <div className="admin-sync-summary">
         <p>
           <b>Rango</b>
           <span>
             {s.rank.error ? "Error pendiente · " : ""}
-            {s.rank.checkedAt
-              ? `Verificado ${date(s.rank.checkedAt, true)}`
-              : "Verificación desconocida"}
+            {s.rank.checkedAt ? "Verificación oficial registrada" : "Verificación desconocida"}
           </span>
         </p>
         <p>
@@ -105,7 +114,7 @@ export function AdminPlayerDiagnostics({
           <span>
             {s.recent.error ? "Error pendiente · " : ""}
             {s.recent.coveredThrough
-              ? `Cobertura hasta ${date(s.recent.coveredThrough, true)}`
+              ? "Cobertura registrada · ver corte en detalles"
               : "Cobertura desconocida"}
           </span>
         </p>
@@ -115,19 +124,28 @@ export function AdminPlayerDiagnostics({
             {historyLabel}
             {s.history.error ? " · Error pendiente" : ""}
             {s.history.unavailable > 0 ? ` · ${s.history.unavailable} detalles no disponibles` : ""}
+            {s.history.discovered > 0 && (
+              <small>
+                {s.history.processed} / {s.history.discovered} IDs descubiertos
+              </small>
+            )}
           </span>
         </p>
       </div>
-      <p className={hasErrors ? "sync-error" : "muted"}>
+      <p
+        className={`admin-player-state ${hasErrors ? "error" : pendingReason || unfinishedAttempt || s.history.status !== "completed" ? "partial" : unknown ? "unknown" : "success"}`}
+      >
         {hasErrors
           ? "Errores pendientes de revisión"
-          : s.lastAttempt?.pendingReason
-            ? PENDING_LABELS[s.lastAttempt.pendingReason]
+          : pendingReason
+            ? PENDING_LABELS[pendingReason]
             : unfinishedAttempt
               ? "Última fase parcial, fallida o sin finalización; revisión pendiente"
-              : pending
+              : unknown
                 ? "Datos pendientes o desconocidos"
-                : "Verificaciones y cobertura registradas"}
+                : s.history.status !== "completed"
+                  ? "Histórico incompleto; puede continuar"
+                  : "Verificaciones y cobertura registradas"}
       </p>
       <details className="admin-sync-details">
         <summary>Ver diagnóstico y fechas</summary>
