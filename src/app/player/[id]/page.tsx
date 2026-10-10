@@ -16,7 +16,7 @@ import { LpDeltaSummary } from "@/components/lp-delta-summary";
 import { PlayerMomentum } from "@/components/player-momentum";
 import { championAsset } from "@/lib/champion-assets";
 import { ChampionIdentity } from "@/components/champion-identity";
-import { Freshness } from "@/components/freshness";
+import { ProfileFreshness } from "@/components/profile-freshness";
 import { QueueTabs } from "@/components/queue-tabs";
 import { BackToLadder } from "@/components/back-link";
 import { MatchHistory } from "@/components/match-history";
@@ -91,7 +91,13 @@ export default async function PlayerPage({ params, searchParams }: Props) {
             {player.gameName}
             <span>#{player.tagLine}</span>
           </h1>
-          <Freshness timestamp={player.lastSyncedAt} observedAt={player.observedAt} />
+          <ProfileFreshness
+            rankCheckedAt={player.rankCheckedAt ?? null}
+            lastSyncedAt={player.lastSyncedAt}
+            observedAt={player.observedAt}
+            view={view}
+            demo={demo}
+          />
         </div>
         <span className="profile-since">
           En seguimiento desde

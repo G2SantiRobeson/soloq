@@ -128,6 +128,7 @@ export function demoPlayers(view: View, period: MetricsPeriod = "season"): Playe
       platform: index === 3 ? "EUW1" : "LA2",
       profileIconId: index === 11 ? null : [29, 27, 23, 20, 21, 22, 26, 28][index % 8],
       observedAt: new Date(now).toISOString(),
+      rankCheckedAt: null, // Fictional ranks are never officially verified.
       lastSyncedAt:
         index === 6
           ? new Date(now - 172800_000).toISOString()

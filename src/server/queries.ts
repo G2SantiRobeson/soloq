@@ -149,6 +149,7 @@ export const getLeaderboard = cache(
       profileIconId: p.profileIconId,
       createdAt: p.createdAt.toISOString(),
       lastSyncedAt: p.lastSyncedAt?.toISOString() ?? null,
+      rankCheckedAt: p.rankCheckedAt?.toISOString() ?? null,
       observedAt: new Date().toISOString(),
       seasonHistory: {
         season: CURRENT_SEASON.id,

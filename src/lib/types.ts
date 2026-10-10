@@ -33,6 +33,8 @@ export type PublicPlayer = {
   platform: Platform;
   profileIconId: number | null;
   lastSyncedAt: string | null;
+  /** Player-wide LEAGUE-V4 verification, not a per-queue snapshot or match coverage. */
+  rankCheckedAt?: string | null;
   observedAt: string;
   createdAt: string;
   rank: Rank | null;

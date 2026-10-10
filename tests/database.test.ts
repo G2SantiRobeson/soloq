@@ -1577,6 +1577,26 @@ describe("PostgreSQL migrations and data integrity", () => {
     expect(publicPlayer).not.toHaveProperty("puuid");
     const profile = await getProfile(player.id, "soloq");
     expect(profile?.champions[0].games).toBe(8);
+    const checked = new Date("2026-10-10T11:40:00Z");
+    const covered = new Date("2026-10-09T11:25:00Z");
+    await database
+      .update(schema.players)
+      .set({ rankCheckedAt: checked, lastSyncedAt: covered })
+      .where(eq(schema.players.id, player.id));
+    for (const view of ["soloq", "flex", "5v5"] as const) {
+      const updated = await getProfile(player.id, view);
+      expect(updated?.rankCheckedAt).toBe(checked.toISOString());
+      expect(updated?.lastSyncedAt).toBe(covered.toISOString());
+      expect(updated).not.toHaveProperty("puuid");
+    }
+    await database
+      .update(schema.players)
+      .set({ rankCheckedAt: null, lastSyncedAt: null })
+      .where(eq(schema.players.id, player.id));
+    expect(await getProfile(player.id, "soloq")).toMatchObject({
+      rankCheckedAt: null,
+      lastSyncedAt: null,
+    });
     expect(profile?.recent).toHaveLength(8);
     expect(profile?.history).toHaveLength(1);
     expect((await getLeaderboard("flex"))[0].stats.games).toBe(0);
