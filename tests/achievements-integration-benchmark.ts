@@ -50,6 +50,10 @@ for (const n of [50, 500, 5000, 50000]) {
   const evaluationMs = performance.now() - start;
   const displayStart = performance.now();
   const dto = achievementPresentation(result);
+  const presentationMs = performance.now() - displayStart;
+  const serializationStart = performance.now();
+  const json = JSON.stringify(dto);
+  const serializationMs = performance.now() - serializationStart;
   console.log(
     JSON.stringify({
       n,
@@ -57,8 +61,10 @@ for (const n of [50, 500, 5000, 50000]) {
       snapshots: snapshots.length,
       normalizationMs: +normalizationMs.toFixed(2),
       evaluationMs: +evaluationMs.toFixed(2),
-      presentationMs: +(performance.now() - displayStart).toFixed(2),
-      dtoBytes: Buffer.byteLength(JSON.stringify(dto)),
+      presentationMs: +presentationMs.toFixed(2),
+      serializationMs: +serializationMs.toFixed(2),
+      totalMs: +(normalizationMs + evaluationMs + presentationMs + serializationMs).toFixed(2),
+      dtoBytes: Buffer.byteLength(json),
       heapDeltaMiB: +((process.memoryUsage().heapUsed - beforeHeap) / 1048576).toFixed(2),
       status: result.status,
       scope: fixedScope.season.id,

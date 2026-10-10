@@ -48,7 +48,7 @@ export function AchievementItem({ item }: { item: AchievementDisplay }) {
 }
 
 export type FutureAchievement = { key: string; name: string; description: string };
-/** Disconnected, display-only composition. Native details also work without JavaScript. */
+/** Display-only composition. Native details also work without JavaScript. */
 export function AchievementPanel({
   presentation,
   future = [],
@@ -60,7 +60,7 @@ export function AchievementPanel({
   return (
     <section className={styles.panel} aria-labelledby={id}>
       <header className={styles.heading}>
-        <h2 id={id}>Logros · experimental</h2>
+        <h2 id={id}>Señales competitivas · Experimental</h2>
         <span>Sin concesiones permanentes</span>
       </header>
       {presentation.status !== "available" ? (

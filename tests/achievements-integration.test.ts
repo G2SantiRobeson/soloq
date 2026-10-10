@@ -1,10 +1,10 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "@/db/schema";
-import { achievementReader } from "@/server/achievements/queries";
+import { achievementReader, consistentAchievementReader } from "@/server/achievements/queries";
 import { evaluateStoredAchievements } from "@/server/achievements/evaluate";
 import { achievementPresentation } from "@/server/achievements/presentation";
 import { readPlayerAchievements } from "@/server/achievements/service";
@@ -12,6 +12,7 @@ import { ACHIEVEMENT_DEMO_PLAYER_ID } from "@/server/achievements/demo";
 import { seasonStart } from "@/lib/season";
 import { currentAchievementScope } from "@/lib/achievements";
 import type { AchievementReader } from "@/server/achievements/contracts";
+import { profileAchievementPresentation } from "@/server/achievements/profile";
 
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
@@ -105,6 +106,64 @@ async function ranks(extra: Partial<typeof schema.rankedSnapshots.$inferInsert> 
   );
 }
 describe("achievement SQL integration on isolated ephemeral PostgreSQL", () => {
+  it("materializes all reads in repeatable read / read only and leaves no writes", async () => {
+    await games();
+    await ranks();
+    const transaction = vi.spyOn(database, "transaction");
+    const r = await evaluateStoredAchievements(consistentAchievementReader(database), request);
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(transaction.mock.calls[0][1]).toEqual({
+      isolationLevel: "repeatable read",
+      accessMode: "read only",
+    });
+    expect(r.status).toBe("available");
+    await database.transaction(
+      async (tx) => {
+        const settings = await tx.execute(
+          sql`select current_setting('transaction_isolation') isolation, current_setting('transaction_read_only') readonly`,
+        );
+        expect(settings.rows[0]).toEqual({ isolation: "repeatable read", readonly: "on" });
+        await expect(
+          tx.update(schema.players).set({ enabled: false }).where(eq(schema.players.id, playerId)),
+        ).rejects.toThrow();
+      },
+      { isolationLevel: "repeatable read", accessMode: "read only" },
+    );
+    expect((await reader.player(playerId))?.enabled).toBe(true);
+  });
+  it.each([2, 3])(
+    "rolls back safely when SQL read %i fails and releases the transaction",
+    async (failedRead) => {
+      const baseTransaction = database.transaction.bind(database);
+      vi.spyOn(database, "transaction").mockImplementation((work, config) =>
+        baseTransaction(async (tx) => {
+          const select = tx.select.bind(tx);
+          let count = 0;
+          vi.spyOn(tx, "select").mockImplementation((...args: Parameters<typeof select>) => {
+            if (++count === failedRead)
+              throw Object.assign(new Error("private-connection"), { code: "ECONNRESET" });
+            return select(...args);
+          });
+          return work(tx);
+        }, config),
+      );
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      expect(
+        await evaluateStoredAchievements(consistentAchievementReader(database), request),
+      ).toEqual({ status: "unavailable" });
+      expect(log).toHaveBeenCalledWith("[achievements] read:infrastructure");
+      expect(JSON.stringify(log.mock.calls)).not.toContain("private-connection");
+      expect((await reader.player(playerId))?.id).toBe(playerId);
+    },
+  );
+  it("the production service uses the coherent reader, not separate database selects", async () => {
+    vi.stubEnv("DEMO_MODE", "false");
+    const transaction = vi.spyOn(database, "transaction");
+    const rootSelect = vi.spyOn(database, "select");
+    expect((await readPlayerAchievements(request)).status).toBe("available");
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(rootSelect).not.toHaveBeenCalled();
+  });
   it("uses precisely three select reads, evaluates all three, sanitizes identity and preserves evidence", async () => {
     await games();
     await ranks();
@@ -154,16 +213,14 @@ describe("achievement SQL integration on isolated ephemeral PostgreSQL", () => {
     async (view) => {
       await games(1);
       await ranks();
-      await database
-        .insert(schema.players)
-        .values({
-          id: otherId,
-          puuid: "other",
-          gameName: "Other",
-          tagLine: "TEST",
-          platform: "LA2",
-          scanStart: seasonStart("LA2"),
-        });
+      await database.insert(schema.players).values({
+        id: otherId,
+        puuid: "other",
+        gameName: "Other",
+        tagLine: "TEST",
+        platform: "LA2",
+        scanStart: seasonStart("LA2"),
+      });
       const additions = [
         { id: "LA2_flex", queueId: 440 },
         { id: "KR_wrong-platform" },
@@ -433,6 +490,21 @@ describe("achievement SQL integration on isolated ephemeral PostgreSQL", () => {
     expect(r.source).toBe("fictitious");
     expect(achievementPresentation(r)).toMatchObject({ demo: true });
     expect(r.evaluations.every((e) => !e.grantAuthorized)).toBe(true);
+  });
+  it("integrated Demo maps a known public fictional profile without opening PostgreSQL", async () => {
+    vi.stubEnv("DEMO_MODE", "true");
+    vi.stubEnv("ACHIEVEMENTS_EXPERIMENTAL", "true");
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("VERCEL", undefined);
+    vi.stubEnv("VERCEL_ENV", undefined);
+    vi.stubEnv("VERCEL_TARGET_ENV", undefined);
+    factory.fail = true;
+    const dto = await profileAchievementPresentation("demo-1", "soloq", request.asOf, {});
+    expect(dto).toMatchObject({ status: "available", demo: true });
+    if (dto?.status !== "available") throw new Error("fixture");
+    expect(dto.items.map((e) => e.status)).toEqual(["observed", "observed", "observed"]);
+    expect(factory.calls).toBe(0);
+    expect(JSON.stringify(dto)).not.toMatch(/puuid|password|fictitious-private-identity/i);
   });
   it("service contains connection errors without logging credentials", async () => {
     vi.stubEnv("DEMO_MODE", "false");

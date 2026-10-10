@@ -34,6 +34,8 @@ export type AchievementRecords = {
 };
 /** Implementations are server-owned. Never construct this from browser evidence. */
 export interface AchievementReader {
+  /** Materialize related reads in one snapshot; evaluators run after it closes. */
+  snapshot?<T>(read: (reader: AchievementReader) => Promise<T>): Promise<T>;
   player(id: string): Promise<AchievementPlayerContext | undefined>;
   records(player: AchievementPlayerContext, scope: AchievementScope): Promise<AchievementRecords>;
 }

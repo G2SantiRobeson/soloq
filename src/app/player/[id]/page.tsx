@@ -32,6 +32,7 @@ import {
 } from "@/components/player-signature-section";
 import { toSignaturePlayer } from "@/lib/signature";
 import { isDemo } from "@/server/env";
+import { ProfileAchievements } from "@/components/achievements/profile-achievements";
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ queue?: string }> };
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
@@ -204,6 +205,12 @@ export default async function PlayerPage({ params, searchParams }: Props) {
               />
             </Suspense>
           </details>
+          <ProfileAchievements
+            playerId={id}
+            view={view}
+            asOf={player.observedAt}
+            champions={assets.champions}
+          />
         </div>
       </div>
       <div className="profile-progression-grid">

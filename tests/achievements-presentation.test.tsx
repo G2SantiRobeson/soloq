@@ -158,12 +158,13 @@ describe("server evidence → presentation → isolated SSR components", () => {
   it("does not introduce public imports, client evaluation, routes, IO in components or writes in the reader", () => {
     for (const path of [
       "src/app/page.tsx",
-      "src/app/player/[id]/page.tsx",
       "src/components/leaderboard.tsx",
       "src/app/metrics/page.tsx",
     ])
       expect(readFileSync(path, "utf8")).not.toMatch(/achievements/);
-    for (const f of readdirSync("src/components/achievements").filter((f) => f.endsWith(".tsx"))) {
+    for (const f of readdirSync("src/components/achievements").filter(
+      (f) => f.endsWith(".tsx") && f !== "profile-achievements.tsx",
+    )) {
       const source = readFileSync(`src/components/achievements/${f}`, "utf8");
       expect(source).not.toMatch(
         /use client|evaluateUnstoppable|evaluateResurrection|evaluateOtp|fetch\(|@\/db|@\/server/,

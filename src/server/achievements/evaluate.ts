@@ -15,6 +15,7 @@ import type {
   AchievementPlayerContext,
   AchievementReader,
 } from "./contracts";
+import { reportAchievementFailure } from "./errors";
 
 const requestSchema = z.object({
   playerId: z.uuid(),
@@ -63,7 +64,7 @@ export function coverageContext(
   return {
     availability: !sameSeason
       ? "unknown"
-      : player.backfillStatus === "completed"
+      : player.backfillStatus === "completed" && player.backfillUnavailable === 0
         ? "available"
         : "partial",
     historyStatus: sameSeason ? player.backfillStatus : "unknown",
@@ -92,19 +93,33 @@ export async function evaluateStoredAchievements(
   const parsed = parseAchievementRequest(request);
   if (!parsed.success) return { status: "invalid_request" };
   if (parsed.data.view === "5v5") return { status: "not_applicable" };
-  try {
-    const row = await reader.player(parsed.data.playerId);
-    if (!row) return { status: "not_found" };
+  const view = parsed.data.view;
+  const materialize = async (snapshotReader: AchievementReader) => {
+    const row = await snapshotReader.player(parsed.data.playerId);
+    if (!row) return { status: "not_found" as const };
     const player = playerSchema.safeParse(row);
     if (!player.success || player.data.id !== parsed.data.playerId)
-      return { status: "invalid_data" };
-    if (!player.data.enabled) return { status: "ineligible" };
-    const scope = currentAchievementScope(parsed.data.view, player.data.platform, parsed.data.asOf);
+      return { status: "invalid_data" as const };
+    if (!player.data.enabled) return { status: "ineligible" as const };
+    const scope = currentAchievementScope(view, player.data.platform, parsed.data.asOf);
     if (Date.parse(scope.asOf) <= Date.parse(scope.season.startAt))
-      return { status: "invalid_request" };
-    const records = await reader.records(player.data, scope);
+      return { status: "invalid_request" as const };
+    const records = await snapshotReader.records(player.data, scope);
+    return { status: "ready" as const, player: player.data, scope, records };
+  };
+  let materialized: Awaited<ReturnType<typeof materialize>>;
+  try {
+    materialized = await (reader.snapshot ? reader.snapshot(materialize) : materialize(reader));
+  } catch (error) {
+    const kind = reportAchievementFailure("read", error);
+    return { status: kind === "invalid_data" ? "invalid_data" : "unavailable" };
+  }
+  if (materialized.status !== "ready") return materialized;
+  // The transaction has committed before CPU work, serialization or component rendering.
+  const { player, scope, records } = materialized;
+  try {
     const coverage = coverageContext(
-      player.data,
+      player,
       scope,
       records.matches.length,
       records.snapshots.length,
@@ -130,8 +145,8 @@ export async function evaluateStoredAchievements(
         evaluateOtpSpecialist(matchInput),
       ],
     };
-  } catch {
-    // No runtime error, connection string or supplied evidence is returned/logged.
+  } catch (error) {
+    reportAchievementFailure("evaluate", error);
     return { status: "unavailable" };
   }
 }

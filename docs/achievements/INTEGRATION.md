@@ -1,6 +1,6 @@
 # Logros 1.1.B — lectura y presentación experimental
 
-Estado: implementado localmente, desconectado de rutas públicas. No existen concesiones, tablas nuevas, migraciones, endpoints, Server Actions, jobs ni cambios en la sincronización. El motor de [ENGINE.md](./ENGINE.md) sigue siendo puro. Todos los resultados mantienen `certification: "not_established"` y `grantAuthorized: false`.
+Estado de 1.1.B: implementado como componentes aislados. La etapa [1.1.C](./EXPERIMENTAL_PROFILE.md) integra ahora el perfil detrás de un flag de servidor apagado por defecto y añade lecturas transaccionales coherentes. Las limitaciones y el plan de activación actualizados están en ese documento; las notas de QA/activación de B describen el estado anterior. No existen concesiones, tablas nuevas, migraciones, endpoints, Server Actions, jobs ni cambios en la sincronización. El motor de [ENGINE.md](./ENGINE.md) sigue siendo puro. Todos los resultados mantienen `certification: "not_established"` y `grantAuthorized: false`.
 
 ## Auditoría adversarial de 1.1.A
 

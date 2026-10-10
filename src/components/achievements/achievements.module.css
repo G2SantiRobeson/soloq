@@ -9,6 +9,25 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.profile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--line, #253457);
+  color: var(--muted, #a3b0cf);
+  font-size: 14px;
+}
+.profile > summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding-block: 12px;
+}
+.profile > summary:focus-visible {
+  outline: 2px solid var(--accent, #2fe2ff);
+  outline-offset: 3px;
+}
+.profile > p {
+  padding: 12px;
+}
 .panel h2,
 .panel h3,
 .panel p {

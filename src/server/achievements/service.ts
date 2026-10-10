@@ -5,6 +5,7 @@ import {
   parseAchievementRequest,
   type AchievementReadResult,
 } from "./evaluate";
+import { reportAchievementFailure } from "./errors";
 
 /** Internal only; no route, Server Action, grants, cache or write path. */
 export async function readPlayerAchievements(request: unknown): Promise<AchievementReadResult> {
@@ -16,12 +17,13 @@ export async function readPlayerAchievements(request: unknown): Promise<Achievem
     return evaluateStoredAchievements(demoAchievementReader, request, "fictitious");
   }
   try {
-    const [{ db }, { achievementReader }] = await Promise.all([
+    const [{ db }, { consistentAchievementReader }] = await Promise.all([
       import("@/db"),
       import("./queries"),
     ]);
-    return await evaluateStoredAchievements(achievementReader(db()), request);
-  } catch {
+    return await evaluateStoredAchievements(consistentAchievementReader(db()), request);
+  } catch (error) {
+    reportAchievementFailure("service", error);
     return { status: "unavailable" };
   }
 }

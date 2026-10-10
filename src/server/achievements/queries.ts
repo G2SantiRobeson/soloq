@@ -1,9 +1,35 @@
 import "server-only";
 import { and, asc, eq, gte, lt, like } from "drizzle-orm";
 import type { db } from "@/db";
+import type { PgTransactionConfig } from "drizzle-orm/pg-core";
 import { matches, playerMatches, players, rankedSnapshots } from "@/db/schema";
 import { queueIds, rankedQueue } from "@/lib/queues";
 import type { AchievementReader } from "./contracts";
+import { InvalidAchievementRecordError } from "./errors";
+
+function instant(value: Date): string {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime()))
+    throw new InvalidAchievementRecordError();
+  return value.toISOString();
+}
+
+/** PostgreSQL MVCC snapshot, not a second lock or a change to global isolation. */
+export function consistentAchievementReader(database: {
+  select: ReturnType<typeof db>["select"];
+  transaction<T>(
+    read: (tx: Pick<ReturnType<typeof db>, "select">) => Promise<T>,
+    config?: PgTransactionConfig,
+  ): Promise<T>;
+}): AchievementReader {
+  return {
+    ...achievementReader(database),
+    snapshot: (read) =>
+      database.transaction((tx) => read(achievementReader(tx)), {
+        isolationLevel: "repeatable read",
+        accessMode: "read only",
+      }),
+  };
+}
 
 /** Dependency injection supports real SQL tests on ephemeral PostgreSQL (PGlite). */
 export function achievementReader(
@@ -82,8 +108,8 @@ export function achievementReader(
           .orderBy(asc(matches.timestamp), asc(matches.id)),
       ]);
       return {
-        snapshots: rankRows.map((row) => ({ ...row, timestamp: row.timestamp.toISOString() })),
-        matches: matchRows.map((row) => ({ ...row, timestamp: row.timestamp.toISOString() })),
+        snapshots: rankRows.map((row) => ({ ...row, timestamp: instant(row.timestamp) })),
+        matches: matchRows.map((row) => ({ ...row, timestamp: instant(row.timestamp) })),
       };
     },
   };
