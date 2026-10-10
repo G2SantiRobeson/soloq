@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpRight, Search, X } from "lucide-react";
 import type { PublicPlayer } from "@/lib/types";
 import type { View } from "@/lib/queues";
@@ -24,6 +25,7 @@ import type { SyncStatus } from "@/lib/sync-status";
 import { SyncCountdown } from "./sync-countdown";
 import { rememberLadderUrl } from "@/lib/ladder-memory";
 import { InfoTip } from "./info-tip";
+import { watchWeekChange } from "@/lib/weekly-refresh";
 export function Leaderboard({
   players,
   view,
@@ -31,6 +33,7 @@ export function Leaderboard({
   champions,
   sync,
   demo = false,
+  weekStartedAt,
   initialFilters = parseLadderFilters(view, {}),
 }: {
   players: PublicPlayer[];
@@ -39,9 +42,32 @@ export function Leaderboard({
   champions: ChampionCatalog;
   sync?: SyncStatus;
   demo?: boolean;
+  weekStartedAt?: string;
   initialFilters?: LadderFilters;
 }) {
   const ids = useId();
+  const router = useRouter();
+  const [observedWeek, setObservedWeek] = useState(weekStartedAt);
+  const weeklyExpired = !demo && !!weekStartedAt && observedWeek !== weekStartedAt;
+  useEffect(() => {
+    if (demo || view === "5v5" || !weekStartedAt) return;
+    const watcher = watchWeekChange({
+      weekStartedAt,
+      visible: () => document.visibilityState !== "hidden",
+      onChange: (current) => {
+        // Hide the old delta even if the refresh fails; retry at the next visible tick.
+        setObservedWeek(current);
+        router.refresh();
+      },
+    });
+    document.addEventListener("visibilitychange", watcher.check);
+    window.addEventListener("focus", watcher.check);
+    return () => {
+      watcher.stop();
+      document.removeEventListener("visibilitychange", watcher.check);
+      window.removeEventListener("focus", watcher.check);
+    };
+  }, [demo, view, weekStartedAt, router]);
   const [search, setSearch] = useState(initialFilters.search);
   const [region, setRegion] = useState<LadderFilters["region"]>(initialFilters.region);
   const [sort, setSort] = useState<LadderSort>(initialFilters.sort);
@@ -285,10 +311,10 @@ export function Leaderboard({
               {view !== "5v5" && (
                 <td
                   role="cell"
-                  className={`weekly-cell numeric ${(p.weeklyLp ?? 0) > 0 ? "positive" : (p.weeklyLp ?? 0) < 0 ? "negative" : ""}`}
+                  className={`weekly-cell numeric ${weeklyExpired ? "" : (p.weeklyLp ?? 0) > 0 ? "positive" : (p.weeklyLp ?? 0) < 0 ? "negative" : ""}`}
                 >
                   <span className="mobile-label">Δ SEMANA </span>
-                  <WeeklyMomentum summary={p.weeklySummary} />
+                  <WeeklyMomentum summary={weeklyExpired ? null : p.weeklySummary} />
                 </td>
               )}
               <td role="cell" className="wr-cell">

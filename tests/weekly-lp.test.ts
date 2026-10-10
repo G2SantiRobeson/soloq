@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { weeklyRankDelta } from "@/lib/weekly-lp";
+import { weeklyRankDelta, weeklyRankSummary } from "@/lib/weekly-lp";
 import { weekStart } from "@/lib/time";
 import type { RankSnapshot } from "@/lib/lp-metrics";
 const now = new Date("2026-10-06T18:00:00Z");
@@ -71,7 +71,56 @@ describe("Monday in Santiago, independently of the server timezone", () => {
     ["2026-09-07T03:00:00Z", "2026-09-07T03:00:00.000Z"],
     ["2026-04-05T12:00:00Z", "2026-03-30T03:00:00.000Z"],
     ["2026-04-06T04:00:00Z", "2026-04-06T04:00:00.000Z"],
+    ["2026-10-12T02:59:59Z", "2026-10-05T03:00:00.000Z"],
+    ["2026-10-12T03:00:00Z", "2026-10-12T03:00:00.000Z"],
   ])("%s begins %s", (instant, monday) =>
     expect(weekStart(new Date(instant)).toISOString()).toBe(monday),
   );
+});
+
+describe("new weekly observation interval", () => {
+  const sunday = new Date("2026-10-12T02:59:59Z");
+  const monday = new Date("2026-10-12T03:00:00Z");
+  const baseline = snapshot("GOLD", "II", 50, "2026-10-04T23:00:00Z");
+  const latest = {
+    ...baseline,
+    timestamp: "2026-10-11T20:00:00Z",
+    leaguePoints: 75,
+    wins: 23,
+    losses: 12,
+  };
+  it("ends the previous interval at Monday midnight without inventing a zero", () => {
+    expect(weeklyRankSummary([baseline, latest], sunday)).toMatchObject({
+      net: 25,
+      wins: 3,
+      losses: 2,
+    });
+    expect(weeklyRankSummary([baseline, latest], monday)).toBeNull();
+    expect(weeklyRankSummary([], monday)).toBeNull();
+    expect(weeklyRankSummary([latest], monday)).toBeNull();
+  });
+  it("uses only the nearest pre-Monday reference for the new LP and V/D interval", () => {
+    const next = { ...latest, timestamp: "2026-10-12T04:00:00Z", leaguePoints: 90, wins: 24 };
+    expect(weeklyRankSummary([baseline, latest, next], new Date(next.timestamp))).toMatchObject({
+      net: 15,
+      wins: 1,
+      losses: 0,
+      from: latest.timestamp,
+      to: next.timestamp,
+      partial: false,
+    });
+  });
+  it("starts a partial interval within the new week only after two observations", () => {
+    const a = { ...latest, timestamp: "2026-10-12T04:00:00Z" };
+    const b = { ...a, timestamp: "2026-10-12T05:00:00Z", leaguePoints: 60, losses: 13 };
+    expect(weeklyRankSummary([a], new Date(b.timestamp))).toBeNull();
+    expect(weeklyRankSummary([a, b], new Date(b.timestamp))).toMatchObject({
+      net: -15,
+      wins: 0,
+      losses: 1,
+      from: a.timestamp,
+      to: b.timestamp,
+      partial: true,
+    });
+  });
 });

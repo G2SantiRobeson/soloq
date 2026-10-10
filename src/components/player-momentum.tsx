@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Info, Minus } from "lucide-react";
 import { signedLp, type LpMetrics, type FiveMatchLp } from "@/lib/lp-metrics";
 import { InfoTip } from "./info-tip";
 import type { WeeklyLp } from "@/lib/weekly-lp";
@@ -46,10 +46,15 @@ export function LastFiveMomentum({ metrics }: { metrics?: FiveMatchLp }) {
       <InfoTip
         term={
           value == null ? (
-            "LP últimas 5: no verificable"
+            <>
+              Últ. 5: — <Info size={12} aria-hidden="true" />
+              <span className="sr-only">
+                LP de las últimas cinco partidas no verificable. Más información.
+              </span>
+            </>
           ) : (
             <>
-              {signedLp(value)} LP <small>/ últimas 5</small>
+              {signedLp(value)} LP <small>/ 5 partidas</small>
             </>
           )
         }

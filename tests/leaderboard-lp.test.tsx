@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { lastFiveRankDelta, type RankSnapshot } from "@/lib/lp-metrics";
 import { weeklyRankSummary } from "@/lib/weekly-lp";
@@ -6,6 +6,7 @@ import { LastFiveMomentum } from "@/components/player-momentum";
 import { Leaderboard } from "@/components/leaderboard";
 import { emptyTotals } from "@/lib/stats";
 import type { PublicPlayer } from "@/lib/types";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 const now = new Date("2026-10-10T18:00:00Z");
 const queue = "RANKED_SOLO_5x5" as const;
 const before: RankSnapshot = {
@@ -283,13 +284,18 @@ describe("weekly official interval and UI", () => {
       <Leaderboard players={[p]} view="soloq" version={null} champions={{}} />,
     );
     expect(html).toContain("-32 LP");
-    expect(html).toContain("/ últimas 5");
+    expect(html).toContain("/ 5 partidas");
     expect(html).toContain("1V · 4D");
     expect(html).toContain("Δ parcial · desde");
     expect(html).toContain('class="mobile-label"');
     expect(html).toContain('aria-expanded="false"');
     expect(html.match(/role="listitem"/g) ?? []).toHaveLength(5);
-    expect(renderToStaticMarkup(<LastFiveMomentum />)).toContain("LP últimas 5: no verificable");
+    const unknown = renderToStaticMarkup(<LastFiveMomentum />);
+    expect(unknown).toContain("Últ. 5: —");
+    expect(unknown).toContain('class="sr-only">LP de las últimas cinco partidas no verificable');
+    expect(unknown).toContain('aria-expanded="false"');
+    expect(unknown).toContain("aria-controls=");
+    expect(unknown).not.toContain("LP últimas 5: no verificable");
     expect(
       renderToStaticMarkup(
         <Leaderboard
@@ -300,5 +306,20 @@ describe("weekly official interval and UI", () => {
         />,
       ),
     ).toContain("Sin datos suficientes");
+  });
+  it.each([
+    [32, "rising"],
+    [-32, "falling"],
+    [0, "steady"],
+  ] as const)("keeps compact five-game text and the direction for %i LP", (net, direction) => {
+    const html = renderToStaticMarkup(
+      <LastFiveMomentum
+        metrics={{ net, from: before.timestamp, to: after.timestamp, reason: "Official interval" }}
+      />,
+    );
+    expect(html).toContain(`last-five-momentum ${direction}`);
+    expect(html).toContain("/ 5 partidas");
+    expect(html).toContain('type="button"');
+    expect(html).toContain('role="status"');
   });
 });

@@ -2599,15 +2599,38 @@ dialog.confirm-dialog::backdrop {
 .weekly-reference {
   white-space: normal;
 }
-.last-five-momentum {
+.weekly-cell > small.muted {
   white-space: normal;
-  max-width: 150px;
+}
+.last-five-momentum {
+  white-space: nowrap;
   margin-left: auto;
+  margin-top: var(--space-half);
+}
+.leaderboard .lp-cell,
+.leaderboard .lp-column {
+  min-width: 140px;
+}
+@media (min-width: 701px) and (max-width: 1100px) {
+  .leaderboard .lp-cell,
+  .leaderboard .lp-column {
+    min-width: 120px;
+  }
 }
 .last-five-momentum .info-tip-term .info-tip-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-half);
   color: inherit;
   text-align: right;
-  white-space: normal;
+  white-space: nowrap;
+}
+.last-five-momentum .info-tip,
+.last-five-momentum .info-tip-term .info-tip-button {
+  font-size: var(--fs-2);
+}
+.last-five-momentum small {
+  font-size: inherit;
 }
 .last-five-momentum .info-tip-term .info-tip-button,
 .weekly-cell .info-tip-term .info-tip-button {
