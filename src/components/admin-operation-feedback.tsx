@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, LoaderCircle } from "lucide-react";
 import type { ProgressDto } from "@/lib/sync-progress";
 import type { AdminPlayer } from "@/lib/admin-sync";
-import { AdminRunFeedback } from "./admin-run-feedback";
+import { AdminRunFeedback, AdminProgressQuery } from "./admin-run-feedback";
+import type { ManualProgressRead } from "@/lib/admin-progress-polling";
 import {
   elapsedLabel,
   waitingMessage,
@@ -20,6 +21,7 @@ export function AdminOperationFeedback({
   players = [],
   refresh,
   correlated = false,
+  manualRead,
 }: {
   work: AdminWork | null;
   notice: AdminNotice | null;
@@ -28,6 +30,7 @@ export function AdminOperationFeedback({
   players?: AdminPlayer[];
   refresh?: () => void;
   correlated?: boolean;
+  manualRead?: ManualProgressRead | null;
 }) {
   const [clock, setClock] = useState(0);
   useEffect(() => {
@@ -56,6 +59,7 @@ export function AdminOperationFeedback({
           problem={problem}
           refresh={refresh}
           observed={!correlated}
+          manualRead={manualRead}
         />
       </>
     );
@@ -105,11 +109,7 @@ export function AdminOperationFeedback({
           {progress?.control.until && (
             <p>Lease ocupado o en espera hasta {progress.control.until}.</p>
           )}
-          {refresh && (
-            <button type="button" className="button secondary" onClick={refresh}>
-              Consultar estado
-            </button>
-          )}
+          {refresh && <AdminProgressQuery refresh={refresh} result={manualRead} />}
         </div>
       )}
     </div>

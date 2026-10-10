@@ -282,7 +282,8 @@ export function AdminPanel({
         correlated={progress.correlated}
         problem={progress.problem}
         players={players}
-        refresh={progress.refresh}
+        refresh={progress.refreshManual}
+        manualRead={progress.manualRead}
       />
       {!context.progress &&
         context.leaseUntil &&

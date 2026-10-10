@@ -1,5 +1,9 @@
 import { progressDtoSchema, type ProgressDto, type ProgressSelector } from "./sync-progress";
 import { SYNC_LEASE_MS } from "./sync-status";
+export type ManualProgressRead = {
+  state: "loading" | "changed" | "unchanged" | "error";
+  lastSuccessfulAt: number | null;
+};
 export class ProgressReadError extends Error {
   constructor(
     public status: number,
@@ -34,6 +38,7 @@ export function watchAdminProgress(options: {
   onStatus: (dto: ProgressDto) => void;
   onProblem: (message: string) => void;
   onFinished?: (dto: ProgressDto) => void;
+  onManualRead?: (result: ManualProgressRead | null) => void;
   visible?: () => boolean;
   subscribe?: (changed: () => void) => () => void;
   now?: () => number;
@@ -50,6 +55,11 @@ export function watchAdminProgress(options: {
     observedAt = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let controller: AbortController | null = null;
+  let manualPending = false;
+  let manualInFlight = false;
+  let lastSuccessfulAt: number | null = null;
+  let meaningful: string | undefined;
+  let observedRunId: string | null | undefined;
   const started = options.startedAt ?? now();
   function schedule(delay: number) {
     clearTimeout(timer);
@@ -62,6 +72,9 @@ export function watchAdminProgress(options: {
       return;
     }
     busy = true;
+    const manual = manualPending;
+    manualInFlight = manual;
+    manualPending = false;
     const request = new AbortController();
     controller = request;
     let next: number | null = null;
@@ -76,6 +89,7 @@ export function watchAdminProgress(options: {
       )
         throw new Error("Uncorrelated response");
       if (Date.parse(dto.serverNow) < observedAt || (run && run.revision < revision)) {
+        if (manual) options.onManualRead?.({ state: "error", lastSuccessfulAt });
         next = 15_000;
         return;
       }
@@ -85,7 +99,23 @@ export function watchAdminProgress(options: {
         revision = run.revision;
       }
       failures = 0;
+      if (observedRunId !== undefined && observedRunId !== (run?.runId ?? null)) {
+        lastSuccessfulAt = null;
+        if (!manualPending && !manualInFlight) options.onManualRead?.(null);
+      }
+      observedRunId = run?.runId ?? null;
+      const current = JSON.stringify({
+        selection: dto.selection,
+        control: dto.control,
+        run: dto.run,
+      });
+      const changed = meaningful !== current;
+      meaningful = current;
       options.onStatus(dto);
+      if (manual) {
+        lastSuccessfulAt = now();
+        options.onManualRead?.({ state: changed ? "changed" : "unchanged", lastSuccessfulAt });
+      }
       if (run?.state === "running") next = 15_000;
       else if (run) {
         if (!finished) {
@@ -104,6 +134,7 @@ export function watchAdminProgress(options: {
         next = Math.max(1000, Date.parse(dto.control.until) - Date.parse(dto.serverNow) + 100);
     } catch (error) {
       if (disposed || request.signal.aborted) return;
+      if (manual) options.onManualRead?.({ state: "error", lastSuccessfulAt });
       const denied = error instanceof ProgressReadError && [401, 503].includes(error.status);
       options.onProblem(
         error instanceof ProgressReadError && error.status === 401
@@ -117,6 +148,7 @@ export function watchAdminProgress(options: {
         );
     } finally {
       busy = false;
+      manualInFlight = false;
       controller = null;
       if (wakePending) {
         wakePending = false;
@@ -130,8 +162,11 @@ export function watchAdminProgress(options: {
   }
   function visibilityChanged() {
     clearTimeout(timer);
-    if (!visible()) controller?.abort();
-    else refresh();
+    if (!visible()) {
+      controller?.abort();
+      manualPending = false;
+      options.onManualRead?.(null);
+    } else refresh();
   }
   const unsubscribe = options.subscribe
     ? options.subscribe(visibilityChanged)
@@ -142,6 +177,12 @@ export function watchAdminProgress(options: {
   void poll();
   return {
     refresh,
+    refreshManual() {
+      if (disposed || !visible() || manualPending || manualInFlight) return;
+      manualPending = true;
+      options.onManualRead?.({ state: "loading", lastSuccessfulAt });
+      refresh();
+    },
     stop() {
       disposed = true;
       clearTimeout(timer);

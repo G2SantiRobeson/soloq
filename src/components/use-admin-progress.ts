@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { watchAdminProgress } from "@/lib/admin-progress-polling";
+import { watchAdminProgress, type ManualProgressRead } from "@/lib/admin-progress-polling";
 import { syncActionSchema, type ProgressDto, type SyncRunAction } from "@/lib/sync-progress";
 const storageKey = "soloq-admin-sync-observation-v1";
 const savedSchema = z.object({
@@ -21,6 +21,7 @@ export function useAdminProgress(initial: ProgressDto | undefined, onFinished: (
   // Do not show a previous SSR run before checking the browser's saved correlation.
   const [observation, setObservation] = useState<ProgressDto | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [manualRead, setManualRead] = useState<ManualProgressRead | null>(null);
   const [correlated, setCorrelated] = useState(false);
   const [awaiting, setAwaiting] = useState(!!initial && initial.control.state !== "available");
   const watcher = useRef<ReturnType<typeof watchAdminProgress> | null>(null);
@@ -34,6 +35,7 @@ export function useAdminProgress(initial: ProgressDto | undefined, onFinished: (
     watcher.current = watchAdminProgress({
       selector: requestId ? { requestId } : {},
       startedAt,
+      onManualRead: setManualRead,
       onStatus(dto) {
         setCorrelated(!!requestId);
         setObservation(dto);
@@ -60,6 +62,7 @@ export function useAdminProgress(initial: ProgressDto | undefined, onFinished: (
     return () => watcher.current?.stop();
   }, [observe]);
   function begin(action: SyncRunAction) {
+    setManualRead(null);
     const saved = { requestId: crypto.randomUUID(), action, startedAt: Date.now() };
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(saved));
@@ -77,6 +80,7 @@ export function useAdminProgress(initial: ProgressDto | undefined, onFinished: (
     watcher.current?.stop();
     setObservation(null);
     setProblem(null);
+    setManualRead(null);
     setAwaiting(false);
     setCorrelated(false);
     try {
@@ -97,6 +101,8 @@ export function useAdminProgress(initial: ProgressDto | undefined, onFinished: (
     cancel,
     rejected,
     refresh: () => watcher.current?.refresh(),
+    refreshManual: () => watcher.current?.refreshManual(),
+    manualRead,
     blocked: awaiting || (observation !== null && observation.control.state !== "available"),
   };
 }

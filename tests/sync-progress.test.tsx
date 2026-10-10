@@ -15,6 +15,7 @@ import {
 } from "@/lib/admin-progress-polling";
 import { restoreAdminObservation } from "@/components/use-admin-progress";
 import { AdminOperationFeedback } from "@/components/admin-operation-feedback";
+import { AdminProgressQuery } from "@/components/admin-run-feedback";
 import { requestAdmin, rejectedBeforeRun } from "@/lib/admin-operation";
 import { AdminRequestError } from "@/lib/admin-errors";
 
@@ -192,6 +193,167 @@ describe("verified progress contracts", () => {
 });
 
 describe("serial recoverable observation", () => {
+  it("does not credit stale or foreign manual responses and drops callbacks after unmount", async () => {
+    vi.useFakeTimers();
+    const current = envelope();
+    current.latest.revision = 2;
+    const stale = envelope();
+    stale.latest.revision = 1;
+    const foreign = envelope();
+    foreign.latest.runId = id;
+    let resolve!: (value: ProgressDto) => void;
+    const read = vi
+      .fn<typeof readAdminProgress>()
+      .mockResolvedValueOnce(dto(current))
+      .mockResolvedValueOnce(dto(stale, new Date(now.getTime() + 1000)))
+      .mockResolvedValueOnce(dto(foreign, new Date(now.getTime() + 2000)))
+      .mockImplementation(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          }),
+      );
+    const opts = options(read);
+    const onManualRead = vi.fn();
+    const watcher = watchAdminProgress({ ...opts, onManualRead });
+    await vi.advanceTimersByTimeAsync(0);
+    watcher.refreshManual();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onManualRead.mock.lastCall?.[0].state).toBe("error");
+    watcher.refreshManual();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onManualRead.mock.lastCall?.[0].state).toBe("error");
+    expect(opts.onStatus).toHaveBeenCalledOnce();
+    watcher.refreshManual();
+    watcher.stop();
+    const calls = onManualRead.mock.calls.length;
+    resolve(dto(current));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onManualRead).toHaveBeenCalledTimes(calls);
+    expect(opts.onStatus).toHaveBeenCalledOnce();
+    expect(read.mock.calls[1][0]).toEqual({ runId });
+  });
+  it("renders manual loading, persistent results and separate local consultation time", () => {
+    const render = (state: "loading" | "changed" | "unchanged" | "error") =>
+      renderToStaticMarkup(
+        <AdminProgressQuery
+          refresh={() => undefined}
+          result={{ state, lastSuccessfulAt: now.getTime() }}
+        />,
+      );
+    expect(render("loading")).toContain("Consultando…");
+    expect(render("loading")).toContain('disabled=""');
+    expect(render("loading")).toContain("Obteniendo el estado actualizado del servidor…");
+    expect(render("changed")).toContain("Estado actualizado");
+    expect(render("unchanged")).toContain(
+      "Consulta completada. Sin cambios desde la última consulta",
+    );
+    expect(render("error")).toContain("No se pudo consultar el estado");
+    expect(render("error")).not.toContain('disabled=""');
+    expect(render("changed")).toContain("Última consulta exitosa (hora local)");
+    expect(render("changed")).toContain('role="status"');
+  });
+  it("queues a single manual read behind polling, ignores serverNow and preserves polling cadence", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    let resolve!: (v: ProgressDto) => void;
+    const read = vi
+      .fn<typeof readAdminProgress>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          }),
+      )
+      .mockResolvedValue(dto(undefined, new Date(now.getTime() + 1000)));
+    const onManualRead = vi.fn();
+    const watcher = watchAdminProgress({ ...options(read), onManualRead });
+    watcher.refreshManual();
+    watcher.refreshManual();
+    expect(onManualRead).toHaveBeenCalledExactlyOnceWith({
+      state: "loading",
+      lastSuccessfulAt: null,
+    });
+    expect(read).toHaveBeenCalledOnce();
+    resolve(dto());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(onManualRead.mock.lastCall?.[0]).toMatchObject({
+      state: "unchanged",
+      lastSuccessfulAt: now.getTime(),
+    });
+    const feedbackCount = onManualRead.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(onManualRead).toHaveBeenCalledTimes(feedbackCount);
+    const changed = envelope();
+    changed.latest.revision++;
+    read.mockResolvedValue(dto(changed, new Date(now.getTime() + 16000)));
+    watcher.refreshManual();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onManualRead.mock.lastCall?.[0].state).toBe("changed");
+    watcher.stop();
+  });
+  it.each([new ProgressReadError(500), new Error("network")])(
+    "ends manual loading on errors without replacing known data",
+    async (error) => {
+      vi.useFakeTimers();
+      const read = vi
+        .fn<typeof readAdminProgress>()
+        .mockResolvedValueOnce(dto())
+        .mockRejectedValue(error);
+      const opts = options(read);
+      const onManualRead = vi.fn();
+      const watcher = watchAdminProgress({ ...opts, onManualRead });
+      await vi.advanceTimersByTimeAsync(0);
+      watcher.refreshManual();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onManualRead.mock.lastCall?.[0]).toMatchObject({ state: "error" });
+      expect(opts.onStatus).toHaveBeenCalledOnce();
+      watcher.refreshManual();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(read).toHaveBeenCalledTimes(3);
+      watcher.stop();
+    },
+  );
+  it("clears manual loading when hidden and ignores results after stop", async () => {
+    vi.useFakeTimers();
+    let visible = true;
+    let changed: () => void = () => undefined;
+    let resolve!: (v: ProgressDto) => void;
+    const read = vi
+      .fn<typeof readAdminProgress>()
+      .mockResolvedValueOnce(dto())
+      .mockImplementation(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          }),
+      );
+    const opts = options(read);
+    const onManualRead = vi.fn();
+    const watcher = watchAdminProgress({
+      ...opts,
+      onManualRead,
+      visible: () => visible,
+      subscribe(fn) {
+        changed = fn;
+        return () => undefined;
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    watcher.refreshManual();
+    visible = false;
+    changed();
+    expect(onManualRead.mock.lastCall?.[0]).toBeNull();
+    watcher.stop();
+    const calls = onManualRead.mock.calls.length;
+    resolve(dto());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onManualRead).toHaveBeenCalledTimes(calls);
+    expect(opts.onStatus).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it("requests no-store with cancellation and parses GET Retry-After without retrying a mutation", async () => {
     const fetcher = vi
       .fn()

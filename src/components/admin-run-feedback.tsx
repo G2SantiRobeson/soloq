@@ -1,6 +1,46 @@
 import { AlertCircle, CheckCircle2, LoaderCircle } from "lucide-react";
 import type { ProgressDto, ProgressRun } from "@/lib/sync-progress";
 import { PENDING_LABELS } from "@/lib/sync-scheduling";
+import type { ManualProgressRead } from "@/lib/admin-progress-polling";
+
+export function AdminProgressQuery({
+  refresh,
+  result,
+}: {
+  refresh: () => void;
+  result?: ManualProgressRead | null;
+}) {
+  const loading = result?.state === "loading";
+  const messages = {
+    loading: "Obteniendo el estado actualizado del servidor…",
+    changed: "Estado actualizado",
+    unchanged: "Consulta completada. Sin cambios desde la última consulta",
+    error: "No se pudo consultar el estado",
+  };
+  return (
+    <div>
+      <button
+        type="button"
+        className="button secondary"
+        onClick={refresh}
+        disabled={loading}
+        aria-busy={loading}
+      >
+        {loading && <LoaderCircle size={16} className="sync-spinner" aria-hidden="true" />}
+        {loading ? "Consultando…" : "Consultar estado"}
+      </button>
+      <p role="status" aria-live="polite" aria-atomic="true">
+        {result && messages[result.state]}
+      </p>
+      {result?.lastSuccessfulAt != null && (
+        <p className="muted" aria-live="off">
+          Última consulta exitosa (hora local):{" "}
+          {new Date(result.lastSuccessfulAt).toLocaleString("es-CL", { hour12: false })}
+        </p>
+      )}
+    </div>
+  );
+}
 
 const actions = {
   global: "Actualización global",
@@ -53,12 +93,14 @@ export function AdminRunFeedback({
   problem,
   refresh,
   observed = false,
+  manualRead,
 }: {
   dto: ProgressDto;
   names: Map<string, string>;
   problem?: string | null;
   refresh?: () => void;
   observed?: boolean;
+  manualRead?: ManualProgressRead | null;
 }) {
   const run = dto.run;
   if (!run) return null;
@@ -165,11 +207,7 @@ export function AdminRunFeedback({
           </p>
         )}
         {problem && <p className="notice">{problem}</p>}
-        {refresh && (
-          <button type="button" className="button secondary" onClick={refresh}>
-            Consultar estado
-          </button>
-        )}
+        {refresh && <AdminProgressQuery refresh={refresh} result={manualRead} />}
       </div>
     </div>
   );
