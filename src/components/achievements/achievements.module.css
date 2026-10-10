@@ -1,0 +1,147 @@
+.panel {
+  color: var(--text, #eef2ff);
+  background: var(--surface, #0e1528);
+  border-block: 1px solid var(--line, #253457);
+  padding: 16px;
+  font:
+    15px/1.5 Arial,
+    sans-serif;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.panel h2,
+.panel h3,
+.panel p {
+  margin: 0;
+}
+.panel h2 {
+  font-size: 20px;
+}
+.panel h3 {
+  font-size: 17px;
+}
+.heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+.heading span,
+.description,
+.context,
+.details,
+.title p,
+.title span {
+  color: var(--muted, #a3b0cf);
+}
+.panel .context,
+.panel .demo {
+  margin-block: 8px;
+}
+.demo {
+  color: var(--warm, #ffab3d);
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.item,
+.future {
+  border-top: 1px solid var(--line, #253457);
+  padding-block: 16px;
+  min-width: 0;
+}
+.identity {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+.identity > div {
+  min-width: 0;
+}
+.badge {
+  font-size: 22px;
+  flex-shrink: 0;
+  color: var(--muted, #a3b0cf);
+}
+.item[data-status="observed"] .badge,
+.item[data-status="observed"] .state {
+  color: var(--win, #2df0b0);
+}
+.item[data-status="invalid_input"] .state {
+  color: var(--warning, #ffab3d);
+}
+.panel .state {
+  margin-block: 8px;
+  font-weight: 600;
+}
+.measurement {
+  font-variant-numeric: tabular-nums;
+}
+.details {
+  margin-top: 8px;
+  font-size: 14px;
+}
+.details summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding-block: 10px;
+}
+.details summary:focus-visible {
+  outline: 2px solid var(--accent, #2fe2ff);
+  outline-offset: 3px;
+}
+.details p {
+  margin-block: 8px;
+}
+.details dl {
+  margin-block: 12px;
+}
+.details dl > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr);
+  gap: 8px;
+  margin-block: 8px;
+}
+.details dt {
+  font-weight: 600;
+}
+.details dd {
+  margin: 0;
+}
+.details ul {
+  padding-left: 20px;
+}
+.details li {
+  margin-block: 4px;
+}
+.future {
+  color: var(--muted, #a3b0cf);
+}
+.title {
+  color: var(--text, #eef2ff);
+  border-left: 2px solid var(--accent, #2fe2ff);
+  padding: 8px 12px;
+  font:
+    15px/1.5 Arial,
+    sans-serif;
+  overflow-wrap: anywhere;
+}
+.title strong {
+  display: block;
+  font-size: 18px;
+}
+.title p {
+  margin: 4px 0 0;
+}
+@media (max-width: 600px) {
+  .panel {
+    padding: 12px;
+  }
+  .details dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}

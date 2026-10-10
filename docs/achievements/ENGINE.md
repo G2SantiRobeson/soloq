@@ -93,7 +93,7 @@ La evidencia devuelve A/B/C completos, cola, temporada, LP, caída, fechas, conf
 
 ### Imparable (`unstoppable`)
 
-Umbral predeterminado: cinco victorias. Devuelve la racha máxima registrada, IDs de victorias, remakes confirmados intercalados e intervalo de la racha. Una derrota corta la racha. Remakes confirmados se ignoran sin cortarla. Resultado desconocido, remake desconocido e instantes simultáneos ambiguos cortan la secuencia; se pueden encontrar rachas limpias posteriores.
+Umbral predeterminado: cinco victorias. Devuelve la racha máxima registrada, IDs de victorias, remakes confirmados intercalados e intervalo de la racha. Una derrota corta la racha. Remakes confirmados se ignoran sin cortarla, incluso cuando comparten instante con una partida competitiva. Resultado desconocido, remake desconocido e instantes simultáneos ambiguos entre partidas no excluidas cortan la secuencia; se pueden encontrar rachas limpias posteriores.
 
 Empates de longitud: racha más antigua. No cuenta remakes antes de la primera victoria ni después de la última como parte del intervalo. Un candidato positivo sigue siendo solo `recorded_sequence_not_exhaustive_riot_history`. `completed`, unavailable=0 o lastSyncedAt no certifican la ausencia de derrotas intermedias que no se recuperaron.
 
@@ -159,7 +159,9 @@ Medición de referencia local en Node 25.8.2 (una ejecución, sin afirmación es
 
 Resurrección con snapshots planos y ventana densa: 30 = 2,54 ms; 300 = 5,81 ms; 3.000 = 111,45 ms. El primer caso incluye calentamiento. Node 25 no pertenece al rango declarado por el proyecto (`^22.12.0 || ^24.0.0 || >=26.0.0`); repetir en una versión admitida antes de utilizar estas cifras como referencia operacional.
 
-## Persistencia e integración futuras (no implementadas)
+## Persistencia y activación futuras (no implementadas)
+
+La capa de lectura, orquestación y componentes aislados de 1.1.B se describe en [INTEGRATION.md](./INTEGRATION.md). Sigue desconectada de las rutas públicas y no modifica los contratos de concesión. La corrección de remakes coincidentes en Imparable repara la aplicación de una regla ya definida; no cambia umbrales ni la versión provisional.
 
 Una futura concesión necesitará jugador interno, código/versión, parámetros o su identidad estable, temporada, cola, contexto de campeón cuando corresponda, evidencia acotada, estado y motivo de invalidación. Deben distinguirse fecha del acontecimiento demostrable, fecha de detección y fecha de concesión. Si el acontecimiento no tiene fecha exacta acreditada, no inventarla; guardar intervalo observado.
 

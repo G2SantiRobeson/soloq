@@ -17,14 +17,17 @@ export function evaluateUnstoppable(
   const prepared = prepareMatches(parsed.value);
   if (!prepared.ok) return evaluation("unstoppable", scope, "invalid_input", prepared.reasons);
   const { records, reasons } = prepared;
+  // Confirmed remakes cannot make the order of competitive matches ambiguous.
+  // Keep the original records for the evidence's interleaved-remake list.
+  const competitive = records.filter((m) => m.isRemake !== true);
   let run: AchievementMatch[] = [],
     best: AchievementMatch[] = [];
   let uncertain = false;
-  for (let i = 0; i < records.length;) {
+  for (let i = 0; i < competitive.length;) {
     let end = i + 1;
     while (
-      end < records.length &&
-      Date.parse(records[end].timestamp) === Date.parse(records[i].timestamp)
+      end < competitive.length &&
+      Date.parse(competitive[end].timestamp) === Date.parse(competitive[i].timestamp)
     )
       end++;
     if (end > i + 1) {
@@ -34,8 +37,7 @@ export function evaluateUnstoppable(
       i = end;
       continue;
     }
-    const m = records[i++];
-    if (m.isRemake === true) continue;
+    const m = competitive[i++];
     if (m.isRemake === null || m.win === null) {
       if (m.isRemake === null) reasons.push("unknown_remake");
       if (m.win === null) reasons.push("unknown_result");
