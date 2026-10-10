@@ -1,25 +1,25 @@
 import "server-only";
-import { and, eq, getTableColumns, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { players, rankedSnapshots as snapshots } from "@/db/schema";
 import { rankedQueue, type View } from "@/lib/queues";
-import { TIERS } from "@/lib/ranking";
 import { weekStart } from "@/lib/time";
-import { weeklyRankDelta } from "@/lib/weekly-lp";
+import { weeklyRankSummary, type WeeklyLp } from "@/lib/weekly-lp";
 import { seasonFilter } from "./season-filter";
 
-export async function getWeeklyLp(
+export async function getWeeklyLpSummary(
   ids: string[],
   view: View,
   now = new Date(),
-): Promise<Map<string, number | null>> {
+): Promise<Map<string, WeeklyLp | null>> {
   const queue = rankedQueue(view);
   if (!queue || !ids.length) return new Map();
   const monday = weekStart(now);
-  // Each player contributes at most two rows, irrespective of total stored history.
+  // Nearest pre-Monday observation plus the week, including invalid ranks: do not bridge resets.
   const candidates = db()
     .select({
       ...getTableColumns(snapshots),
+      platform: players.platform,
       baseline: sql<boolean>`${snapshots.timestamp} <= ${monday.toISOString()}::timestamptz`.as(
         "baseline",
       ),
@@ -34,23 +34,36 @@ export async function getWeeklyLp(
         inArray(snapshots.playerId, ids),
         eq(snapshots.queue, queue),
         seasonFilter(snapshots.timestamp, players.platform, "season", now.getTime() + 1),
-        inArray(snapshots.tier, [...TIERS]),
-        sql`(${snapshots.tier} in ('MASTER', 'GRANDMASTER', 'CHALLENGER') or ${snapshots.division} in ('I','II','III','IV'))`,
-        sql`${snapshots.leaguePoints} >= 0 and ${snapshots.wins} >= 0 and ${snapshots.losses} >= 0`,
       ),
     )
     .as("weekly_candidates");
-  const rows = await db().select().from(candidates).where(lte(candidates.n, 1));
+  const rows = await db()
+    .select()
+    .from(candidates)
+    .where(sql`not ${candidates.baseline} or ${candidates.n} = 1`);
   const grouped = new Map<string, typeof rows>();
   for (const row of rows) grouped.set(row.playerId, [...(grouped.get(row.playerId) ?? []), row]);
   return new Map(
     ids.map((id) => {
-      const pair = grouped.get(id) ?? [];
-      const before = pair.find((r) => r.baseline);
-      const after = pair.find((r) => !r.baseline) ?? before;
-      const snapshot = (r: typeof before) =>
-        r ? { ...r, timestamp: r.timestamp.toISOString() } : null;
-      return [id, weeklyRankDelta(snapshot(before), snapshot(after), now)];
+      const history = grouped.get(id) ?? [];
+      return [
+        id,
+        weeklyRankSummary(
+          history.map((r) => ({ ...r, timestamp: r.timestamp.toISOString() })),
+          now,
+          history[0]?.platform,
+          queue,
+        ),
+      ];
     }),
   );
+}
+// Preserve the numeric contract for existing consumers.
+export async function getWeeklyLp(
+  ids: string[],
+  view: View,
+  now = new Date(),
+): Promise<Map<string, number | null>> {
+  const summaries = await getWeeklyLpSummary(ids, view, now);
+  return new Map([...summaries].map(([id, summary]) => [id, summary?.net ?? null]));
 }

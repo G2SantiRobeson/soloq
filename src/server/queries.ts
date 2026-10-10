@@ -6,14 +6,14 @@ import { matches, playerMatches, players, rankedSnapshots } from "@/db/schema";
 import { queueIds, rankedQueue, type View } from "@/lib/queues";
 import { emptyTotals } from "@/lib/stats";
 import type { PlayerProfile, PublicPlayer } from "@/lib/types";
-import { LP_WINDOW, summarizeLp } from "@/lib/lp-metrics";
+import { LP_WINDOW, summarizeLp, lastFiveRankDelta } from "@/lib/lp-metrics";
 import { CURRENT_SEASON, periodStart, seasonEnd, type MetricsPeriod } from "@/lib/season";
 import { lpObservations } from "@/lib/history";
 import { seasonFilter } from "./season-filter";
 import { getPerformance } from "./season-queries";
 import { isDemo } from "./env";
 import { demoPlayers } from "./demo";
-import { getWeeklyLp } from "./weekly-lp";
+import { getWeeklyLpSummary } from "./weekly-lp";
 export const totals = {
   games: sql<number>`count(*)`.mapWith(Number),
   wins: sql<number>`sum(case when ${playerMatches.win} then 1 else 0 end)`.mapWith(Number),
@@ -40,6 +40,7 @@ export const getLeaderboard = cache(
     if (!selected.length) return [];
     const ids = selected.map((p) => p.id);
     const queue = rankedQueue(view);
+    const now = new Date();
     const latestResults = database
       .select({
         playerId: playerMatches.playerId,
@@ -48,6 +49,9 @@ export const getLeaderboard = cache(
         champion: playerMatches.champion,
         championId: playerMatches.championId,
         isRemake: matches.isRemake,
+        timestamp: matches.timestamp,
+        duration: matches.duration,
+        queueId: matches.queueId,
         position:
           sql<number>`row_number() over (partition by ${playerMatches.playerId} order by ${matches.timestamp} desc, ${matches.id} desc)`.as(
             "position",
@@ -60,13 +64,26 @@ export const getLeaderboard = cache(
         and(
           inArray(playerMatches.playerId, ids),
           inArray(matches.queueId, queueIds(view)),
-          seasonFilter(matches.timestamp, players.platform, period),
+          seasonFilter(matches.timestamp, players.platform),
         ),
       )
       .as("latest_results");
+    // Keep every intervening official observation and the nearest pre-form snapshot,
+    // even when more than 30 checks occurred since the oldest displayed match.
+    const formStarts = database
+      .select({ playerId: latestResults.playerId, timestamp: latestResults.timestamp })
+      .from(latestResults)
+      .where(eq(latestResults.position, 5))
+      .as("form_starts");
+    const formBoundary = sql`coalesce(${formStarts.timestamp}, ${now.toISOString()}::timestamptz)`;
     const recentSnapshots = database
       .select({
         ...getTableColumns(rankedSnapshots),
+        beforeForm: sql<boolean>`${rankedSnapshots.timestamp} < ${formBoundary}`.as("before_form"),
+        boundaryIndex:
+          sql<number>`row_number() over (partition by ${rankedSnapshots.playerId}, (${rankedSnapshots.timestamp} < ${formBoundary}) order by ${rankedSnapshots.timestamp} desc, ${rankedSnapshots.id} desc)`.as(
+            "boundary_index",
+          ),
         observationIndex:
           sql<number>`row_number() over (partition by ${rankedSnapshots.playerId} order by ${rankedSnapshots.timestamp} desc, ${rankedSnapshots.id} desc)`.as(
             "observation_index",
@@ -74,6 +91,7 @@ export const getLeaderboard = cache(
       })
       .from(rankedSnapshots)
       .innerJoin(players, eq(players.id, rankedSnapshots.playerId))
+      .leftJoin(formStarts, eq(formStarts.playerId, rankedSnapshots.playerId))
       .where(
         and(
           inArray(rankedSnapshots.playerId, ids),
@@ -87,7 +105,9 @@ export const getLeaderboard = cache(
         ? database
             .select()
             .from(recentSnapshots)
-            .where(lte(recentSnapshots.observationIndex, LP_WINDOW))
+            .where(
+              sql`${recentSnapshots.observationIndex} <= ${LP_WINDOW} or not ${recentSnapshots.beforeForm} or ${recentSnapshots.boundaryIndex} = 1`,
+            )
             .orderBy(recentSnapshots.playerId, asc(recentSnapshots.observationIndex))
         : [],
       database
@@ -112,11 +132,14 @@ export const getLeaderboard = cache(
           champion: latestResults.champion,
           championId: latestResults.championId,
           isRemake: latestResults.isRemake,
+          timestamp: latestResults.timestamp,
+          duration: latestResults.duration,
+          queueId: latestResults.queueId,
         })
         .from(latestResults)
-        .where(lte(latestResults.position, 5))
+        .where(lte(latestResults.position, 6))
         .orderBy(latestResults.playerId, asc(latestResults.position)),
-      getWeeklyLp(ids, view),
+      getWeeklyLpSummary(ids, view, now),
     ]);
     return selected.map((p) => ({
       id: p.id,
@@ -137,10 +160,33 @@ export const getLeaderboard = cache(
           p.backfillSeason === CURRENT_SEASON.id ? (p.lastBackfillAt?.toISOString() ?? null) : null,
       },
       rank: ranks.find((r) => r.playerId === p.id) ?? null,
-      weeklyLp: ranks.find((r) => r.playerId === p.id)?.tier === "UNRANKED" ? null : weekly.get(p.id) ?? null,
+      weeklyLp: weekly.get(p.id)?.net ?? null,
+      weeklySummary: weekly.get(p.id) ?? null,
+      lastFiveLp: lastFiveRankDelta(
+        ranks
+          .filter((r) => r.playerId === p.id)
+          .map((r) => ({ ...r, timestamp: r.timestamp.toISOString() })),
+        recent.filter(
+          (m) =>
+            m.playerId === p.id &&
+            m.timestamp.getTime() >= periodStart(p.platform, period, now.getTime()).getTime(),
+        ).length >= 5
+          ? recent
+              .filter((m) => m.playerId === p.id)
+              .map((m) => ({ ...m, timestamp: m.timestamp.toISOString() }))
+          : [],
+        view,
+        p.platform,
+        now,
+      ),
       stats: stats.find((s) => s.playerId === p.id) ?? emptyTotals(),
       recent: recent
-        .filter((m) => m.playerId === p.id)
+        .filter(
+          (m) =>
+            m.playerId === p.id &&
+            m.timestamp.getTime() >= periodStart(p.platform, period, now.getTime()).getTime(),
+        )
+        .slice(0, 5)
         .map(({ win, matchId, champion, championId, isRemake }) => ({
           win,
           matchId,

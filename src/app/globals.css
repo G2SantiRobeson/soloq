@@ -2367,7 +2367,7 @@ dialog.confirm-dialog::backdrop {
     flex-direction: column;
     gap: var(--space-1);
   }
-  .lp-cell .momentum > span:not(.sr-only) {
+  .lp-cell .momentum:not(.last-five-momentum) > span:not(.sr-only) {
     display: none;
   }
   .momentum {
@@ -2590,6 +2590,34 @@ dialog.confirm-dialog::backdrop {
 .weekly-cell {
   white-space: nowrap;
   font-size: var(--fs-2);
+}
+.weekly-record,
+.weekly-reference {
+  display: block;
+  font-size: var(--fs-1);
+}
+.weekly-reference {
+  white-space: normal;
+}
+.last-five-momentum {
+  white-space: normal;
+  max-width: 150px;
+  margin-left: auto;
+}
+.last-five-momentum .info-tip-term .info-tip-button {
+  color: inherit;
+  text-align: right;
+  white-space: normal;
+}
+.last-five-momentum .info-tip-term .info-tip-button,
+.weekly-cell .info-tip-term .info-tip-button {
+  min-height: 24px;
+}
+@media (pointer: coarse) {
+  .last-five-momentum .info-tip-term .info-tip-button,
+  .weekly-cell .info-tip-term .info-tip-button {
+    min-height: 44px;
+  }
 }
 @media (max-width: 700px) {
   .leaderboard .ladder-row:has(.weekly-cell) {
@@ -3111,7 +3139,7 @@ dialog.confirm-dialog::backdrop {
   .leaderboard .lp-display strong {
     font-size: var(--fs-4);
   }
-  .leaderboard .lp-cell .momentum > span:not(.sr-only) {
+  .leaderboard .lp-cell .momentum:not(.last-five-momentum) > span:not(.sr-only) {
     display: none;
   }
   .leaderboard .wr-cell .winrate-track {

@@ -1,5 +1,67 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
-import { signedLp, type LpMetrics } from "@/lib/lp-metrics";
+import { signedLp, type LpMetrics, type FiveMatchLp } from "@/lib/lp-metrics";
+import { InfoTip } from "./info-tip";
+import type { WeeklyLp } from "@/lib/weekly-lp";
+import { APP_TIMEZONE } from "@/lib/time";
+
+export function WeeklyMomentum({ summary }: { summary?: WeeklyLp | null }) {
+  if (!summary) return <small className="muted">Sin datos suficientes</small>;
+  const format = (iso: string) => new Date(iso).toLocaleString("es-CL", { timeZone: APP_TIMEZONE });
+  return (
+    <>
+      <InfoTip term={`${signedLp(summary.net)} LP`}>
+        Variación neta de rango y balance oficial entre {format(summary.from)} y{" "}
+        {format(summary.to)} ({APP_TIMEZONE}).
+        {summary.partial
+          ? " Referencia parcial: no hay baseline válido anterior al lunes."
+          : " Referencia oficial anterior o igual al lunes 00:00; puede incluir actividad anterior al lunes."}{" "}
+        No son LP individuales de MATCH-V5.
+      </InfoTip>
+      <small className="weekly-record">
+        {summary.wins}V · {summary.losses}D
+      </small>
+      <small className="weekly-reference muted">
+        {summary.partial ? "Δ parcial · desde " : "Semana observada · desde "}
+        {new Date(summary.from).toLocaleString("es-CL", {
+          timeZone: APP_TIMEZONE,
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        })}
+      </small>
+    </>
+  );
+}
+export function LastFiveMomentum({ metrics }: { metrics?: FiveMatchLp }) {
+  const explanation =
+    metrics?.reason ??
+    "Faltan observaciones oficiales que delimiten exactamente las cinco partidas visibles.";
+  const value = metrics?.net;
+  return (
+    <span
+      className={`momentum last-five-momentum ${value == null ? "unavailable" : value > 0 ? "rising" : value < 0 ? "falling" : "steady"}`}
+    >
+      <InfoTip
+        term={
+          value == null ? (
+            "LP últimas 5: no verificable"
+          ) : (
+            <>
+              {signedLp(value)} LP <small>/ últimas 5</small>
+            </>
+          )
+        }
+      >
+        {explanation}
+        {metrics?.from &&
+          metrics.to &&
+          ` Intervalo oficial: ${new Date(metrics.from).toLocaleString("es-CL", { timeZone: "America/Santiago" })} – ${new Date(metrics.to).toLocaleString("es-CL", { timeZone: "America/Santiago" })} (America/Santiago).`}
+      </InfoTip>
+    </span>
+  );
+}
 export function PlayerMomentum({
   metrics,
   detailed = false,

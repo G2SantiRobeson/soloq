@@ -18,11 +18,10 @@ import { PlayerIdentity } from "./player-identity";
 import { RankDisplay } from "./rank-display";
 import { LPDisplay } from "./lp-display";
 import { RecentChampionForm } from "./recent-champion-form";
-import { PlayerMomentum } from "./player-momentum";
+import { LastFiveMomentum, WeeklyMomentum } from "./player-momentum";
 import type { ChampionCatalog } from "@/lib/champion-assets";
 import type { SyncStatus } from "@/lib/sync-status";
 import { SyncCountdown } from "./sync-countdown";
-import { signedLp } from "@/lib/lp-metrics";
 import { rememberLadderUrl } from "@/lib/ladder-memory";
 import { InfoTip } from "./info-tip";
 export function Leaderboard({
@@ -234,17 +233,18 @@ export function Leaderboard({
                 "LP"
               ) : (
                 <InfoTip term="LP">
-                  {demo ? "LP ficticios de demo" : "LP oficiales actuales"}. Debajo: cambio neto
-                  entre los últimos registros comparables del mismo tier y división.
+                  {demo ? "LP ficticios de demo" : "LP oficiales actuales"}. Debajo: variación neta
+                  observada solo si los snapshots oficiales aíslan las cinco partidas visibles.
                 </InfoTip>
               )}
             </th>
             {view !== "5v5" && (
               <th scope="col" role="columnheader" className="weekly-column">
                 <InfoTip term="Δ SEMANA">
-                  Cambio neto de rango desde el lunes 00:00 (hora de Santiago). Es la diferencia de
-                  posición, no la suma de los LP de cada partida. «—»: todavía no hay un registro
-                  válido anterior al lunes.
+                  Referencia: lunes 00:00 de America/Santiago. ΔLP y V/D usan el mismo intervalo
+                  entre observaciones oficiales. Sin baseline anterior al lunes se muestra Δ parcial
+                  desde el primer registro válido de la semana. Sin dos registros comparables: Sin
+                  datos suficientes.
                 </InfoTip>
               </th>
             )}
@@ -280,7 +280,7 @@ export function Leaderboard({
               </td>
               <td role="cell" className="lp-cell">
                 <LPDisplay rank={p.rank} noRank={view === "5v5"} />
-                {view !== "5v5" && <PlayerMomentum metrics={p.momentum} />}
+                {view !== "5v5" && <LastFiveMomentum metrics={p.lastFiveLp} />}
               </td>
               {view !== "5v5" && (
                 <td
@@ -288,7 +288,7 @@ export function Leaderboard({
                   className={`weekly-cell numeric ${(p.weeklyLp ?? 0) > 0 ? "positive" : (p.weeklyLp ?? 0) < 0 ? "negative" : ""}`}
                 >
                   <span className="mobile-label">Δ SEMANA </span>
-                  {p.weeklyLp == null ? "—" : `${signedLp(p.weeklyLp)} LP`}
+                  <WeeklyMomentum summary={p.weeklySummary} />
                 </td>
               )}
               <td role="cell" className="wr-cell">

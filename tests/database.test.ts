@@ -25,7 +25,7 @@ import { SyncDeadline } from "@/server/riot/client";
 import { getLeaderboard, getProfile } from "@/server/queries";
 import type { RiotMatch } from "@/server/riot/schemas";
 import { POST as createPlayer } from "@/app/api/admin/players/route";
-import { getWeeklyLp } from "@/server/weekly-lp";
+import { getWeeklyLp, getWeeklyLpSummary } from "@/server/weekly-lp";
 import { getSyncStatus } from "@/server/sync/status";
 import { GET as syncStatusRoute } from "@/app/api/ladder/sync-status/route";
 import { RECENT_OVERLAP_MS } from "@/server/sync/recent";
@@ -1883,6 +1883,131 @@ describe("weekly ladder baselines and global sync metadata", () => {
       for (const spy of spies) spy.mockRestore();
     }
   });
+  it("isolates the displayed five beyond 30 snapshots without changing profile momentum", async () => {
+    const player = await addPlayer();
+    const start = Date.now() - 12 * 3600_000;
+    const base = {
+      playerId: player.id,
+      queue: "RANKED_SOLO_5x5" as const,
+      tier: "GOLD",
+      division: "I",
+      leaguePoints: 58,
+      wins: 18,
+      losses: 23,
+    };
+    await database
+      .insert(schema.rankedSnapshots)
+      .values([
+        { ...base, timestamp: new Date(start) },
+        ...Array.from({ length: 40 }, (_, i) => ({
+          ...base,
+          timestamp: new Date(start + 2 * 3600_000 + (i + 1) * 10000),
+        })),
+        {
+          ...base,
+          leaguePoints: 26,
+          wins: 19,
+          losses: 27,
+          timestamp: new Date(start + 7 * 3600_000),
+        },
+      ]);
+    for (let i = 0; i < 5; i++) {
+      const id = `LA2_verified_${i}`;
+      await database
+        .insert(schema.matches)
+        .values({
+          id,
+          queueId: 420,
+          mapId: 11,
+          timestamp: new Date(start + (i + 2) * 3600_000),
+          duration: 1800,
+          isRemake: false,
+        });
+      await database
+        .insert(schema.playerMatches)
+        .values({
+          playerId: player.id,
+          matchId: id,
+          champion: "Ahri",
+          championId: 103,
+          position: "MIDDLE",
+          win: i === 4,
+          kills: 1,
+          deaths: 1,
+          assists: 1,
+          cs: 100,
+          damage: 1000,
+          killParticipation: 0.5,
+        });
+    }
+    const [row] = await getLeaderboard("soloq");
+    expect(row.lastFiveLp?.net).toBe(-32);
+    expect(row.recent.map((m) => m.matchId)).toEqual(
+      [4, 3, 2, 1, 0].map((i) => `LA2_verified_${i}`),
+    );
+    expect(row.momentum?.intervals).toBe(29);
+    await database
+      .insert(schema.matches)
+      .values({
+        id: "LA2_extra_remake",
+        queueId: 420,
+        mapId: 11,
+        timestamp: new Date(start + 3600_000),
+        duration: 120,
+        isRemake: true,
+      });
+    await database
+      .insert(schema.playerMatches)
+      .values({
+        playerId: player.id,
+        matchId: "LA2_extra_remake",
+        champion: "Ahri",
+        championId: 103,
+        position: "MIDDLE",
+        win: false,
+        kills: 0,
+        deaths: 0,
+        assists: 0,
+        cs: 0,
+        damage: 0,
+        killParticipation: 0,
+      });
+    expect((await getLeaderboard("soloq"))[0].lastFiveLp?.net).toBeNull();
+  });
+  it("returns a partial weekly reference and official V/D for exactly the same interval", async () => {
+    const player = await addPlayer();
+    const base = {
+      playerId: player.id,
+      queue: "RANKED_SOLO_5x5" as const,
+      tier: "GOLD",
+      division: "I",
+      leaguePoints: 58,
+      wins: 18,
+      losses: 23,
+    };
+    await database.insert(schema.rankedSnapshots).values([
+      { ...base, timestamp: new Date("2026-10-06T10:00:00Z") },
+      {
+        ...base,
+        leaguePoints: 26,
+        wins: 19,
+        losses: 27,
+        timestamp: new Date("2026-10-06T16:00:00Z"),
+      },
+    ]);
+    expect(
+      (await getWeeklyLpSummary([player.id], "soloq", new Date("2026-10-10T18:00:00Z"))).get(
+        player.id,
+      ),
+    ).toMatchObject({
+      net: -32,
+      wins: 1,
+      losses: 4,
+      partial: true,
+      from: "2026-10-06T10:00:00.000Z",
+      to: "2026-10-06T16:00:00.000Z",
+    });
+  });
   it("reads the Monday baseline beyond 30 observations and isolates both queues", async () => {
     const player = await addPlayer();
     const fresh = await addPlayer("new-midweek");
@@ -1922,7 +2047,7 @@ describe("weekly ladder baselines and global sync metadata", () => {
       },
     ]);
     const solo = await getWeeklyLp([player.id, fresh.id], "soloq", now);
-    expect(solo.get(player.id)).toBe(25);
+    expect(solo.get(player.id)).toBeNull(); // Invalid intervening rank must not be bridged.
     expect(solo.get(fresh.id)).toBeNull();
     expect((await getWeeklyLp([player.id], "flex", now)).get(player.id)).toBe(20);
     expect(await getWeeklyLp([player.id], "5v5", now)).toEqual(new Map());
@@ -1943,7 +2068,7 @@ describe("weekly ladder baselines and global sync metadata", () => {
       .values({ ...values, timestamp: new Date("2026-10-04T23:00:00Z") });
     expect(
       (await getWeeklyLp([player.id], "soloq", new Date("2026-10-06T18:00:00Z"))).get(player.id),
-    ).toBe(0);
+    ).toBeNull(); // A single observation cannot define a weekly interval.
     await database.delete(schema.rankedSnapshots);
     await database.insert(schema.rankedSnapshots).values([
       { ...values, timestamp: new Date("2025-12-01T00:00:00Z") },
