@@ -252,7 +252,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
                 : "— WR"}
             </strong>
           </div>
-          <PerformanceChart points={player.performance} />
+          <PerformanceChart points={player.performance} demo={demo} />
         </section>
       </div>
       {view !== "5v5" && (

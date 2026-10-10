@@ -3801,6 +3801,18 @@ dialog.confirm-dialog::backdrop {
   max-width: none;
 }
 @media (max-width: 700px) {
+  .profile-header {
+    position: relative;
+  }
+  .profile-freshness .info-tip {
+    position: static;
+  }
+  .profile-freshness .info-tip-bubble:not([hidden]) {
+    right: 0;
+    left: 0;
+    width: auto;
+    max-width: 100%;
+  }
   .rank-panel {
     position: relative;
   }

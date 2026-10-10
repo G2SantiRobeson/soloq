@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PlayerSignature } from "@/components/player-signature";
 import { PlayerMomentum, LastFiveMomentum } from "@/components/player-momentum";
 import { MatchHistory } from "@/components/match-history";
+import { PerformanceChart } from "@/components/performance-chart";
 import { computeSignature, toSignaturePlayer } from "@/lib/signature";
 import { demoPlayers } from "@/server/demo";
 import { summarizeLp, LP_WINDOW, type RankSnapshot } from "@/lib/lp-metrics";
@@ -72,6 +73,24 @@ describe("signature reference presentation", () => {
 });
 
 describe("observed LP and loaded match windows", () => {
+  it.each([false, true])("describes the actual performance sampling in demo=%s", (demo) => {
+    const points = [
+      { timestamp: "2026-10-10T10:00:00Z", winrate: 100, sample: 1 },
+      { timestamp: "2026-10-10T11:00:00Z", winrate: 50, sample: 2 },
+    ];
+    const html = renderToStaticMarkup(<PerformanceChart points={points} demo={demo} />);
+    expect(html).toContain("100.0% · 1 partidas");
+    expect(html).toContain("50.0% · 2 partidas");
+    expect(html).toContain(demo ? "por partida ficticia (UTC)" : "por día (UTC)");
+    expect(html).toContain(
+      demo ? "varias del mismo día UTC" : "Última observación de cada día UTC",
+    );
+    if (demo) expect(html).not.toContain("Última observación de cada día UTC");
+    expect(points).toEqual([
+      { timestamp: "2026-10-10T10:00:00Z", winrate: 100, sample: 1 },
+      { timestamp: "2026-10-10T11:00:00Z", winrate: 50, sample: 2 },
+    ]);
+  });
   const history: RankSnapshot[] = Array.from({ length: 40 }, (_, i) => ({
     tier: "GOLD",
     division: "I",

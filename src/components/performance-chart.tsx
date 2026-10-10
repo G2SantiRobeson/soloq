@@ -15,7 +15,13 @@ import { ChartDataTable, CHART_KEYBOARD_HINT } from "./chart-data-table";
 const date = (v: number | string) =>
   new Date(v).toLocaleDateString("es-CL", { timeZone: "UTC", day: "numeric", month: "short" });
 const percent = (v: number) => `${v.toFixed(1)}%`;
-export function PerformanceChart({ points }: { points: PerformancePoint[] }) {
+export function PerformanceChart({
+  points,
+  demo = false,
+}: {
+  points: PerformancePoint[];
+  demo?: boolean;
+}) {
   if (!points.length)
     return (
       <div className="chart-empty">
@@ -99,15 +105,17 @@ export function PerformanceChart({ points }: { points: PerformancePoint[] }) {
         </AreaChart>
       </ResponsiveContainer>
       <ChartDataTable
-        caption="Winrate móvil por día (UTC)"
+        caption={demo ? "Winrate móvil por partida ficticia (UTC)" : "Winrate móvil por día (UTC)"}
         columns={["Día", "Winrate y muestra"]}
         rows={points.map(
           (p) => [date(p.timestamp), `${percent(p.winrate)} · ${p.sample} partidas`] as const,
         )}
       />
       <p className="chart-note">
-        Winrate móvil de las últimas 20 partidas. Con menos partidas, se usa la muestra disponible.
-        Última observación de cada día UTC; remakes excluidos.
+        Winrate móvil de las últimas 20 partidas. Con menos partidas, se usa la muestra disponible.{" "}
+        {demo
+          ? "Observaciones por partida ficticia; pueden existir varias del mismo día UTC."
+          : "Última observación de cada día UTC; remakes excluidos."}
       </p>
     </figure>
   );
