@@ -139,6 +139,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           </div>
         </section>
         <div className="competitive-overview">
+          <HistoryStatusLabel history={player.seasonHistory} demo={demo} compact />
           <section className="stat-strip" aria-label="Estadísticas del historial importado">
             <div>
               <span>KDA</span>

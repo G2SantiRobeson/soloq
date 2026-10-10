@@ -2697,6 +2697,14 @@ dialog.confirm-dialog::backdrop {
   color: var(--text);
   font-weight: 500;
 }
+.history-status-compact {
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .history-failed {
   border-color: var(--loss);
 }
