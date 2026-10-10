@@ -119,7 +119,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           </div>
           <div className="profile-lp">
             <LPDisplay rank={player.rank} noRank={view === "5v5"} />
-            {view !== "5v5" && <PlayerMomentum metrics={player.momentum} detailed />}
+            {view !== "5v5" && <PlayerMomentum metrics={player.momentum} detailed demo={demo} />}
           </div>
           <div className="profile-record">
             <strong className="positive">{record.wins} V</strong>

@@ -2,6 +2,7 @@ import type { View } from "@/lib/queues";
 import { computeSignature, type SignaturePlayer } from "@/lib/signature";
 import { getSignatureBaseline } from "@/server/signature-baseline";
 import { PlayerSignature } from "./player-signature";
+import { isDemo } from "@/server/env";
 
 /** Streams in after the profile: a cold community baseline never delays the rest of the page. */
 export async function PlayerSignatureSection({
@@ -23,7 +24,8 @@ export async function PlayerSignatureSection({
       tier={tier}
       featured={featured}
       others={others}
-      communityBaseline={baseline !== null}
+      view={view}
+      demo={isDemo()}
     />
   );
 }

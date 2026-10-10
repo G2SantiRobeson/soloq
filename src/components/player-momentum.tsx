@@ -1,5 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Info, Minus } from "lucide-react";
-import { signedLp, type LpMetrics, type FiveMatchLp } from "@/lib/lp-metrics";
+import { signedLp, LP_WINDOW, type LpMetrics, type FiveMatchLp } from "@/lib/lp-metrics";
 import { InfoTip } from "./info-tip";
 import type { WeeklyLp } from "@/lib/weekly-lp";
 import { APP_TIMEZONE } from "@/lib/time";
@@ -70,9 +70,11 @@ export function LastFiveMomentum({ metrics }: { metrics?: FiveMatchLp }) {
 export function PlayerMomentum({
   metrics,
   detailed = false,
+  demo = false,
 }: {
   metrics: LpMetrics | null;
   detailed?: boolean;
+  demo?: boolean;
 }) {
   if (!metrics || metrics.net === null)
     return <span className="momentum unavailable">Sin tendencia</span>;
@@ -96,12 +98,20 @@ export function PlayerMomentum({
       >
         <Icon size={13} aria-hidden="true" />
         <span className="sr-only">{direction}: </span>
-        {signedLp(metrics.net)}
-        <span>LP recientes</span>
+        {signedLp(metrics.net)} LP
+        <span>ΔLP observado</span>
       </span>
       {detailed && (
         <span className="momentum-detail">
           {metrics.intervals} intervalos observados{period && ` · ${period}`}
+          <InfoTip label="Cómo se calcula el ΔLP observado">
+            Segmento comparable más reciente entre hasta {LP_WINDOW} observaciones
+            {demo ? " ficticias de demo" : " oficiales de Riot"}.
+            {period && ` Intervalo efectivo: ${period}.`} Cambios de rango, reinicios y datos
+            inválidos pueden limitar el intervalo. No es una ventana fija de días, el Δ semanal ni
+            el Δ de las últimas cinco partidas. Riot no proporciona LP individuales por partida
+            mediante MATCH-V5.
+          </InfoTip>
         </span>
       )}
     </>

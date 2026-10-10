@@ -3783,6 +3783,44 @@ dialog.confirm-dialog::backdrop {
   font-size: var(--fs-2);
   line-height: 1.6;
 }
+.signature-reference {
+  color: var(--muted);
+  font-size: var(--fs-2);
+  overflow-wrap: anywhere;
+}
+.profile-lp {
+  position: relative;
+}
+.profile-lp .momentum-detail .info-tip {
+  position: static;
+}
+.profile-lp .momentum-detail .info-tip-bubble:not([hidden]) {
+  right: 0;
+  left: 0;
+  width: auto;
+  max-width: none;
+}
+@media (max-width: 700px) {
+  .rank-panel {
+    position: relative;
+  }
+  .profile-lp {
+    position: static;
+  }
+  .profile-lp .momentum-detail .info-tip-bubble:not([hidden]) {
+    right: var(--space-3);
+    left: var(--space-3);
+  }
+  .signature > .info-tip {
+    display: block;
+  }
+  .signature > .info-tip .info-tip-bubble:not([hidden]) {
+    position: static;
+    width: auto;
+    max-width: 100%;
+    margin-top: var(--space-1);
+  }
+}
 .signature-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));

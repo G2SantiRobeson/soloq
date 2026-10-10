@@ -7,6 +7,11 @@ import {
 } from "@/lib/signature";
 import { emptyTotals } from "@/lib/stats";
 import type { PlayerProfile, RecentMatch } from "@/lib/types";
+import Engine from "@/lib/signature-metrics.cjs";
+import type { SignatureBaseline, SignatureMetric } from "@/lib/signature";
+
+const legacyMetric = (metric: SignatureMetric) =>
+  Object.fromEntries(Object.entries(metric).filter(([key]) => key !== "referenceSource"));
 
 function match(i: number, overrides: Partial<RecentMatch> = {}): RecentMatch {
   return {
@@ -105,6 +110,58 @@ describe("signature input mapping", () => {
 });
 
 describe("signature engine integration", () => {
+  const fullBaseline: SignatureBaseline = Object.fromEntries(
+    Engine.metrics.map(({ id }) => [id, { mean: 0.2, sd: 0.6 }]),
+  );
+  it.each([undefined, null, {}, fullBaseline, { kp: fullBaseline.kp }])(
+    "preserves every number, score, order and selected group with baseline %j",
+    (baseline) => {
+      const input = toSignaturePlayer(profile(), "soloq");
+      const before = Engine.compute(input, baseline ?? undefined);
+      const after = computeSignature(input, baseline);
+      for (const group of ["all", "featured", "others"] as const)
+        expect(after[group].map(legacyMetric)).toEqual(before[group]);
+      for (const metric of after.all)
+        expect(metric.referenceSource).toBe(baseline?.[metric.id] ? "community" : "default");
+    },
+  );
+  it("annotates an empty non-null baseline as default", () => {
+    const baseline = signatureBaseline(
+      Array.from({ length: 5 }, () => toSignaturePlayer(profile(), "soloq")),
+    );
+    expect(baseline).toEqual({}); // Every valid metric has zero community variance.
+    expect(
+      computeSignature(toSignaturePlayer(profile(), "soloq"), baseline).all.every(
+        (m) => m.referenceSource === "default",
+      ),
+    ).toBe(true);
+  });
+  it("uses defaults for a metric missing five valid community samples", () => {
+    const inputs = Array.from({ length: 5 }, (_, i) =>
+      toSignaturePlayer(
+        profile({
+          recent: [match(i), match(i + 1), match(i + 2)].map((m) => ({
+            ...m,
+            killParticipation: i === 0 ? 0.7 : null,
+          })),
+        }),
+        "soloq",
+      ),
+    );
+    const baseline = signatureBaseline(inputs)!;
+    expect(baseline).not.toHaveProperty("kp");
+    const kp = computeSignature(toSignaturePlayer(profile(), "soloq"), baseline).all.find(
+      (m) => m.id === "kp",
+    );
+    expect(kp?.referenceSource).toBe("default");
+  });
+  it("still omits unavailable metrics rather than manufacturing a reference", () => {
+    const input = toSignaturePlayer(
+      profile({ rank: null, stats: emptyTotals(), recent: [], champions: [], performance: [] }),
+      "soloq",
+    );
+    expect(computeSignature(input, fullBaseline)).toEqual({ all: [], featured: [], others: [] });
+  });
   it("returns up to four featured metrics with the fields the profile renders", () => {
     const { featured, others, all } = computeSignature(toSignaturePlayer(profile(), "soloq"));
     expect(featured.length).toBe(4);

@@ -25,10 +25,14 @@ export function MatchHistory({ rows, demo = false }: { rows: ReactNode[]; demo?:
         <h2 ref={heading} tabIndex={-1}>
           {expanded ? "Historial de partidas" : "Últimas partidas"}
         </h2>
-        <span>{rows.length} RESULTADOS DISPONIBLES</span>
+        <span>
+          {rows.length} PARTIDAS RECIENTES CARGADAS{demo && " · DEMO"}
+        </span>
       </div>
       <p className="metric-note">
-        Los remakes se conservan en el historial y se excluyen de las estadísticas
+        Ventana de hasta 40 partidas recientes {demo ? "ficticias" : "importadas"}; no es todo el
+        historial de temporada. Los remakes se conservan en el historial y se excluyen de las
+        estadísticas
         {demo
           ? " de demostración. Los contadores ranked son ficticios."
           : " importadas. Los contadores ranked son los oficiales de Riot."}
