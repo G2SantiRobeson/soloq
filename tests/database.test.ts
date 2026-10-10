@@ -1,4 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { AdminPlayerDiagnostics } from "@/components/admin-player-diagnostics";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { and, eq, sql } from "drizzle-orm";
@@ -35,7 +38,7 @@ import { GET as listAdminPlayers } from "@/app/api/admin/players/route";
 import { POST as individualSync } from "@/app/api/admin/players/[id]/sync/route";
 import { POST as manualBackfill } from "@/app/api/admin/players/[id]/backfill/route";
 import { PATCH as togglePlayer, DELETE as deletePlayer } from "@/app/api/admin/players/[id]/route";
-import { attemptActivity } from "@/lib/admin-sync";
+import { attemptActivity, LEGACY_PARTIAL_SYNC_MESSAGE } from "@/lib/admin-sync";
 import { SYNC_LEASE_MS } from "@/lib/sync-status";
 import {
   checkpoint,
@@ -770,6 +773,105 @@ describe("administrative phase diagnostics and individual synchronization", () =
     const [admin] = await getAdminPlayers();
     expect(admin.legacyError).toBeNull();
     expect(admin.syncState.rank.error?.code).toBe(503);
+  });
+
+  it("classifies a persisted resumable partial as information without changing stored progress", async () => {
+    const p = await addPlayer();
+    const now = new Date();
+    await update(p.id, {
+      syncError: LEGACY_PARTIAL_SYNC_MESSAGE,
+      rankCheckedAt: now,
+      lastSyncedAt: now,
+      backfillSeason: CURRENT_SEASON.id,
+      backfillStatus: "running",
+      backfillProcessed: 75,
+      backfillDiscovered: 205,
+      scanOffset: 100,
+      lastSyncAttempt: {
+        phase: "history",
+        startedAt: now.toISOString(),
+        finishedAt: now.toISOString(),
+        outcome: "partial",
+        pendingReason: "batch_limit",
+      },
+    });
+    const before = await row(p.id);
+    const [admin] = await getAdminPlayers();
+    expect(admin.legacyError).toBeNull();
+    expect(admin.syncError).toBeNull();
+    expect(admin.legacyNotice).toBe(LEGACY_PARTIAL_SYNC_MESSAGE);
+    expect(admin.syncState.history).toMatchObject({
+      status: "running",
+      processed: 75,
+      error: null,
+    });
+    const html = renderToStaticMarkup(
+      createElement(AdminPlayerDiagnostics, {
+        player: admin,
+        context: { serverNow: now.toISOString(), leaseUntil: null },
+      }),
+    );
+    expect(html).toContain(
+      'class="admin-player-state partial">Lote parcial guardado; puede continuar',
+    );
+    expect(html).toContain("Aviso previo de progreso parcial");
+    expect(html).not.toContain("Errores pendientes de revisión");
+    expect(html).not.toContain("Error previo sin clasificar");
+    expect(await row(p.id)).toEqual(before);
+  });
+
+  it.each(["rankError", "recentError", "backfillError"] as const)(
+    "retains %s with an informational legacy message and prioritizes it over unknown legacy errors",
+    async (column) => {
+      const p = await addPlayer();
+      const phaseError = error(
+        column === "rankError" ? "league" : column === "recentError" ? "recent" : "history",
+      );
+      await update(p.id, { [column]: phaseError, syncError: LEGACY_PARTIAL_SYNC_MESSAGE });
+      let [admin] = await getAdminPlayers();
+      expect(admin.legacyError).toBeNull();
+      expect(admin.legacyNotice).toBe(LEGACY_PARTIAL_SYNC_MESSAGE);
+      expect(admin.syncError).toBe("Riot no está disponible temporalmente.");
+      const html = renderToStaticMarkup(
+        createElement(AdminPlayerDiagnostics, {
+          player: admin,
+          context: { serverNow: new Date().toISOString(), leaseUntil: null },
+        }),
+      );
+      expect(html).toContain('class="admin-player-state error">Errores pendientes de revisión');
+      expect(html).toContain("Aviso previo de progreso parcial");
+      expect(html).not.toContain("Error previo sin clasificar");
+      await update(p.id, { syncError: "unknown error with private SQL" });
+      [admin] = await getAdminPlayers();
+      expect(admin.legacyError).toMatch(/sin clasificar/);
+      expect(admin.legacyNotice).toBeNull();
+      expect(admin.syncError).toBe("Riot no está disponible temporalmente.");
+      expect(JSON.stringify(admin)).not.toContain("private SQL");
+    },
+  );
+
+  it("does not suppress a structured deadline even when it uses the known partial wording", async () => {
+    const p = await addPlayer();
+    await update(p.id, {
+      syncError: LEGACY_PARTIAL_SYNC_MESSAGE,
+      recentError: {
+        code: "deadline",
+        step: "recent",
+        occurredAt: new Date().toISOString(),
+        message: LEGACY_PARTIAL_SYNC_MESSAGE,
+      },
+    });
+    const [admin] = await getAdminPlayers();
+    expect(admin.legacyError).toBeNull();
+    expect(admin.syncState.recent.error?.code).toBe("deadline");
+    expect(admin.syncError).toBe("Se agotó el tiempo; el progreso guardado permite continuar.");
+    const html = renderToStaticMarkup(
+      createElement(AdminPlayerDiagnostics, {
+        player: admin,
+        context: { serverNow: new Date().toISOString(), leaseUntil: null },
+      }),
+    );
+    expect(html).toContain('class="admin-player-state error">Errores pendientes de revisión');
   });
 
   it("does not assume an old running attempt is still active, including during a different lease", async () => {

@@ -133,7 +133,7 @@ export function AdminPlayerDiagnostics({
         </p>
       </div>
       <p
-        className={`admin-player-state ${hasErrors ? "error" : pendingReason || unfinishedAttempt || s.history.status !== "completed" ? "partial" : unknown ? "unknown" : "success"}`}
+        className={`admin-player-state ${hasErrors ? "error" : pendingReason || unfinishedAttempt ? "partial" : unknown ? "unknown" : s.history.status !== "completed" ? "partial" : "success"}`}
       >
         {hasErrors
           ? "Errores pendientes de revisión"
@@ -223,6 +223,16 @@ export function AdminPlayerDiagnostics({
               <h3>Error previo sin clasificar</h3>
               <p className="sync-error">{player.legacyError}</p>
               <p>Sin fase ni fecha verificable. No se ha atribuido a ninguna fase.</p>
+            </section>
+          )}
+          {player.legacyNotice && (
+            <section>
+              <h3>Aviso previo de progreso parcial</h3>
+              <p className="muted">{player.legacyNotice}</p>
+              <p>
+                Mensaje informativo antiguo, sin fase ni fecha verificable. El estado actual y los
+                errores de cada fase se muestran arriba.
+              </p>
             </section>
           )}
         </div>

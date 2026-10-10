@@ -3,12 +3,51 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AdminPlayerDiagnostics } from "@/components/admin-player-diagnostics";
 import { AdminPanel } from "@/components/admin-panel";
 import { adminFixture } from "@/app/dev/admin/fixtures";
-import { attemptActivity } from "@/lib/admin-sync";
+import {
+  attemptActivity,
+  classifyLegacySyncMessage,
+  LEGACY_PARTIAL_SYNC_MESSAGE,
+} from "@/lib/admin-sync";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 const context = { serverNow: "2026-10-09T12:00:00Z", leaseUntil: null };
 
 describe("administrative diagnosis rendering", () => {
+  it("recognizes only the exact legacy partial notice and retains unknown errors", () => {
+    expect(classifyLegacySyncMessage(null, [])).toBe("none");
+    expect(classifyLegacySyncMessage(LEGACY_PARTIAL_SYNC_MESSAGE, [])).toBe("partial");
+    for (const message of [
+      "Error de red",
+      `${LEGACY_PARTIAL_SYNC_MESSAGE} Error de red`,
+      `Error: ${LEGACY_PARTIAL_SYNC_MESSAGE}`,
+      "Sincronización parcial guardada",
+    ])
+      expect(classifyLegacySyncMessage(message, [])).toBe("unknown_error");
+    expect(
+      classifyLegacySyncMessage("Error de red", [
+        { code: 503, step: "recent", occurredAt: context.serverNow, message: "Error de red" },
+      ]),
+    ).toBe("none");
+  });
+  it.each(["running", "completed"] as const)(
+    "keeps the label and color coherent for %s history without errors",
+    (status) => {
+      const player = adminFixture(0, status);
+      player.syncState.rank.checkedAt = context.serverNow;
+      player.syncState.recent.coveredThrough = context.serverNow;
+      if (status === "completed") player.legacyNotice = LEGACY_PARTIAL_SYNC_MESSAGE;
+      const html = renderToStaticMarkup(
+        <AdminPlayerDiagnostics player={player} context={context} />,
+      );
+      expect(html).toContain(
+        status === "running"
+          ? 'class="admin-player-state partial">Histórico incompleto; puede continuar'
+          : 'class="admin-player-state success">Verificaciones y cobertura registradas',
+      );
+      expect(html).not.toContain("Errores pendientes de revisión");
+      expect(html).not.toContain("Error previo sin clasificar");
+    },
+  );
   it("shows persisted budget partials and unvisited batch results separately from errors", () => {
     const player = adminFixture(0, "not_started");
     player.syncState.lastAttempt = {
@@ -45,6 +84,7 @@ describe("administrative diagnosis rendering", () => {
     expect(html).toMatch(/sin intento registrado/);
     expect(html).toMatch(/esto no certifica éxito/);
     expect(html).not.toMatch(/Verificaciones y cobertura registradas/);
+    expect(html).toContain('class="admin-player-state unknown">Datos pendientes o desconocidos');
   });
   it("explains discovered IDs, missing details and a completed scan honestly", () => {
     const html = renderToStaticMarkup(

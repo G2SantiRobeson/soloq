@@ -19,6 +19,8 @@ export type AdminPlayer = {
   backfillUnavailable: number;
   syncState: PlayerSyncState;
   legacyError: string | null;
+  // Only recognized, safe legacy information; arbitrary persisted text is never exposed.
+  legacyNotice?: string | null;
 };
 export type AdminSyncContext = {
   serverNow: string;
@@ -31,6 +33,20 @@ export type IndividualSyncResult = {
   imported?: number;
   syncState: PlayerSyncState;
 };
+
+export const LEGACY_PARTIAL_SYNC_MESSAGE =
+  "Sincronización parcial guardada; continuará en la siguiente ejecución.";
+
+export function classifyLegacySyncMessage(
+  message: string | null,
+  phaseErrors: readonly (PlayerSyncError | null)[],
+): "none" | "partial" | "unknown_error" {
+  if (!message) return "none";
+  // Exact allowlist: variants or messages with appended errors remain warnings.
+  if (message === LEGACY_PARTIAL_SYNC_MESSAGE) return "partial";
+  if (phaseErrors.some((error) => error?.message === message)) return "none";
+  return "unknown_error";
+}
 
 // Persisted messages can come from legacy writers. Never send arbitrary text to the browser.
 export function safeSyncError(error: PlayerSyncError): PlayerSyncError {

@@ -3,7 +3,11 @@ import { desc } from "drizzle-orm";
 import { db } from "@/db";
 import { players } from "@/db/schema";
 import type { AdminPlayer, AdminSyncContext } from "@/lib/admin-sync";
-import { safeSyncError } from "@/lib/admin-sync";
+import {
+  classifyLegacySyncMessage,
+  LEGACY_PARTIAL_SYNC_MESSAGE,
+  safeSyncError,
+} from "@/lib/admin-sync";
 import { requireAdmin } from "./http";
 import { toPlayerSyncState } from "./sync/player-state";
 import { readSyncProgress } from "./sync/progress";
@@ -11,8 +15,9 @@ import { readSyncProgress } from "./sync/progress";
 export function toAdminPlayer(player: typeof players.$inferSelect): AdminPlayer {
   const state = toPlayerSyncState(player);
   const errors = [state.rank.error, state.recent.error, state.history.error];
+  const legacyKind = classifyLegacySyncMessage(player.syncError, errors);
   const legacyError =
-    player.syncError && !errors.some((e) => e?.message === player.syncError)
+    legacyKind === "unknown_error"
       ? "Existe un error previo sin clasificar. Consulta el registro del servidor para revisarlo."
       : null;
   for (const phase of [state.rank, state.recent, state.history])
@@ -25,11 +30,10 @@ export function toAdminPlayer(player: typeof players.$inferSelect): AdminPlayer 
     enabled: player.enabled,
     lastSyncedAt: state.recent.coveredThrough,
     syncError:
-      legacyError ??
       state.rank.error?.message ??
       state.recent.error?.message ??
       state.history.error?.message ??
-      null,
+      legacyError,
     backfillSeason: player.backfillSeason,
     backfillStatus: player.backfillStatus,
     backfillDiscovered: player.backfillDiscovered,
@@ -37,6 +41,7 @@ export function toAdminPlayer(player: typeof players.$inferSelect): AdminPlayer 
     backfillUnavailable: player.backfillUnavailable,
     syncState: state,
     legacyError,
+    legacyNotice: legacyKind === "partial" ? LEGACY_PARTIAL_SYNC_MESSAGE : null,
   };
 }
 
