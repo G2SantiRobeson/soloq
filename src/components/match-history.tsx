@@ -3,6 +3,7 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { matchPage, MATCH_SUMMARY_SIZE } from "@/lib/match-pagination";
+import { countLabel } from "@/lib/format";
 
 /** Keep the existing server-rendered match rows; only their visible window changes. */
 export function MatchHistory({ rows, demo = false }: { rows: ReactNode[]; demo?: boolean }) {
@@ -27,7 +28,8 @@ export function MatchHistory({ rows, demo = false }: { rows: ReactNode[]; demo?:
           {expanded ? "Historial de partidas" : "Últimas partidas"}
         </h2>
         <span>
-          {rows.length} PARTIDAS RECIENTES CARGADAS{demo && " · DEMO"}
+          {countLabel(rows.length, "PARTIDA RECIENTE CARGADA", "PARTIDAS RECIENTES CARGADAS")}
+          {demo && " · DEMO"}
         </span>
       </div>
       <p className="metric-note">

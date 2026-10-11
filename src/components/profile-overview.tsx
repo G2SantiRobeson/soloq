@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
 import type { PlayerProfile } from "@/lib/types";
 import { QUEUE_LABELS, type View } from "@/lib/queues";
 import { kda, winrate } from "@/lib/stats";
 import { HIGHLIGHT_MIN_GAMES } from "@/lib/global-metrics";
 import { championAsset, type ChampionCatalog } from "@/lib/champion-assets";
+import { countLabel } from "@/lib/format";
 import { Block } from "./metrics-bento";
 import { RankEmblem } from "./rank-emblem";
 import { RankDisplay } from "./rank-display";
@@ -31,7 +33,7 @@ export function RankBlock({ player, view, demo }: Source & { view: Exclude<View,
       className="profile-block-rank"
     >
       <div className="profile-rank-heading">
-        <RankEmblem tier={player.rank?.tier} size={112} decorative />
+        <RankEmblem tier={player.rank?.tier} size={176} decorative />
         <div className="profile-rank-copy">
           <RankDisplay rank={player.rank} emblem={false} />
           <LPDisplay rank={player.rank} />
@@ -69,7 +71,8 @@ export function RecordBlock({ player, view, demo }: Source & { view: View }) {
         <span style={{ width: `${rate}%` }} />
       </div>
       <p className="record-caption">
-        {games} partidas {official ? "en el estado ranked actual" : "importadas"}
+        {countLabel(games, "partida", "partidas")}{" "}
+        {official ? "en el estado ranked actual" : games === 1 ? "importada" : "importadas"}
       </p>
       {view === "5v5" && (
         <p className="record-caption">Sin rango propio: 5v5 no tiene rango ni LP.</p>
@@ -82,10 +85,11 @@ export function FormBlock({ player, champions, demo }: Source & { champions: Cha
   return (
     <Block title="FORMA RECIENTE" tag="ÚLTIMAS 5" className="profile-block-form">
       <div className="profile-form">
-        <RecentChampionForm matches={player.recent} champions={champions} />
+        <RecentChampionForm matches={player.recent} champions={champions} interactive size={40} />
       </div>
       <p className="record-caption">
-        Más reciente a la izquierda · {demo ? "historial ficticio" : "historial importado"}
+        Más reciente a la izquierda · {demo ? "historial ficticio" : "historial importado"} · toca o
+        enfoca para ver cada partida
       </p>
     </Block>
   );
@@ -124,15 +128,18 @@ export function CombatBlock({ player, demo }: Source) {
 
 const POOL_SUMMARY = 3;
 
+/** `children`: optional highlight streamed above the pool (the experimental OTP badge). */
 export function ChampionPoolBlock({
   player,
   champions,
   demo,
-}: Source & { champions: ChampionCatalog }) {
+  children,
+}: Source & { champions: ChampionCatalog; children?: ReactNode }) {
   const rows = player.champions.map((c) => (
     <div className="champion-row" key={c.championId}>
       <ChampionIdentity {...championAsset(c.championId, c.champion, champions)}>
-        {c.games} partidas · {kda(c.kills, c.deaths, c.assists).toFixed(2)} KDA
+        {countLabel(c.games, "partida", "partidas")} ·{" "}
+        {kda(c.kills, c.deaths, c.assists).toFixed(2)} KDA
       </ChampionIdentity>
       <div className="champion-rate">
         <strong
@@ -150,6 +157,7 @@ export function ChampionPoolBlock({
   ));
   return (
     <Block title="POOL DE CAMPEONES" tag={importedTag(demo)} className="profile-block-pool">
+      {children}
       {rows.length ? (
         <>
           <div className="profile-pool-grid">{rows.slice(0, POOL_SUMMARY)}</div>

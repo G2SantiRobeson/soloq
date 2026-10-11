@@ -30,6 +30,7 @@ import { computeAwards, formExtremes, formRanking } from "@/lib/awards";
 import { kda } from "@/lib/stats";
 import { signedLp } from "@/lib/lp-metrics";
 import { isDemo } from "@/server/env";
+import { countLabel } from "@/lib/format";
 export const metadata: Metadata = { title: "Métricas" };
 export const dynamic = "force-dynamic";
 
@@ -334,7 +335,7 @@ export default async function MetricsPage({
                     <small>
                       {c.games >= HIGHLIGHT_MIN_GAMES
                         ? `${((100 * c.wins) / c.games).toFixed(1)}% WR`
-                        : `${c.games} partidas`}
+                        : countLabel(c.games, "partida", "partidas")}
                     </small>
                   </span>
                 </li>

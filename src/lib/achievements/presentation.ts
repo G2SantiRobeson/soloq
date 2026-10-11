@@ -8,6 +8,14 @@ export type AchievementDisplay = {
   status: AchievementEvaluationStatus;
   statusText: string;
   measurement: string | null;
+  /** OTP only: the figures already summarized by `measurement`, for a compact profile badge. */
+  specialization: {
+    championId: number;
+    champion: string;
+    games: number;
+    sample: number;
+    share: string;
+  } | null;
   reasons: string[];
   evidence: { label: string; value: string }[];
   ruleVersion: string;

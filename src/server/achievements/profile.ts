@@ -15,6 +15,22 @@ const read = cache(async (playerId: string, view: View, asOf: string) => {
   return readPlayerAchievements({ playerId, view, season: CURRENT_SEASON.id, asOf });
 });
 
+export type ProfileAchievementLoader = () => Promise<AchievementPresentation | null>;
+
+/**
+ * One presentation per profile render, started lazily by its first consumer (the signals
+ * panel or the OTP badge) so streaming is unchanged and no consumer evaluates twice.
+ */
+export function profileAchievementLoader(
+  playerId: string,
+  view: View,
+  asOf: string,
+  champions: ChampionCatalog,
+): ProfileAchievementLoader {
+  let pending: Promise<AchievementPresentation | null> | undefined;
+  return () => (pending ??= profileAchievementPresentation(playerId, view, asOf, champions));
+}
+
 export async function profileAchievementPresentation(
   playerId: string,
   view: View,

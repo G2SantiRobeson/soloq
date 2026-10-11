@@ -12,6 +12,7 @@ import { kda, winrate } from "@/lib/stats";
 import { rankLabel } from "@/lib/ranking";
 import { signedLp } from "@/lib/lp-metrics";
 import { HIGHLIGHT_MIN_GAMES } from "@/lib/global-metrics";
+import { countLabel } from "@/lib/format";
 import type { View } from "@/lib/queues";
 import type { PlayerProfile } from "@/lib/types";
 
@@ -85,7 +86,7 @@ describe("profile overview keeps every previously visible datum", () => {
     expect(top).toContain(`${record.losses} D`);
     expect(top).toContain(games ? `${winrate(record.wins, record.losses).toFixed(1)}%` : "—");
     expect(top).toContain(
-      `${games} partidas ${official ? "en el estado ranked actual" : "importadas"}`,
+      `${countLabel(games, "partida", "partidas")} ${official ? "en el estado ranked actual" : games === 1 ? "importada" : "importadas"}`,
     );
     const { stats } = p;
     expect(top).toContain(

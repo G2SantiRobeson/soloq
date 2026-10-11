@@ -34,7 +34,12 @@ import {
 } from "@/components/player-signature-section";
 import { toSignaturePlayer } from "@/lib/signature";
 import { isDemo } from "@/server/env";
-import { ProfileAchievements } from "@/components/achievements/profile-achievements";
+import {
+  ProfileAchievements,
+  ProfileOtpHighlight,
+} from "@/components/achievements/profile-achievements";
+import { profileAchievementLoader } from "@/server/achievements/profile";
+import { countLabel } from "@/lib/format";
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ queue?: string }> };
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
@@ -58,6 +63,8 @@ export default async function PlayerPage({ params, searchParams }: Props) {
     (championId, fallback) => championAsset(championId, fallback, assets.champions).name,
   );
   const source = { player, demo };
+  // Lazy: nothing runs unless the flag allows a consumer to render; both consumers share it.
+  const achievements = profileAchievementLoader(id, view, player.observedAt, assets.champions);
   return (
     <>
       <BackToLadder view={view} />
@@ -97,7 +104,9 @@ export default async function PlayerPage({ params, searchParams }: Props) {
         <RecordBlock {...source} view={view} />
         <FormBlock {...source} champions={assets.champions} />
         <CombatBlock {...source} />
-        <ChampionPoolBlock {...source} champions={assets.champions} />
+        <ChampionPoolBlock {...source} champions={assets.champions}>
+          <ProfileOtpHighlight view={view} load={achievements} champions={assets.champions} />
+        </ChampionPoolBlock>
         <details className="disclosure disclosure-block profile-disclosure">
           <summary>
             <DisclosureLabel
@@ -120,6 +129,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           view={view}
           asOf={player.observedAt}
           champions={assets.champions}
+          load={achievements}
         />
       </div>
       <div className="profile-progression-grid">
@@ -158,7 +168,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           </p>
           <HistoryStatusLabel history={player.seasonHistory} demo={demo} />
           <div className="season-record">
-            <strong>{player.stats.games} partidas</strong>
+            <strong>{countLabel(player.stats.games, "partida", "partidas")}</strong>
             <span>
               {player.stats.wins} V / {player.stats.losses} D
             </span>

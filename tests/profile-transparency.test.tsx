@@ -79,7 +79,8 @@ describe("observed LP and loaded match windows", () => {
       { timestamp: "2026-10-10T11:00:00Z", winrate: 50, sample: 2 },
     ];
     const html = renderToStaticMarkup(<PerformanceChart points={points} demo={demo} />);
-    expect(html).toContain("100.0% · 1 partidas");
+    expect(html).toContain("100.0% · 1 partida");
+    expect(html).not.toContain("1 partidas");
     expect(html).toContain("50.0% · 2 partidas");
     expect(html).toContain(demo ? "por partida ficticia (UTC)" : "por día (UTC)");
     expect(html).toContain(
@@ -129,7 +130,9 @@ describe("observed LP and loaded match windows", () => {
   it.each([0, 1, 5, 10, 40])("explains %i loaded games without changing pagination", (count) => {
     const rows = Array.from({ length: count }, (_, i) => <article key={i}>Partida {i}</article>);
     const html = renderToStaticMarkup(<MatchHistory rows={rows} />);
-    expect(html).toContain(`${count} PARTIDAS RECIENTES CARGADAS`);
+    expect(html).toContain(
+      count === 1 ? "1 PARTIDA RECIENTE CARGADA" : `${count} PARTIDAS RECIENTES CARGADAS`,
+    );
     expect(html).toContain("hasta 40 partidas recientes");
     expect(html).toContain("no es todo el");
     expect(html).toContain("contadores ranked son los oficiales de Riot");

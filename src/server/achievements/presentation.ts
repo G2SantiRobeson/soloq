@@ -12,6 +12,7 @@ import {
 import { championAsset, type ChampionCatalog } from "@/lib/champion-assets";
 import { rankLabel } from "@/lib/ranking";
 import type { AchievementReadResult } from "./evaluate";
+import { countLabel } from "@/lib/format";
 
 function display(
   evaluation: AchievementEvaluation,
@@ -20,6 +21,7 @@ function display(
   const definition = ACHIEVEMENTS.find((d) => d.code === evaluation.code)!;
   const e = evaluation.evidence;
   let measurement: string | null = null;
+  let specialization: AchievementDisplay["specialization"] = null;
   const evidence: AchievementDisplay["evidence"] = [];
   let conditions = definition.provisionalConditions;
   if (e) {
@@ -47,6 +49,13 @@ function display(
         maximumFractionDigits: 2,
       });
       measurement = `${name} · ${e.championGames} / ${e.validGames} partidas · ${share} % de la muestra importada`;
+      specialization = {
+        championId: e.championId,
+        champion: name,
+        games: e.championGames,
+        sample: e.validGames,
+        share,
+      };
       evidence.push(
         { label: "Proporción exacta", value: `${e.share.numerator} / ${e.share.denominator}` },
         { label: "Límite", value: "Especialización provisional; no certificación anual." },
@@ -67,6 +76,7 @@ function display(
     status: evaluation.status,
     statusText: ACHIEVEMENT_STATUS_TEXT[evaluation.status],
     measurement,
+    specialization,
     reasons: evaluation.reasons.map((reason) => ACHIEVEMENT_REASON_TEXT[reason]),
     evidence,
     ruleVersion: evaluation.ruleVersion,
@@ -92,7 +102,7 @@ export function achievementPresentation(
     return { status: result.status, message: errors[result.status] };
   const c = result.coverage;
   const coverageDetails = [
-    `${c.storedMatches} partidas y ${c.storedSnapshots} snapshots almacenados en esta cola y ventana.`,
+    `${countLabel(c.storedMatches, "partida", "partidas")} y ${c.storedSnapshots} snapshots almacenados en esta cola y ventana.`,
     "Cobertura exhaustiva no acreditada; los registros disponibles no prueban todo el historial de Riot.",
     `Última cobertura reciente: ${c.recentCoveredUntil ?? "desconocida"}.`,
     `Última verificación de rango: ${c.rankCheckedAt ?? "desconocida"}.`,

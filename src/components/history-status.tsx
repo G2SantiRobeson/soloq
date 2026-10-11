@@ -1,4 +1,5 @@
 import { CURRENT_SEASON, type HistoryStatus } from "@/lib/season";
+import { countLabel } from "@/lib/format";
 
 const COVERAGE = {
   completed: {
@@ -58,7 +59,7 @@ export function HistoryStatusLabel({
           ` ${history.processed} IDs procesados de ${history.discovered} descubiertos; no es un porcentaje de cobertura de temporada.`}
         {!compact &&
           !!history?.unavailable &&
-          ` ${history.unavailable} partidas sin detalle disponible en Riot.`}
+          ` ${countLabel(history.unavailable, "partida", "partidas")} sin detalle disponible en Riot.`}
       </span>
     </div>
   );

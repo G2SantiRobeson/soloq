@@ -232,3 +232,85 @@
     gap: 2px;
   }
 }
+/* OTP badge in the champion pool: identity first, provenance always visible. */
+.otp {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "avatar title" "avatar figures" "avatar meter" "avatar note";
+  align-items: center;
+  gap: 4px 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line, #253457);
+  border-left: 3px solid var(--warm, #ffab3d);
+  border-radius: var(--radius, 2px);
+  background: var(--surface-2, #141d36);
+  overflow-wrap: anywhere;
+}
+.otp > :first-child {
+  grid-area: avatar;
+}
+.otpTitle {
+  grid-area: title;
+}
+.otpFigures {
+  grid-area: figures;
+}
+.otpMeter {
+  grid-area: meter;
+}
+.otpNote {
+  grid-area: note;
+}
+@media (max-width: 480px) {
+  .otp {
+    grid-template-areas: "avatar title" "figures figures" "meter meter" "note note";
+  }
+}
+.otp p {
+  margin: 0;
+}
+.otpTitle {
+  color: var(--text, #eef2ff);
+  font:
+    600 var(--fs-4, 20px) / 1.2 var(--font-display),
+    sans-serif;
+}
+.otpBadge {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 6px;
+  border-radius: var(--radius, 2px);
+  background: var(--warm, #ffab3d);
+  color: var(--accent-ink, #04101c);
+  font:
+    600 var(--fs-2, 14px) / 1.5 var(--font-body),
+    sans-serif;
+  letter-spacing: 1px;
+  vertical-align: 2px;
+}
+.otpFigures {
+  color: var(--muted, #a3b0cf);
+  font-size: var(--fs-2, 14px);
+  font-variant-numeric: tabular-nums;
+}
+.otpFigures strong {
+  color: var(--text, #eef2ff);
+}
+.otpMeter {
+  display: block;
+  height: 4px;
+  max-width: 320px;
+  border-radius: 2px;
+  background: var(--line, #253457);
+  overflow: hidden;
+}
+.otpMeter > span {
+  display: block;
+  height: 100%;
+  background: var(--warm, #ffab3d);
+}
+.otpNote {
+  color: var(--muted, #a3b0cf);
+  font-size: var(--fs-1, 12px);
+}

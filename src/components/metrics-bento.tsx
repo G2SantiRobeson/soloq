@@ -20,6 +20,7 @@ import type { PublicPlayer } from "@/lib/types";
 import type { View } from "@/lib/queues";
 import type { Award, FormRow } from "@/lib/awards";
 import { InfoTip } from "./info-tip";
+import { countLabel } from "@/lib/format";
 
 /**
  * One bento cell: short heading, optional data-provenance tag, optional
@@ -151,7 +152,7 @@ export function FormDots({ results }: { results: boolean[] }) {
     <span
       className="form-dots"
       role="img"
-      aria-label={`${wins} victorias y ${results.length - wins} derrotas en las últimas ${results.length}, la más reciente primero`}
+      aria-label={`${countLabel(wins, "victoria", "victorias")} y ${countLabel(results.length - wins, "derrota", "derrotas")} en las últimas ${results.length}, la más reciente primero`}
     >
       {results.map((win, i) => (
         <span key={i} className={win ? "dot-win" : "dot-loss"} aria-hidden="true" />

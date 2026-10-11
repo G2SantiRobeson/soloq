@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import type { PerformancePoint, ActivityPoint } from "@/lib/history";
 import { ChartDataTable, CHART_KEYBOARD_HINT } from "./chart-data-table";
+import { countLabel } from "@/lib/format";
 const date = (v: number | string) =>
   new Date(v).toLocaleDateString("es-CL", { timeZone: "UTC", day: "numeric", month: "short" });
 const percent = (v: number) => `${v.toFixed(1)}%`;
@@ -84,8 +85,8 @@ export function PerformanceChart({
                 <div className="chart-tooltip">
                   {date(payload[0].payload.time)}
                   <strong>
-                    {Number(payload[0].payload.winrate).toFixed(1)}% · {payload[0].payload.sample}{" "}
-                    partidas
+                    {Number(payload[0].payload.winrate).toFixed(1)}% ·{" "}
+                    {countLabel(payload[0].payload.sample, "partida", "partidas")}
                   </strong>
                 </div>
               ) : null
@@ -108,7 +109,11 @@ export function PerformanceChart({
         caption={demo ? "Winrate móvil por partida ficticia (UTC)" : "Winrate móvil por día (UTC)"}
         columns={["Día", "Winrate y muestra"]}
         rows={points.map(
-          (p) => [date(p.timestamp), `${percent(p.winrate)} · ${p.sample} partidas`] as const,
+          (p) =>
+            [
+              date(p.timestamp),
+              `${percent(p.winrate)} · ${countLabel(p.sample, "partida", "partidas")}`,
+            ] as const,
         )}
       />
       <p className="chart-note">
@@ -129,7 +134,7 @@ export function ActivityChart({ points }: { points: ActivityPoint[] }) {
     <figure className="chart">
       <figcaption className="chart-range">
         <strong>{total.toLocaleString("es-CL")} participaciones</strong>
-        <span>en {points.length} semanas</span>
+        <span>en {countLabel(points.length, "semana", "semanas")}</span>
         <span className="chart-extremes">
           Semana más activa: {date(busiest.timestamp)} ({busiest.games})
         </span>

@@ -60,6 +60,7 @@
   --fs-4: 20px;
   --fs-5: 28px;
   --fs-6: 44px;
+  --fs-hero: 56px; /* profile LP only */
   /* Space: 8px grid plus one 4px half-step for icon/text gaps */
   --space-half: 4px;
   --space-1: 8px;
@@ -606,12 +607,14 @@ select option {
 .leaderboard tbody tr:nth-child(even) {
   background: var(--surface-alt);
 }
-.leaderboard tbody tr.ladder-row:hover,
+/* Rows are not links: hover is a neutral reading guide. Only the player identity and the
+   profile arrow are clickable, and they say so; the accent bar marks keyboard focus. */
+.leaderboard tbody tr.ladder-row:hover {
+  background: var(--surface-2);
+}
 .leaderboard tbody tr.ladder-row:focus-within {
   background: var(--surface-raised);
-  box-shadow:
-    inset 3px 0 0 var(--accent),
-    0 0 24px color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .leaderboard tbody .podium-row {
   --podium: var(--warm);
@@ -1272,19 +1275,22 @@ select option {
   padding: var(--space-2);
 }
 .profile-bento > .profile-block-rank {
-  grid-column: 1 / span 4;
+  grid-column: 1 / span 5;
   grid-row: span 2;
 }
 .profile-bento > .profile-block-rank,
 .profile-bento.is-5v5 > .profile-block-record {
   border-top: 2px solid var(--accent);
 }
-.profile-bento > .profile-block-record,
-.profile-bento > .profile-block-form {
+/* Record and form share the first row; combat sits under them, beside the rank. */
+.profile-bento > .profile-block-record {
   grid-column: span 4;
 }
+.profile-bento > .profile-block-form {
+  grid-column: span 3;
+}
 .profile-bento > .profile-block-combat {
-  grid-column: span 8;
+  grid-column: span 7;
 }
 /* 5v5 has no rank: the imported record leads one row, combat takes the next. */
 .profile-bento.is-5v5 > .profile-block-record {
@@ -1296,14 +1302,17 @@ select option {
 .profile-bento.is-5v5 > .profile-block-combat {
   grid-column: 1 / -1;
 }
+/* The emblem (wings intact, aspect preserved) and LP fill the tall block. */
 .profile-block-rank > .profile-rank-heading {
   flex: 1;
   align-content: center;
+  gap: var(--space-3);
 }
 .bento-tag {
   margin-left: auto;
   color: var(--muted);
   font-size: var(--fs-1);
+  font-weight: 600;
   letter-spacing: 1px;
   white-space: nowrap;
 }
@@ -1313,10 +1322,10 @@ select option {
   min-width: 0;
 }
 .profile-rank-copy .rank-display {
-  font-size: var(--fs-4);
+  font-size: var(--fs-5);
 }
 .profile-rank-copy .lp-display strong {
-  font-size: var(--fs-6);
+  font-size: var(--fs-hero);
 }
 .profile-rank-copy .lp-display > span {
   font-size: var(--fs-3);
@@ -1336,12 +1345,9 @@ select option {
 }
 .record-rate {
   font:
-    600 var(--fs-5) / 1.1 var(--font-display),
+    600 var(--fs-6) / 1 var(--font-display),
     sans-serif;
   font-variant-numeric: tabular-nums;
-}
-.is-5v5 .record-rate {
-  font-size: var(--fs-6);
 }
 .record-rate small {
   color: var(--muted);
@@ -1371,6 +1377,9 @@ select option {
   display: flex;
   align-items: center;
   min-height: 40px;
+}
+.profile-momentum .momentum-detail {
+  font-size: var(--fs-2);
 }
 .profile-block-combat .history-status-compact {
   margin: 0;
@@ -1413,6 +1422,13 @@ select option {
   }
   .profile-bento > .profile-block-rank {
     grid-column: 1 / span 3;
+  }
+  .profile-block-rank .rank-emblem {
+    width: 120px;
+    height: 120px;
+  }
+  .profile-rank-copy .lp-display strong {
+    font-size: var(--fs-6);
   }
   .profile-bento > .profile-block-record,
   .profile-bento > .profile-block-form,
@@ -2846,8 +2862,15 @@ dialog.confirm-dialog::backdrop {
     padding-left: var(--space-5) !important;
   }
   .profile-rank-heading .rank-emblem {
-    width: 88px;
-    height: 88px;
+    width: 104px;
+    height: 104px;
+  }
+  .profile-block-rank > .profile-rank-heading {
+    flex-wrap: nowrap;
+    gap: var(--space-2);
+  }
+  .profile-rank-copy .rank-display {
+    font-size: var(--fs-4);
   }
   .emblem-audit-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4253,4 +4276,104 @@ dialog.confirm-dialog::backdrop {
   .match-history-controls > span {
     flex-basis: 100%;
   }
+}
+
+/* Ladder links: the identity link underlines its name; the profile arrow is a bounded control. */
+.player-link:hover .player-name,
+.player-link:focus-visible .player-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.leaderboard .row-link {
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  background: var(--control-bg);
+  color: var(--control-icon);
+}
+.leaderboard .row-link:hover,
+.leaderboard .ladder-row:hover .row-link {
+  border-color: var(--control-border-hover);
+}
+.leaderboard .row-link:hover {
+  background: var(--control-bg-hover);
+}
+/* Queue tabs on phones: number and name only; the subtitle stays for assistive tech. */
+@media (max-width: 560px) {
+  .queue-tab {
+    justify-content: center;
+    min-height: 56px;
+  }
+  .queue-name small {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+/* Profile recent form: each match is a toggletip (hover, focus, click or tap). */
+.recent-champions.is-interactive {
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.recent-champions.is-interactive .info-tip-term .info-tip-button {
+  min-height: 0;
+  padding: var(--space-half);
+  border-radius: var(--radius);
+  text-decoration: none;
+}
+.recent-champions.is-interactive .info-tip-button:hover,
+.recent-champions.is-interactive .info-tip-button[aria-expanded="true"] {
+  background: var(--control-bg-hover);
+}
+.is-interactive .recent-champion {
+  display: inline-grid;
+  justify-items: center;
+  gap: 2px;
+  padding-bottom: 2px;
+  border-bottom-width: 3px;
+}
+.is-interactive .outcome-mark {
+  top: -4px;
+  right: -4px;
+  bottom: auto;
+  width: 16px;
+  height: 16px;
+}
+.recent-result {
+  color: var(--win);
+  font:
+    600 var(--fs-1) / 1 var(--font-body),
+    sans-serif;
+}
+.lost .recent-result {
+  color: var(--loss);
+}
+.remade .recent-result {
+  color: var(--muted);
+}
+.profile-block-form .recent-champion .avatar {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+}
+.recent-form-item .info-tip-bubble {
+  min-width: 180px;
+}
+@media (max-width: 360px) {
+  .profile-block-form .recent-champion .avatar {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+  }
+}
+/* Profile microtexts: secondary copy >=12px outside the bento too. */
+.profile-freshness {
+  font-size: var(--fs-2);
+}
+.profile-progression-grid,
+.lp-history-details,
+.match-panel {
+  --fs-1: 12px;
 }

@@ -3,6 +3,7 @@ import { signedLp, LP_WINDOW, type LpMetrics, type FiveMatchLp } from "@/lib/lp-
 import { InfoTip } from "./info-tip";
 import type { WeeklyLp } from "@/lib/weekly-lp";
 import { APP_TIMEZONE } from "@/lib/time";
+import { countLabel } from "@/lib/format";
 
 export function WeeklyMomentum({ summary }: { summary?: WeeklyLp | null }) {
   if (!summary) return <small className="muted">Sin datos suficientes</small>;
@@ -103,7 +104,8 @@ export function PlayerMomentum({
       </span>
       {detailed && (
         <span className="momentum-detail">
-          {metrics.intervals} intervalos observados{period && ` · ${period}`}
+          {countLabel(metrics.intervals, "intervalo observado", "intervalos observados")}
+          {period && ` · ${period}`}
           <InfoTip label="Cómo se calcula el ΔLP observado">
             Segmento comparable más reciente entre hasta {LP_WINDOW} observaciones
             {demo ? " ficticias de demo" : " oficiales de Riot"}.
