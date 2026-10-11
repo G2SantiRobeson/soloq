@@ -1,5 +1,41 @@
+import { useSyncExternalStore } from "react";
 import type { AutoBackfillState } from "@/lib/auto-backfill";
 import type { ProgressDto } from "@/lib/sync-progress";
+
+type Phase = "discovering" | "processing" | "waiting" | "complete";
+const phaseLabels: Record<Phase, string> = {
+  discovering: "Descubriendo IDs",
+  processing: "Procesando IDs descubiertos",
+  waiting: "Esperando a Riot",
+  complete: "Completado",
+};
+
+const noop = () => () => {};
+function format(iso: string, timeZone?: string) {
+  return new Date(iso).toLocaleString("es-CL", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZoneName: "short",
+    ...(timeZone ? { timeZone } : {}),
+  });
+}
+/** Server and hydration render UTC; the client then switches to the viewer's time zone. */
+function LocalDateTime({ iso }: { iso: string }) {
+  const text = useSyncExternalStore(
+    noop,
+    () => format(iso),
+    () => format(iso, "UTC"),
+  );
+  return (
+    <time dateTime={iso} title={iso}>
+      {text}
+    </time>
+  );
+}
 
 export function AdminBackfillProgress({
   dto,
@@ -30,8 +66,20 @@ export function AdminBackfillProgress({
   const waiting =
     (dto?.control.state === "cooldown" && dto.control.reason === "riot_retry_after") ||
     !!(run?.riotRetryAt && dto && Date.parse(run.riotRetryAt) > Date.parse(dto.serverNow));
+  const phase: Phase = waiting
+    ? "waiting"
+    : work?.status === "complete"
+      ? "complete"
+      : determinate
+        ? "processing"
+        : "discovering";
+  const retryAt = automatic?.retryAt ?? run?.riotRetryAt ?? dto?.control.until;
   return (
-    <section className="admin-backfill-progress panel" aria-label={`Progreso histórico de ${name}`}>
+    <section
+      className="admin-backfill-progress panel"
+      data-phase={phase}
+      aria-label={`Progreso histórico de ${name}`}
+    >
       <h2>Historial · {name}</h2>
       <p role="status">
         {waiting && automatic?.active
@@ -51,17 +99,25 @@ export function AdminBackfillProgress({
           progreso.
         </p>
       )}
+      <p className="backfill-phase">
+        <span className="backfill-phase-dot" aria-hidden="true" />
+        {phaseLabels[phase]}
+      </p>
+      <p className="backfill-count" id={`backfill-count-${playerId}`}>
+        {valid
+          ? `${h.processed} de ${h.discovered} IDs descubiertos procesados`
+          : `IDs procesados: ${h?.processed ?? "desconocidos"} · IDs descubiertos: ${h?.discovered ?? "desconocidos"}; sin denominador verificable`}
+      </p>
       <progress
         aria-label="IDs descubiertos procesados"
+        aria-describedby={`backfill-count-${playerId}`}
         {...(determinate ? { value: h.processed!, max: h.discovered! } : {})}
       />
-      <p>
-        {valid
-          ? `${h.processed} / ${h.discovered} IDs procesados`
-          : `IDs procesados: ${h?.processed ?? "desconocidos"} · IDs descubiertos: ${h?.discovered ?? "desconocidos"}; sin denominador verificable`}
-        {percent !== null &&
-          ` · ${percent.toLocaleString("es-CL", { maximumFractionDigits: 1 })} % de los IDs descubiertos`}
-      </p>
+      {percent !== null && (
+        <p className="muted">
+          {percent.toLocaleString("es-CL", { maximumFractionDigits: 1 })} % de los IDs descubiertos
+        </p>
+      )}
       {valid && (
         <p>
           Posición confirmada: {h.processed} de {h.discovered} · {h.discovered! - h.processed!}{" "}
@@ -81,17 +137,16 @@ export function AdminBackfillProgress({
           {work?.lastConfirmedMatchId ?? "Sin ID registrado en esta ejecución"}
         </span>
       </p>
-      <p>Último checkpoint: {run?.lastCheckpointAt ?? "Sin checkpoint registrado"}</p>
-      {run && (
-        <p>
-          Última ejecución: <span className="backfill-match-id">{run.runId}</span>
-        </p>
-      )}
+      <p>
+        Último checkpoint:{" "}
+        {run?.lastCheckpointAt ? (
+          <LocalDateTime iso={run.lastCheckpointAt} />
+        ) : (
+          "Sin checkpoint registrado"
+        )}
+      </p>
       {(automatic?.retryAt || waiting) && (
-        <p>
-          Espera compartida hasta {automatic?.retryAt ?? run?.riotRetryAt ?? dto?.control.until}{" "}
-          (hora del servidor).
-        </p>
+        <p>Espera compartida hasta {retryAt ? <LocalDateTime iso={retryAt} /> : "desconocido"}.</p>
       )}
       <p className="muted">
         Actualización por checkpoint (aproximadamente 15 s) y final de lote. El denominador puede
@@ -116,6 +171,21 @@ export function AdminBackfillProgress({
           Solo este jugador · {automatic.batches}/100 lotes · máximo una hora. La pestaña oculta
           pausa nuevas continuaciones; cerrar o recargar no reanuda automáticamente el modo.
         </p>
+      )}
+      {run && (
+        <details className="disclosure disclosure-inline">
+          <summary>Diagnóstico técnico</summary>
+          <p>
+            Última ejecución: <span className="backfill-match-id">{run.runId}</span>
+          </p>
+          <p>
+            Solicitud: <span className="backfill-match-id">{run.requestId}</span>
+          </p>
+          <p>Último checkpoint (ISO): {run.lastCheckpointAt ?? "—"}</p>
+          {(automatic?.retryAt || waiting) && (
+            <p>Espera compartida hasta (ISO): {retryAt ?? "—"}</p>
+          )}
+        </details>
       )}
     </section>
   );

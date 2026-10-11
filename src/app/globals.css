@@ -4384,11 +4384,97 @@ dialog.confirm-dialog::backdrop {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.admin-backfill-progress {
+  --backfill-tone: var(--accent);
+}
+.admin-backfill-progress[data-phase="waiting"] {
+  --backfill-tone: var(--warning);
+}
+.admin-backfill-progress[data-phase="complete"] {
+  --backfill-tone: var(--win);
+}
+.backfill-phase {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--backfill-tone);
+  font:
+    600 var(--fs-2, 14px) / 1.2 var(--font-display),
+    sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.backfill-phase-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--backfill-tone);
+}
+.backfill-count {
+  color: var(--text);
+  font:
+    600 var(--fs-5, 22px) / 1.15 var(--font-display),
+    sans-serif;
+}
 .admin-backfill-progress progress {
   display: block;
   width: 100%;
-  height: var(--space-2);
-  accent-color: var(--accent);
+  height: 10px;
+  appearance: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-alt);
+  color: var(--backfill-tone);
+}
+.admin-backfill-progress progress::-webkit-progress-bar {
+  background: var(--surface-alt);
+}
+.admin-backfill-progress progress::-webkit-progress-value {
+  background: var(--backfill-tone);
+}
+.admin-backfill-progress progress::-moz-progress-bar {
+  background: var(--backfill-tone);
+}
+/* Indeterminate discovery: moving stripe, not a fake percentage. */
+.admin-backfill-progress progress:indeterminate,
+.admin-backfill-progress progress:indeterminate::-webkit-progress-bar {
+  background: linear-gradient(
+      90deg,
+      transparent 0 35%,
+      var(--backfill-tone) 50%,
+      transparent 65% 100%
+    )
+    0 0 / 200% 100% var(--surface-alt);
+  animation: backfill-scan 1.6s linear infinite;
+}
+.admin-backfill-progress progress:indeterminate::-moz-progress-bar {
+  background: transparent;
+}
+.admin-backfill-progress[data-phase="waiting"] progress:indeterminate,
+.admin-backfill-progress[data-phase="waiting"] progress:indeterminate::-webkit-progress-bar {
+  animation: none;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--warning-bg) 0 6px,
+    var(--surface-alt) 6px 12px
+  );
+}
+@keyframes backfill-scan {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-backfill-progress progress:indeterminate,
+  .admin-backfill-progress progress:indeterminate::-webkit-progress-bar {
+    animation: none;
+    background-position: 50% 0;
+  }
 }
 .admin-backfill-progress p {
   margin-block: var(--space-1);
