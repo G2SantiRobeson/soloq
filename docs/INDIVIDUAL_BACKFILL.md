@@ -189,3 +189,34 @@ Validación de esta corrección con Node 24.19.0: lint y typecheck correctos;
 tipográfica nueva pasó junto con los tests de parada, correlación y progreso.
 Build y smoke HTTP pasaron con el validador Demo aislado existente (`--serve`),
 sin secretos ni conexiones PostgreSQL/Riot. No se ejecutó un deployment.
+
+## Ciclo de vida de los paneles de progreso
+
+La observación técnica del GET no equivale a un resultado que deba mostrarse
+indefinidamente. Al cargar `/admin`, los resultados ya finalizados (completed,
+partial o failed con `finishedAt`) se ocultan. Si la página observa una ejecución
+activa o incierta, conserva sus checkpoints y muestra su finalización en esa
+sesión. Restaurar la observación nunca inicia el bucle automático de lotes.
+
+Cuando el servidor acredita la finalización, se retira únicamente la correlación
+coincidente de `sessionStorage`; no se borra una solicitud posterior ni una
+correlación activa, ausente o posiblemente interrumpida. El GET, su estado del
+lease y los registros persistidos no se modifican. «Consultar estado» permite
+mostrar explícitamente el último diagnóstico disponible, incluidos errores.
+
+Los paneles individuales solo pueden pertenecer a jugadores presentes en la
+lista. Una eliminación confirmada los oculta inmediatamente, incluso antes de
+recibir el nuevo roster del servidor; polling y `router.refresh` no los vuelven
+a mostrar. No se sustituye un jugador ausente por «Jugador seleccionado». Un
+resultado global permanece global y no reutiliza un panel histórico anterior.
+
+Regresiones: política de visibilidad, limpieza selectiva de correlación, render
+del panel y polling real con respuestas simuladas. QA local con los componentes
+hidratados y fetch simulado: activo visible, finalización visible, recarga sin
+paneles antiguos, consulta explícita y eliminación confirmada sin resurrección
+tras otro GET. No se ejecutaron operaciones contra Neon ni Riot.
+
+Validación con Node 24.19.0: lint, typecheck, 853 pruebas aprobadas (16 regresiones
+nuevas) y 10 omitidas de PostgreSQL local opcional. Build y smoke HTTP Demo
+aislados correctos. Se ejecutaron typecheck/tests después de cerrar y limpiar
+las copias temporales del QA, para que el glob de TypeScript no las incluyera.

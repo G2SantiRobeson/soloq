@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { watchAdminProgress, type ManualProgressRead } from "@/lib/admin-progress-polling";
 import { syncActionSchema, type ProgressDto, type SyncRunAction } from "@/lib/sync-progress";
+import { createAdminProgressVisibility } from "@/lib/admin-progress-visibility";
 const storageKey = "soloq-admin-sync-observation-v1";
 const savedSchema = z.object({
   requestId: z.uuid(),
@@ -15,6 +16,19 @@ export function restoreAdminObservation(storage: Pick<Storage, "getItem">) {
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
+  }
+}
+export function clearFinishedAdminObservation(
+  storage: Pick<Storage, "getItem" | "removeItem">,
+  dto: ProgressDto,
+) {
+  const run = dto.run;
+  if (!run?.finishedAt || !["completed", "partial", "failed"].includes(run.state)) return;
+  try {
+    if (run.requestId && restoreAdminObservation(storage)?.requestId === run.requestId)
+      storage.removeItem(storageKey);
+  } catch {
+    /* Keep the visibility policy even when browser storage is unavailable. */
   }
 }
 export function useAdminProgress(
@@ -34,20 +48,25 @@ export function useAdminProgress(
   const notify = useRef(onFinished);
   const observed = useRef(onObservation);
   const unavailable = useRef(onUnavailable);
+  const visibility = useRef(createAdminProgressVisibility());
   useEffect(() => {
     notify.current = onFinished;
     observed.current = onObservation;
     unavailable.current = onUnavailable;
   }, [onFinished, onObservation, onUnavailable]);
-  const observe = useCallback((requestId?: string, startedAt?: number) => {
+  const observe = useCallback((requestId?: string, startedAt?: number, live = false) => {
     watcher.current?.stop();
+    const presentation = createAdminProgressVisibility(live);
+    visibility.current = presentation;
     watcher.current = watchAdminProgress({
       selector: requestId ? { requestId } : {},
       startedAt,
       onManualRead: setManualRead,
       onStatus(dto) {
         setCorrelated(!!requestId);
-        setObservation(dto);
+        const view = presentation.observe(dto);
+        if (view.terminal) clearFinishedAdminObservation(sessionStorage, dto);
+        setObservation(view.progress);
         observed.current?.(dto);
         setProblem(null);
         if (!requestId) setAwaiting(false);
@@ -84,7 +103,7 @@ export function useAdminProgress(
     setProblem(null);
     setAwaiting(true);
     setCorrelated(true);
-    observe(saved.requestId, saved.startedAt);
+    observe(saved.requestId, saved.startedAt, true);
     return saved.requestId;
   }
   function cancel() {
@@ -112,7 +131,10 @@ export function useAdminProgress(
     cancel,
     rejected,
     refresh: () => watcher.current?.refresh(),
-    refreshManual: () => watcher.current?.refreshManual(),
+    refreshManual: () => {
+      visibility.current.reveal();
+      watcher.current?.refreshManual();
+    },
     manualRead,
     blocked: awaiting || (observation !== null && observation.control.state !== "available"),
   };

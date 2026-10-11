@@ -11,6 +11,7 @@ import { useAdminProgress } from "./use-admin-progress";
 import { AdminBackfillProgress } from "./admin-backfill-progress";
 import { createAutoBackfill, type AutoBackfillState } from "@/lib/auto-backfill";
 import { AdminRequestError } from "@/lib/admin-errors";
+import { adminProgressForPlayers } from "@/lib/admin-progress-visibility";
 import {
   actionTitle,
   createAdminActionRunner,
@@ -111,6 +112,7 @@ export function AdminPanel({
   const [gameName, setGameName] = useState("");
   const [tagLine, setTagLine] = useState("");
   const [deleting, setDeleting] = useState<AdminPlayer | null>(null);
+  const [removedPlayerIds, setRemovedPlayerIds] = useState<string[]>([]);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const rosterHeading = useRef<HTMLHeadingElement>(null);
   const gameNameInput = useRef<HTMLInputElement>(null);
@@ -178,14 +180,18 @@ export function AdminPanel({
     };
   }, [router]);
   const pending = pendingAction !== null || progress.blocked || !!autoState?.active;
+  const visiblePlayers = players.filter((p) => !removedPlayerIds.includes(p.id));
+  const displayedProgress = adminProgressForPlayers(
+    progress.observation,
+    visiblePlayers.map((p) => p.id),
+  );
   const backfillDto = autoState?.active
     ? autoState.progress
-    : progress.observation?.run?.action === "player_history"
-      ? progress.observation
-      : (autoState?.progress ?? null);
-  const backfillPlayerId = autoState?.active
-    ? autoState.playerId
-    : (backfillDto?.run?.playerId ?? autoState?.playerId);
+    : displayedProgress?.run?.action === "player_history"
+      ? displayedProgress
+      : null;
+  const backfillPlayerId = autoState?.active ? autoState.playerId : backfillDto?.run?.playerId;
+  const backfillPlayer = visiblePlayers.find((p) => p.id === backfillPlayerId);
   const fullRiotId = splitRiotId(gameName);
   useEffect(() => {
     if (!deleting) return;
@@ -248,7 +254,11 @@ export function AdminPanel({
             else if (requestId) progress.refresh();
             if (result.results) setBatch(result);
             setNotice(resultNotice(result, success));
-            if (action === "delete") deleted.current = true;
+            if (action === "delete") {
+              deleted.current = true;
+              const removedId = key.split(":")[1];
+              setRemovedPlayerIds((ids) => [...ids, removedId]);
+            }
             setDeleting(null);
             router.refresh();
             return true;
@@ -353,18 +363,18 @@ export function AdminPanel({
       <AdminOperationFeedback
         work={work}
         notice={notice}
-        progress={progress.observation}
+        progress={displayedProgress}
         correlated={progress.correlated}
         problem={progress.problem}
-        players={players}
+        players={visiblePlayers}
         refresh={progress.refreshManual}
         manualRead={progress.manualRead}
       />
-      {backfillPlayerId && (
+      {backfillPlayer && (
         <AdminBackfillProgress
           dto={backfillDto}
-          playerId={backfillPlayerId}
-          name={players.find((p) => p.id === backfillPlayerId)?.gameName ?? "Jugador seleccionado"}
+          playerId={backfillPlayer.id}
+          name={backfillPlayer.gameName}
           automatic={
             autoState?.active || autoState?.requestId === backfillDto?.run?.requestId
               ? autoState

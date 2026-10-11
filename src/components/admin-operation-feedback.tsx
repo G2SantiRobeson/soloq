@@ -100,18 +100,27 @@ export function AdminOperationFeedback({
           </span>
         </div>
       )}
-      {(problem || progress?.selection === "not_found") && (
+      {(problem ||
+        progress?.selection === "not_found" ||
+        (progress && progress.control.state !== "available")) && (
         <div className="admin-run-details">
-          <p className="muted">
-            {problem ??
-              "Todavía no hay una ejecución correlacionada. Enviar una solicitud no confirma su inicio; no se atribuye progreso anterior a esta acción."}
-          </p>
+          {(problem || progress?.selection === "not_found") && (
+            <p className="muted">
+              {problem ??
+                "Todavía no hay una ejecución correlacionada. Enviar una solicitud no confirma su inicio; no se atribuye progreso anterior a esta acción."}
+            </p>
+          )}
           {progress?.control.until && (
             <p>Lease ocupado o en espera hasta {progress.control.until}.</p>
           )}
           {refresh && <AdminProgressQuery refresh={refresh} result={manualRead} />}
         </div>
       )}
+      {!work &&
+        !problem &&
+        progress?.selection !== "not_found" &&
+        (!progress || progress.control.state === "available") &&
+        refresh && <AdminProgressQuery refresh={refresh} result={manualRead} />}
     </div>
   );
 }
