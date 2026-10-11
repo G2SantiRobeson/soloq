@@ -11,6 +11,7 @@ import {
 import { PlayerSignatureSection } from "@/components/player-signature-section";
 import { profileAchievementPresentation } from "@/server/achievements/profile";
 import { demoPlayers } from "@/server/demo";
+import { demoAchievementPlayerId } from "@/server/achievements/demo";
 import { uiFixture, uiStateFixture } from "./achievements-ui-fixtures";
 import type { View } from "@/lib/queues";
 import { Header, Footer, DemoBanner } from "@/components/shell";
@@ -126,7 +127,8 @@ describe("gated profile integration", () => {
       expect(html).toContain("35 / 50");
       expect(html).not.toMatch(/obtenido oficialmente|desbloqueado|insignia permanente/);
       expect(service).toHaveBeenCalledWith(
-        expect.objectContaining({ view, playerId: "11111111-1111-4111-8111-111111111111" }),
+        // Each public demo profile has its own fictional identity, never a shared fixture.
+        expect.objectContaining({ view, playerId: demoAchievementPlayerId("demo-1") }),
       );
       const wrapper = ProfileAchievements({ ...props, view });
       expect(wrapper?.type).toBe("details");

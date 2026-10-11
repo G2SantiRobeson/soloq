@@ -40,12 +40,14 @@ export async function profileAchievementPresentation(
   if (!achievementsExperimentalEnabled() || view === "5v5") return null;
   try {
     if (isDemo()) {
-      const [{ demoPlayers }, { ACHIEVEMENT_DEMO_PLAYER_ID }] = await Promise.all([
+      // Each public demo profile is evaluated from its own fixture, never a shared one.
+      const [{ demoPlayers }, { demoAchievementPlayerId }] = await Promise.all([
         import("@/server/demo"),
         import("./demo"),
       ]);
-      if (!demoPlayers(view).some((p) => p.id === playerId)) return null;
-      playerId = ACHIEVEMENT_DEMO_PLAYER_ID;
+      const demoId = demoAchievementPlayerId(playerId);
+      if (!demoId || !demoPlayers(view, "season", playerId).length) return null;
+      playerId = demoId;
     }
     return achievementPresentation(await read(playerId, view, asOf), champions);
   } catch (error) {

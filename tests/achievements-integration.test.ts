@@ -538,10 +538,15 @@ describe("achievement SQL integration on isolated ephemeral PostgreSQL", () => {
     vi.stubEnv("VERCEL_ENV", undefined);
     vi.stubEnv("VERCEL_TARGET_ENV", undefined);
     factory.fail = true;
-    const dto = await profileAchievementPresentation("demo-1", "soloq", request.asOf, {});
+    // The public one-trick fixture is evaluated from its own matches (Thresh), not a shared sample.
+    const dto = await profileAchievementPresentation("demo-5", "soloq", new Date().toISOString(), {
+      "412": { name: "Thresh", image: "/champ-icons/412.png" },
+    });
     expect(dto).toMatchObject({ status: "available", demo: true });
     if (dto?.status !== "available") throw new Error("fixture");
-    expect(dto.items.map((e) => e.status)).toEqual(["observed", "observed", "observed"]);
+    const otp = dto.items.find((e) => e.code === "otp-specialist")!;
+    expect(otp.status).toBe("observed");
+    expect(otp.specialization?.champion).toBe("Thresh");
     expect(factory.calls).toBe(0);
     expect(JSON.stringify(dto)).not.toMatch(/puuid|password|fictitious-private-identity/i);
   });

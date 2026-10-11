@@ -31,11 +31,26 @@ const champions = [
   { name: "Orianna", id: 61 },
   { name: "Nunu & Willump", id: 20 },
 ];
-export function demoPlayers(view: View, period: MetricsPeriod = "season"): PlayerProfile[] {
-  return names.map((name, index) => {
+const ONE_TRICK_INDEX = 4;
+/** `onlyId` builds a single profile (identical data) instead of the whole fixture set. */
+export function demoPlayers(
+  view: View,
+  period: MetricsPeriod = "season",
+  onlyId?: string,
+): PlayerProfile[] {
+  const indices = names
+    .map((_, index) => index)
+    .filter((index) => !onlyId || onlyId === `demo-${index + 1}`);
+  return indices.map((index) => {
+    const name = names[index];
     const now = Date.now();
     const all: RecentMatch[] = Array.from({ length: 360 }, (_, i) => {
-      const champion = champions[(i + index) % champions.length];
+      // Demo Marea is a deliberate one-trick (Thresh in 4 of every 5 blocks of games, in
+      // every queue), so the experimental OTP badge has a coherent positive example.
+      const champion =
+        index === ONE_TRICK_INDEX && Math.floor(i / 5) % 5 !== 4
+          ? champions[4]
+          : champions[(i + index) % champions.length];
       return {
         matchId: `DEMO_${index}_${i}`,
         queueId: [420, 420, 440, 400, 440][i % 5],
