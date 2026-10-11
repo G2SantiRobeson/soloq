@@ -4,7 +4,23 @@ Fecha: 11 de octubre de 2026. Base auditada: `c1978cee21ef44287f25dbe2819d3894c4
 
 **Este documento propone decisiones; no aprueba ni activa ninguna regla.** OTP permanece en 50 partidas válidas, 13/20 (65 %), versión `1.1-otp-observed-v2`. No se modificaron evaluadores, consultas de negocio, premios, feature flag, esquema ni migraciones.
 
-Las etiquetas **HECHO VERIFICADO**, **HIPÓTESIS**, **RECOMENDACIÓN** y **DECISIÓN PENDIENTE** separan evidencia de propuestas.
+Las etiquetas **HECHO VERIFICADO**, **HIPÓTESIS**, **RECOMENDACIÓN** y **DECISIÓN PENDIENTE** separan evidencia de propuestas. Las secciones 1–15 y los apéndices conservan la auditoría histórica de 1.1.F; la siguiente sección registra las aprobaciones posteriores de 1.1.G.
+
+## 1.1.G — Decisiones aprobadas el 11 de octubre de 2026
+
+El propietario aprobó conservar **Resurrección R1** y **Racha imparable I1** sin cambios semánticos ni de versión. R1 mantiene caída observada ≥50 LP, recuperación hasta alcanzar o superar A en ≤30 días desde la observación previa a la caída (no desde B), mismo tier/división, huecos ≤7 días y las condiciones existentes de validez y contadores. I1 mantiene ≥5 victorias consecutivas registradas, remakes confirmados ignorados y el tratamiento existente de derrotas, desconocidos, ambigüedad y cobertura parcial.
+
+Nombre visible individual: **Racha imparable**; código interno `unstoppable`, versión `1.1.A-observed-v1`. Nombre del premio comunitario: **Imparable**, sin cambios de identificador, elegibilidad, ranking ni desempates. Resurrección conserva `1.1.A-observed-v1`. OTP permanece íntegro: mínimo 50 partidas, ≥65 % (13/20), versión `1.1-otp-observed-v2`.
+
+Alcance de 1.1.G: catálogo visible, textos de presentación, documentación y pruebas. Los textos aclaran el reloj de R1, que los snapshots no acreditan una trayectoria completa, y que una racha importada puede cambiar con nuevos registros. `observed`, `not_observed`, `insufficient_evidence` e `invalid_input` conservan sus condiciones; `certification: "not_established"` y `grantAuthorized: false` siguen vigentes.
+
+Las conclusiones, alternativas y simulaciones de 1.1.F se conservan como antecedentes históricos. R2/R3 e I2/I3/I4 **no fueron aprobadas ni implementadas**. Quedan pendientes certificación, concesión permanente, persistencia, política de reevaluación histórica, equipamiento de insignias, niveles de racha y posibles cruces de división. Aprobar R1/I1 para observaciones no autoriza premios permanentes ni títulos equipados.
+
+No se modifican el feature flag, los evaluadores, OTP, consultas, sincronización, LP, Bento, Pool de campeones ni el Salón de Honor. No se añaden iconos, imágenes, rarezas ni funcionalidades. No se realizó push, deployment, migración ni acceso a Neon o Riot en esta etapa.
+
+Validación de 1.1.G con Node 24.19.0: lint, typecheck y build correctos; 787 pruebas aprobadas (10 nuevas) y 10 omitidas. Las omisiones siguen siendo seis pruebas opt-in de logros y cuatro de lease/progreso con sesiones PostgreSQL locales independientes. Las regresiones verifican versiones y parámetros intactos, reloj desde A, estados, nombres, modalidad, evidencia y ausencia de concesiones; las pruebas existentes cubren flag apagado, 5v5 y Demo. Dos expectativas antiguas de presentación se actualizaron al nombre aprobado y a la ausencia de una medición inventada, sin cambiar resultados del motor.
+
+QA: se exportaron HTML ficticios del panel y perfil mediante los tests existentes, sin activar el feature flag. La política de seguridad del navegador bloqueó el acceso de inspección; no se afirma validación visual ni lectura real a 320/390 px. Los componentes y estilos no cambian: conservan detalles nativos, etiquetas accesibles y ajuste de texto sin truncamiento por CSS. La comprobación visual y de teclado en navegador queda pendiente. `git diff --check` pasa para el alcance de 1.1.G; la comprobación global detecta únicamente un espacio final preexistente en el archivo protegido CLAUDE.md, que se preserva.
 
 ## 1. Resumen ejecutivo
 

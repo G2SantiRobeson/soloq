@@ -36,19 +36,20 @@ const definitions: AchievementDefinition[] = [
     description:
       "Recuperación de un nivel de LP previamente observado después de una caída observada.",
     provisionalConditions:
-      "Caída ≥50 LP y recuperación en ≤30 días, misma división, huecos ≤7 días. No describe la trayectoria intermedia.",
+      "Caída observada ≥50 LP; recuperación hasta alcanzar o superar el nivel inicial en ≤30 días desde la observación previa a la caída, no desde el mínimo. Mismo tier y división; huecos ≤7 días entre snapshots oficiales comparables. Contadores no decrecientes, derrotas durante la caída y victorias durante la recuperación. No acredita la trayectoria intermedia.",
   },
   {
     code: "unstoppable",
     ruleVersion: ACHIEVEMENT_RULE_VERSION,
-    name: "Imparable",
+    name: "Racha imparable",
     category: "performance",
     views: ["soloq", "flex"],
     evidence: "recorded_win_streak",
     availability: "observation_only",
-    description: "Racha de victorias observada entre las partidas registradas de una cola.",
+    description:
+      "Señal individual experimental de victorias observadas en las partidas importadas de una modalidad.",
     provisionalConditions:
-      "≥5 victorias; no acredita ausencia de partidas desconocidas ni otorga un logro permanente.",
+      "≥5 victorias consecutivas en las partidas registradas de esta modalidad. Remakes confirmados se ignoran; derrotas registradas cortan la racha. Resultados o remakes desconocidos y fechas ambiguas interrumpen la evidencia. No acredita ausencia de partidas no importadas; la señal puede cambiar con nuevos registros. Sin concesión permanente.",
   },
   {
     code: "otp-specialist",

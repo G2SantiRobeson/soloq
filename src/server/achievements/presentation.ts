@@ -33,16 +33,20 @@ function display(
         { label: "Observaciones oficiales utilizadas", value: String(e.observationCount) },
         { label: "Límite", value: "No se conoce la trayectoria intermedia completa." },
       );
-      conditions = `Caída ≥${e.rule.minDropLp} LP; recuperación ≤${e.rule.maxRecoveryMs / 86400000} días; huecos ≤${e.rule.maxGapMs / 86400000} días, misma división.`;
+      conditions = `Caída observada ≥${e.rule.minDropLp} LP; recuperación hasta alcanzar o superar el nivel inicial en ≤${e.rule.maxRecoveryMs / 86400000} días desde la observación previa a la caída, no desde el mínimo. Mismo tier y división; huecos ≤${e.rule.maxGapMs / 86400000} días entre snapshots oficiales comparables. Contadores no decrecientes, derrotas durante la caída y victorias durante la recuperación.`;
     } else if (e.kind === "recorded_win_streak") {
       measurement = `Racha observada de ${e.maxObservedWins} ${e.maxObservedWins === 1 ? "victoria" : "victorias"}`;
       evidence.push(
         { label: "Partidas utilizadas", value: String(e.matchIds.length) },
         { label: "IDs de evidencia (hasta 20)", value: e.matchIds.slice(0, 20).join(", ") },
         { label: "Remakes confirmados intercalados", value: String(e.ignoredRemakeIds.length) },
-        { label: "Límite", value: "No acredita ausencia de partidas no recuperadas." },
+        {
+          label: "Límite",
+          value:
+            "No acredita ausencia de partidas no recuperadas. La señal puede cambiar al incorporar nuevos registros.",
+        },
       );
-      conditions = `≥${e.rule.minWins} victorias en la secuencia registrada de una cola.`;
+      conditions = `≥${e.rule.minWins} victorias consecutivas en las partidas registradas de esta modalidad. Remakes confirmados se ignoran; derrotas registradas cortan la racha. Resultados o remakes desconocidos y fechas ambiguas interrumpen la evidencia.`;
     } else {
       const name = championAsset(e.championId, `Campeón #${e.championId}`, champions).name;
       const share = ((100 * e.championGames) / e.validGames).toLocaleString("es-CL", {
@@ -70,9 +74,9 @@ function display(
     name: evaluation.code === "otp-specialist" ? "OTP · muestra importada" : definition.name,
     description:
       evaluation.code === "resurrection"
-        ? "Recuperación observada entre verificaciones oficiales."
+        ? "Recuperación hasta alcanzar o superar el nivel de LP previo a una caída observada entre verificaciones oficiales."
         : evaluation.code === "unstoppable"
-          ? "Racha observada en partidas importadas; evaluación independiente del premio comunitario Imparable."
+          ? "Señal individual experimental en partidas importadas de esta modalidad. Imparable del Salón de Honor distingue la mejor racha comparativa del período."
           : "Especialización en muestra importada.",
     status: evaluation.status,
     statusText: ACHIEVEMENT_STATUS_TEXT[evaluation.status],

@@ -38,7 +38,7 @@ describe("server evidence → presentation → isolated SSR components", () => {
     const html = renderToStaticMarkup(<AchievementPanel presentation={dto} />);
     for (const text of [
       "Resurrección",
-      "Imparable",
+      "Racha imparable",
       "OTP · muestra importada",
       "Diamond I",
       "80 LP → 25 LP → 80 LP",
@@ -72,7 +72,8 @@ describe("server evidence → presentation → isolated SSR components", () => {
       const html = renderToStaticMarkup(<AchievementPanel presentation={dto} />);
       expect(html.split(ACHIEVEMENT_STATUS_TEXT[status]).length - 1).toBe(3);
       expect(html).toContain(`data-status="${status}"`);
-      if (status === "invalid_input") expect(html).not.toContain("Caída observada");
+      // Criteria may explain a drop; invalid input must never invent a measured drop.
+      if (status === "invalid_input") expect(html).not.toContain("<dt>Caída observada</dt>");
       if (status === "not_observed") expect(html).not.toContain("nunca lo consiguió");
     },
   );

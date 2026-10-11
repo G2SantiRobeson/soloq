@@ -76,7 +76,7 @@ Las definiciones incluyen código, versión `1.1.A-observed-v1` para Resurrecci�
 
 ### Resurrección (`resurrection`)
 
-Regla predeterminada: caída de al menos 50 LP, recuperación en un máximo de 30 días y huecos entre observaciones de un máximo de siete días. `maxGapMs` puede hacerse más estricto, pero no superar el límite existente de `rank-trajectory`.
+Regla predeterminada: caída de al menos 50 LP, recuperación hasta alcanzar o superar el nivel inicial en un máximo de 30 días desde la observación previa a la caída (A), no desde el mínimo (B), y huecos entre snapshots oficiales comparables de un máximo de siete días. Se exige el mismo tier y división. `maxGapMs` puede hacerse más estricto, pero no superar el límite existente de `rank-trajectory`.
 
 Se busca A (nivel anterior), B (mínimo observado posterior a A y anterior a C) y C (recuperación):
 
@@ -93,7 +93,9 @@ Duplicados exactamente iguales con el mismo ID, o puntos anónimos exactamente i
 
 La evidencia devuelve A/B/C completos, cola, temporada, LP, caída, fechas, configuración y **todas** las observaciones del segmento. Los IDs ausentes permanecen ausentes. No usa interpolación, coordenadas gráficas ni MATCH-V5 para LP. No atribuye causalidad o LP por partida a las victorias/derrotas de los contadores.
 
-### Imparable (`unstoppable`)
+### Racha imparable (`unstoppable`)
+
+Nombre visible individual aprobado en 1.1.G: **Racha imparable**. El premio comunitario del Salón de Honor conserva **Imparable** y sus criterios comparativos del período. No cambia el código `unstoppable`, su versión, la evidencia ni la semántica de los estados.
 
 Umbral predeterminado: cinco victorias. Devuelve la racha máxima registrada, IDs de victorias, remakes confirmados intercalados e intervalo de la racha. Una derrota corta la racha. Remakes confirmados se ignoran sin cortarla, incluso cuando comparten instante con una partida competitiva. Resultado desconocido, remake desconocido e instantes simultáneos ambiguos entre partidas no excluidas cortan la secuencia; se pueden encontrar rachas limpias posteriores.
 

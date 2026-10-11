@@ -32,7 +32,7 @@ describe("achievement boundaries, adapters and safety", () => {
     ]);
     expect(ACHIEVEMENTS.map((d) => d.name)).toEqual([
       "Resurrección",
-      "Imparable",
+      "Racha imparable",
       "OTP certificado",
     ]);
     expect(
