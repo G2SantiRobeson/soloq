@@ -1,6 +1,7 @@
-import { comparableRankInterval, validRankObservation } from "../rank-trajectory";
-import { RESURRECTION_RULE } from "./catalog";
-import { evaluation } from "./result";
+/** Frozen 1.1.C search oracle. Do not optimize: full-result equivalence reference. */
+import { comparableRankInterval, validRankObservation } from "../src/lib/rank-trajectory";
+import { RESURRECTION_RULE } from "../src/lib/achievements/catalog";
+import { evaluation } from "../src/lib/achievements/result";
 import {
   chronological,
   compareId,
@@ -8,14 +9,14 @@ import {
   resurrectionRuleSchema,
   scopeBounds,
   scopeQueue,
-} from "./validation";
+} from "../src/lib/achievements/validation";
 import type {
   AchievementEvaluation,
   AchievementReason,
   AchievementSnapshot,
   ResurrectionEvidence,
   ResurrectionRule,
-} from "./types";
+} from "../src/lib/achievements/types";
 
 type Candidate = { a: number; b: number };
 /** Oldest recovery, greatest drop, oldest A/B, then supplied IDs. */
@@ -43,63 +44,7 @@ function boundary(
   return comparableRankInterval(before, after) ? null : "non_comparable_rank";
 }
 
-/** Necessary LP-only condition, never a positive evaluation. Preserve the original
- * search for every potentially recoverable segment (including false positives).
- * Any valid A/B/C requires LP on both sides of B to be >= LP_B + minDropLp.
- * Ignoring time windows/counters here can only retain extra work, never discard evidence.
- */
-function searchableSegments(
-  points: AchievementSnapshot[],
-  times: number[],
-  rule: ResurrectionRule,
-) {
-  const searchable = new Uint8Array(points.length);
-  const valid = new Uint8Array(points.length);
-  const cuts: (AchievementReason | null)[] = Array(points.length).fill(null);
-  const suffixMax = new Float64Array(points.length);
-  function finish(start: number, end: number) {
-    if (end - start < 3) return;
-    let maximum = -Infinity;
-    for (let i = end - 1; i >= start; i--) {
-      maximum = Math.max(maximum, points[i].leaguePoints);
-      suffixMax[i] = maximum;
-    }
-    maximum = points[start].leaguePoints;
-    for (let b = start + 1; b < end - 1; b++) {
-      const required = points[b].leaguePoints + rule.minDropLp;
-      if (maximum >= required && suffixMax[b + 1] >= required) {
-        searchable.fill(1, start, end);
-        return;
-      }
-      maximum = Math.max(maximum, points[b].leaguePoints);
-    }
-  }
-  let start = 0,
-    previous: AchievementSnapshot | null = null;
-  for (let i = 0; i < points.length;) {
-    let end = i + 1;
-    while (end < points.length && times[end] === times[i]) end++;
-    const point = points[i];
-    if (end > i + 1 || !validRankObservation(point)) {
-      finish(start, i);
-      start = end;
-      previous = null;
-    } else {
-      valid[i] = 1;
-      cuts[i] = previous ? boundary(previous, point, rule) : null;
-      if (cuts[i]) {
-        finish(start, i);
-        start = i;
-      }
-      previous = point;
-    }
-    i = end;
-  }
-  finish(start, points.length);
-  return { searchable, valid, cuts };
-}
-
-export function evaluateResurrection(
+export function referenceResurrection(
   input: unknown,
   configuration: unknown = RESURRECTION_RULE,
 ): AchievementEvaluation<ResurrectionEvidence> {
@@ -141,15 +86,19 @@ export function evaluateResurrection(
     })
     .sort((a, b) => chronological(a, b) || compareId(a.id ?? "", b.id ?? ""));
   const times = points.map((point) => Date.parse(point.timestamp));
-  const { searchable, valid, cuts } = searchableSegments(points, times, rule.data);
   let active: Candidate[] = [];
+  let previous: AchievementSnapshot | null = null;
   let interrupted = false;
   let validCount = 0;
   for (let i = 0; i < points.length;) {
     let end = i + 1;
-    while (end < points.length && times[end] === times[i]) end++;
+    while (
+      end < points.length &&
+      Date.parse(points[end].timestamp) === Date.parse(points[i].timestamp)
+    )
+      end++;
     const current = points[i];
-    if (end > i + 1 || !valid[i]) {
+    if (end > i + 1 || !validRankObservation(current)) {
       reasons.push(
         end > i + 1
           ? "ambiguous_timestamp"
@@ -158,22 +107,19 @@ export function evaluateResurrection(
             : "invalid_rank",
       );
       interrupted = true;
+      previous = null;
       active = [];
       i = end;
       continue;
     }
     validCount++;
-    const cut = cuts[i];
+    const cut = previous ? boundary(previous, current, rule.data) : null;
     if (cut) {
       reasons.push(cut);
       interrupted = true;
       active = [];
     }
-    // Still visit every observation to preserve validity, barriers and diagnostic reasons.
-    if (!searchable[i]) {
-      i++;
-      continue;
-    }
+    previous = current;
     active = active.filter(({ a }) => times[i] - times[a] <= rule.data.maxRecoveryMs);
     let selected: Candidate | null = null;
     for (const candidate of active) {

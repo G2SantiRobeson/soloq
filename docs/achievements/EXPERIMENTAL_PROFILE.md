@@ -1,5 +1,7 @@
 # Logros 1.1.C — integración experimental apagada
 
+Este documento registra C. D añade [hardening y mediciones](HARDENING.md) y [checklist de release](RELEASE_CHECKLIST.md). D prueba además MVCC con dos conexiones PostgreSQL 17 locales; Neon/Preview y permisos/latencia siguen pendientes. Política por defecto y contratos restrictivos sin cambios.
+
 No hay concesiones, certificación, títulos equipados, tablas, migraciones ni escrituras de logros. Se integra un módulo de **señales sobre registros disponibles**, no un sistema de premios permanentes. Los contratos del motor y del DTO conservan `certification: "not_established"` y `grantAuthorized: false`; ninguna transición de UI puede autorizar concesiones.
 
 ## Auditoría de A y B

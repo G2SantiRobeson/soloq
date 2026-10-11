@@ -131,7 +131,7 @@ describe("achievement SQL integration on isolated ephemeral PostgreSQL", () => {
     );
     expect((await reader.player(playerId))?.enabled).toBe(true);
   });
-  it.each([2, 3])(
+  it.each([1, 2, 3])(
     "rolls back safely when SQL read %i fails and releases the transaction",
     async (failedRead) => {
       const baseTransaction = database.transaction.bind(database);
@@ -154,8 +154,24 @@ describe("achievement SQL integration on isolated ephemeral PostgreSQL", () => {
       expect(log).toHaveBeenCalledWith("[achievements] read:infrastructure");
       expect(JSON.stringify(log.mock.calls)).not.toContain("private-connection");
       expect((await reader.player(playerId))?.id).toBe(playerId);
+      vi.restoreAllMocks();
+      expect(
+        (await evaluateStoredAchievements(consistentAchievementReader(database), request)).status,
+      ).toBe("available");
     },
   );
+  it("sets effective read-only repeatable-read isolation before its first SELECT", async () => {
+    const statements: string[] = [];
+    const logged = drizzle(pg, { schema, logger: { logQuery: (query) => statements.push(query) } });
+    await evaluateStoredAchievements(consistentAchievementReader(logged), request);
+    const isolation = statements.findIndex((s) => /^set transaction/i.test(s));
+    const firstRead = statements.findIndex((s) => /^select/i.test(s));
+    expect(isolation).toBeGreaterThanOrEqual(0);
+    expect(statements[isolation]).toMatch(/repeatable read read only/i);
+    expect(firstRead).toBeGreaterThan(isolation);
+    expect(statements.filter((s) => /^select/i.test(s))).toHaveLength(3);
+    expect(statements.every((s) => !/^(insert|update|delete|alter|drop)/i.test(s))).toBe(true);
+  });
   it("the production service uses the coherent reader, not separate database selects", async () => {
     vi.stubEnv("DEMO_MODE", "false");
     const transaction = vi.spyOn(database, "transaction");
@@ -393,6 +409,29 @@ describe("achievement SQL integration on isolated ephemeral PostgreSQL", () => {
     expect(await evaluateStoredAchievements(reader, request)).toEqual({ status: "ineligible" });
     expect(spy).not.toHaveBeenCalled();
   });
+  it.each(["deleted", "disabled"])(
+    "coherent %s context short-circuits after one read",
+    async (state) => {
+      if (state === "deleted")
+        await database.delete(schema.players).where(eq(schema.players.id, playerId));
+      else
+        await database
+          .update(schema.players)
+          .set({ enabled: false })
+          .where(eq(schema.players.id, playerId));
+      const statements: string[] = [];
+      const logged = drizzle(pg, {
+        schema,
+        logger: { logQuery: (query) => statements.push(query) },
+      });
+      expect(
+        await evaluateStoredAchievements(consistentAchievementReader(logged), request),
+      ).toEqual({
+        status: state === "deleted" ? "not_found" : "ineligible",
+      });
+      expect(statements.filter((s) => /^select/i.test(s))).toHaveLength(1);
+    },
+  );
   it.each(["5v5", "unknown"])("rejects or excludes %s before SQL", async (view) => {
     const spy = vi.spyOn(reader, "player");
     expect(await evaluateStoredAchievements(reader, { ...request, view })).toEqual({

@@ -1,5 +1,7 @@
 # Motor de logros personales — 1.1.A
 
+La etapa D conserva esta semántica y añade un descarte conservador de segmentos numéricamente imposibles en Resurrección. Ver [equivalencia completa, costes y limitaciones](HARDENING.md); la búsqueda de segmentos potenciales, umbrales y versión de regla no cambian.
+
 ## Alcance y hallazgos
 
 El módulo `src/lib/achievements` detecta condiciones observadas en entradas explícitas. No tiene IO, persistencia, endpoints, React, reloj implícito ni acceso a entornos. No concede logros, títulos ni certificados. No está integrado en rutas públicas. Los umbrales son provisionales.

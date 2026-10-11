@@ -16,7 +16,7 @@ function environment(
   vi.stubEnv("VERCEL_TARGET_ENV", target);
 }
 describe("server-owned fail-closed experimental flag", () => {
-  it.each([undefined, "", "false", "FALSE", "TRUE", "1", "unexpected", " true "])(
+  it.each([undefined, "", "false", "FALSE", "TRUE", "True", "1", "unexpected", " true "])(
     "rejects %s",
     (flag) => {
       environment(flag, "development");
@@ -43,6 +43,11 @@ describe("server-owned fail-closed experimental flag", () => {
     ["production", "1", "preview", "custom"],
     ["development", "0", undefined, undefined],
     ["development", "1", "development", undefined],
+    ["development", "1", "preview", "production"],
+    ["production", "1", "production", "preview"],
+    ["development", undefined, undefined, "production"],
+    ["development", "0", "preview", "preview"],
+    ["production", "1", "unknown", "preview"],
   ])("rejects unsafe or unknown environment %o", (node, vercel, env, target) => {
     environment("true", node, vercel, env, target);
     expect(achievementsExperimentalEnabled()).toBe(false);

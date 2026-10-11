@@ -81,7 +81,9 @@ describe("server evidence → presentation → isolated SSR components", () => {
     result.coverage.historyStatus = "completed";
     const dto = uiPresentation(result);
     const html = renderToStaticMarkup(<AchievementPanel presentation={dto} />);
-    expect(html).toContain("Historial disponible importado; exhaustividad no acreditada");
+    expect(html).toContain(
+      "Historial marcado como completado; muestra parcial, exhaustividad no acreditada",
+    );
     expect(html).toContain("50 IDs procesados, 70 descubiertos y 2 detalles no disponibles");
     expect(html).toContain("No es un porcentaje de temporada");
     expect(html).not.toContain("71,43");

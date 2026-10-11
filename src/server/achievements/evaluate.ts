@@ -64,7 +64,9 @@ export function coverageContext(
   return {
     availability: !sameSeason
       ? "unknown"
-      : player.backfillStatus === "completed" && player.backfillUnavailable === 0
+      : player.backfillStatus === "completed" &&
+          player.backfillUnavailable === 0 &&
+          player.backfillProcessed === player.backfillDiscovered
         ? "available"
         : "partial",
     historyStatus: sameSeason ? player.backfillStatus : "unknown",

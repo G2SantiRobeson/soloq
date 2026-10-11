@@ -12,7 +12,7 @@ const request = {
   asOf: "2026-11-01T00:00:00Z",
 };
 describe("coherent materialization (controlled race simulation, not concurrent PostgreSQL sessions)", () => {
-  it.each(["matches", "snapshots", "context", "backfill"])(
+  it.each(["matches", "snapshots", "context", "backfill", "counters"])(
     "does not mix a %s change into the captured view",
     async (change) => {
       const player = (await demoAchievementReader.player(request.playerId))!;
@@ -31,6 +31,7 @@ describe("coherent materialization (controlled race simulation, not concurrent P
               if (change === "snapshots") records.snapshots.length = 0;
               if (change === "context") player.rankCheckedAt = new Date("2026-11-02");
               if (change === "backfill") player.backfillStatus = "completed";
+              if (change === "counters") player.backfillDiscovered += 100;
               return capturedPlayer;
             },
             records: async () => capturedRecords,
@@ -54,6 +55,92 @@ describe("coherent materialization (controlled race simulation, not concurrent P
       ).toBe(true);
     },
   );
+  it.each([
+    { backfillProcessed: 50, backfillDiscovered: 70, backfillUnavailable: 0 },
+    { backfillProcessed: 71, backfillDiscovered: 70, backfillUnavailable: 0 },
+    { backfillProcessed: 50, backfillDiscovered: 50, backfillUnavailable: 51 },
+  ])("completed does not hide contradictory counters %o", async (counters) => {
+    const player = (await demoAchievementReader.player(request.playerId))!;
+    const result = await evaluateStoredAchievements(
+      {
+        ...demoAchievementReader,
+        player: async () => ({ ...player, ...counters, backfillStatus: "completed" }),
+      },
+      request,
+    );
+    expect(result.status).toBe("available");
+    if (result.status !== "available") throw new Error("fixture");
+    expect(result.coverage.availability).toBe("partial");
+    expect(result.coverage.intervalCoverage).toBe("unproven");
+    expect(result.evaluations.every((e) => !e.grantAuthorized)).toBe(true);
+  });
+  it("even reconciled counters do not certify exhaustive coverage", async () => {
+    const player = (await demoAchievementReader.player(request.playerId))!;
+    const result = await evaluateStoredAchievements(
+      {
+        ...demoAchievementReader,
+        player: async () => ({
+          ...player,
+          backfillStatus: "completed",
+          backfillProcessed: 50,
+          backfillDiscovered: 50,
+          backfillUnavailable: 0,
+        }),
+      },
+      request,
+    );
+    if (result.status !== "available") throw new Error("fixture");
+    expect(result.coverage.availability).toBe("available");
+    expect(result.coverage.intervalCoverage).toBe("unproven");
+    expect(
+      result.evaluations.every((e) => e.certification === "not_established" && !e.grantAuthorized),
+    ).toBe(true);
+  });
+  it("a defect after materialization is diagnosed outside the closed transaction", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    let active = false;
+    const reader: AchievementReader = {
+      ...demoAchievementReader,
+      snapshot: async (read) => {
+        active = true;
+        try {
+          return await read({
+            player: demoAchievementReader.player,
+            records: async () => ({
+              snapshots: [],
+              get matches(): never {
+                expect(active).toBe(false);
+                throw new TypeError("private-payload");
+              },
+            }),
+          });
+        } finally {
+          active = false;
+        }
+      },
+    };
+    try {
+      expect(await evaluateStoredAchievements(reader, request)).toEqual({ status: "unavailable" });
+      expect(log).toHaveBeenCalledWith("[achievements] evaluate:unexpected");
+      expect(JSON.stringify(log.mock.calls)).not.toContain("private-payload");
+    } finally {
+      log.mockRestore();
+    }
+  });
+  it("independent evaluations never retain another request's context or queue", async () => {
+    const solo = await evaluateStoredAchievements(demoAchievementReader, request);
+    const flex = await evaluateStoredAchievements(demoAchievementReader, {
+      ...request,
+      view: "flex",
+    });
+    const soloAgain = await evaluateStoredAchievements(demoAchievementReader, request);
+    expect(soloAgain).toEqual(solo);
+    if (solo.status !== "available" || flex.status !== "available") throw new Error("fixture");
+    expect(solo.evaluations.map((e) => e.evidence?.queue)).toEqual(
+      Array(3).fill("RANKED_SOLO_5x5"),
+    );
+    expect(flex.evaluations.map((e) => e.evidence?.queue)).toEqual(Array(3).fill("RANKED_FLEX_SR"));
+  });
   it("runs evaluators only after the snapshot closes", async () => {
     let active = false;
     const r: AchievementReader = {

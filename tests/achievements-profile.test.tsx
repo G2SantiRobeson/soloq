@@ -1,6 +1,6 @@
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PlayerPage, { generateMetadata } from "@/app/player/[id]/page";
@@ -15,15 +15,20 @@ import { uiFixture, uiStateFixture } from "./achievements-ui-fixtures";
 import type { View } from "@/lib/queues";
 import { Header, Footer, DemoBanner } from "@/components/shell";
 import styles from "@/components/achievements/achievements.module.css";
+import type { PlayerProfile } from "@/lib/types";
+import { emptyTotals } from "@/lib/stats";
 
 const service = vi.hoisted(() => vi.fn());
 const missing = vi.hoisted(() => ({ value: false }));
+const profileChanges = vi.hoisted(() => ({ value: {} as Partial<PlayerProfile> }));
 vi.mock("@/server/achievements/service", () => ({ readPlayerAchievements: service }));
 vi.mock("@/server/queries", async () => {
   const { demoPlayers } = await import("@/server/demo");
   return {
-    getProfile: async (id: string, view: View) =>
-      missing.value ? null : (demoPlayers(view).find((p) => p.id === id) ?? null),
+    getProfile: async (id: string, view: View) => {
+      const player = demoPlayers(view).find((p) => p.id === id);
+      return missing.value || !player ? null : { ...player, ...profileChanges.value };
+    },
   };
 });
 vi.mock("@/server/riot/assets", () => ({
@@ -40,6 +45,7 @@ vi.mock("next/navigation", () => ({
 beforeEach(() => {
   service.mockReset();
   missing.value = false;
+  profileChanges.value = {};
   vi.stubEnv("ACHIEVEMENTS_EXPERIMENTAL", undefined);
   vi.stubEnv("NODE_ENV", "development");
   vi.stubEnv("VERCEL", undefined);
@@ -210,7 +216,7 @@ describe("gated profile integration", () => {
 });
 
 async function resolveRsc(node: ReactNode): Promise<ReactNode> {
-  if (Array.isArray(node)) return Promise.all(node.map(resolveRsc));
+  if (Array.isArray(node)) return Promise.all(Children.toArray(node).map(resolveRsc));
   if (!isValidElement<Record<string, unknown>>(node)) return node;
   if (node.type === PlayerSignatureSection)
     return resolveRsc(
@@ -229,30 +235,115 @@ async function resolveRsc(node: ReactNode): Promise<ReactNode> {
     : node;
 }
 
-it.each(["observed", "insufficient_evidence", "unavailable"] as const)(
+it.each([
+  "observed",
+  "not_observed",
+  "insufficient_evidence",
+  "invalid_input",
+  "unavailable",
+  "mixed",
+  "partial",
+  "completed_unavailable",
+  "unranked",
+  "long_id",
+  "empty",
+  "large_pool",
+  "soloq",
+  "flex",
+  "5v5",
+  "demo",
+] as const)(
   "renders the whole fictional profile with %s signals (optional local visual export)",
   async (state) => {
     vi.stubEnv("ACHIEVEMENTS_EXPERIMENTAL", "true");
-    service.mockResolvedValue(
-      state === "unavailable" ? { status: "unavailable" } : await uiStateFixture(state),
-    );
+    const view = state === "flex" ? "flex" : state === "5v5" ? "5v5" : "soloq";
+    const status = ["not_observed", "insufficient_evidence", "invalid_input"].includes(state)
+      ? (state as "not_observed" | "insufficient_evidence" | "invalid_input")
+      : state === "empty" || state === "unranked"
+        ? "insufficient_evidence"
+        : "observed";
+    const fixture =
+      state === "unavailable"
+        ? { status: "unavailable" as const }
+        : await uiStateFixture(status, view === "flex" ? "flex" : "soloq");
+    if (fixture.status === "available") {
+      if (state === "mixed") {
+        const uncertain = await uiStateFixture("insufficient_evidence");
+        if (uncertain.status !== "available") throw new Error("fixture");
+        fixture.evaluations = [fixture.evaluations[0], ...uncertain.evaluations.slice(1)];
+      }
+      if (state === "completed_unavailable") fixture.coverage.historyStatus = "completed";
+    }
+    if (state === "unranked")
+      profileChanges.value = { rank: null, history: [], lpObservations: [], momentum: null };
+    if (state === "long_id")
+      profileChanges.value = {
+        gameName: "DemoIdentidadCompetitivaDePruebaMuyLarga",
+        tagLine: "DEMO-LARGO",
+      };
+    if (state === "empty")
+      profileChanges.value = {
+        rank: null,
+        stats: emptyTotals(),
+        champions: [],
+        recent: [],
+        history: [],
+        lpObservations: [],
+        performance: [],
+        momentum: null,
+      };
+    if (state === "large_pool") {
+      const champion = demoPlayers("soloq")[0].champions[0];
+      profileChanges.value = {
+        champions: Array.from({ length: 50 }, (_, i) => ({
+          ...champion,
+          championId: i + 1,
+          champion: `Campeón ficticio de nombre largo ${i + 1}`,
+        })),
+      };
+    }
+    service.mockResolvedValue(fixture);
     const markup = renderToStaticMarkup(
       <>
         <Header />
         <DemoBanner />
         <main id="content" className="container main-content">
-          {await resolveRsc(await PlayerPage(pageProps()))}
+          {await resolveRsc(await PlayerPage(pageProps(view)))}
         </main>
         <Footer />
       </>,
     );
-    expect(markup).toContain("Demo Nebula");
+    expect(markup).toContain(state === "long_id" ? "DemoIdentidadCompetitiva" : "Demo Nebula");
     expect(markup).toContain("Rendimiento de temporada");
     expect(markup).toContain("Últimas partidas");
     expect(markup).toContain("Firma competitiva");
-    expect(markup).toContain(
-      state === "unavailable" ? "No se evaluaron logros" : `data-status="${state}"`,
-    );
+    if (view === "5v5") {
+      expect(markup).not.toContain("Señales competitivas");
+      expect(service).not.toHaveBeenCalled();
+    } else {
+      expect(markup).toContain(
+        state === "unavailable" ? "No se evaluaron logros" : `data-status="${status}"`,
+      );
+      expect(markup).toContain("Jugadores, partidas, rangos y LP ficticios");
+      if (fixture.status === "available") expect(markup).toContain("Datos ficticios");
+      expect(markup).not.toMatch(
+        /No conseguido|No cumple|OTP certificado|Logros obtenidos|Mis logros desbloqueados/,
+      );
+      if (fixture.status === "available") {
+        expect(
+          fixture.evaluations.every(
+            (e) => e.grantAuthorized === false && e.certification === "not_established",
+          ),
+        ).toBe(true);
+        if (state === "mixed")
+          expect(fixture.evaluations.map((e) => e.status)).toEqual([
+            "observed",
+            "insufficient_evidence",
+            "insufficient_evidence",
+          ]);
+      }
+      if (state === "completed_unavailable") expect(markup).toContain("muestra parcial");
+    }
     const target = process.env.ACHIEVEMENT_VISUAL_DIR;
     if (!target) return;
     mkdirSync(target, { recursive: true });
@@ -260,7 +351,10 @@ it.each(["observed", "insufficient_evidence", "unavailable"] as const)(
     const classes = new Set([...css.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]));
     for (const key of classes)
       css = css.replace(new RegExp(`\\.${key}(?![\\w-])`, "g"), `.${styles[key]}`);
-    const globals = readFileSync("src/app/globals.css", "utf8").replace(/^@import[^;]*;/gm, "");
+    const globals = readFileSync(
+      process.env.ACHIEVEMENT_VISUAL_CSS ?? "src/app/globals.css",
+      "utf8",
+    ).replace(/^@import[^;]*;/gm, "");
     // Own static fixture, not an application route. Relative assets resolve to the local Demo server.
     const reset = `*{box-sizing:border-box}body{margin:0;--font-body:Arial,sans-serif;--font-display:Arial,sans-serif}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}`;
     const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><base href="http://127.0.0.1:3011/"><title>SoloQ QA ficticio · ${state}</title><style>${reset}\n${globals}\n${css}</style></head><body>${markup}</body></html>`;
@@ -273,7 +367,7 @@ it.each(["observed", "insufficient_evidence", "unavailable"] as const)(
           .replace("</head>", '<script src="http://127.0.0.1:4179/axe.min.js"></script></head>')
           .replace(
             "</body>",
-            `<pre id="qa-audit">Evaluando…</pre><script>function audit(){axe.run(document.querySelector('main'),{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}}).then(r=>{document.getElementById('qa-audit').textContent=JSON.stringify({violations:r.violations.map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.length})),passes:r.passes.length,incomplete:r.incomplete.map(v=>v.id)})})}document.addEventListener('toggle',audit,true);audit()</script></body>`,
+            `<pre id="qa-audit" style="white-space:pre-wrap;overflow-wrap:anywhere">Evaluando…</pre><script>let busy=false,pending=false;async function audit(){if(busy){pending=true;return}busy=true;try{const r=await axe.run(document.querySelector('main'),{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa']}});document.getElementById('qa-audit').textContent=JSON.stringify({violations:r.violations.map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.length})),passes:r.passes.length,incomplete:r.incomplete.map(v=>v.id)})}finally{busy=false;if(pending){pending=false;audit()}}}document.addEventListener('toggle',audit,true);audit()</script></body>`,
           ),
       );
     }

@@ -58,7 +58,12 @@ function display(
     code: evaluation.code,
     // Keep the catalogue identity but do not imply that provisional OTP is certified.
     name: evaluation.code === "otp-specialist" ? "OTP · muestra importada" : definition.name,
-    description: definition.description,
+    description:
+      evaluation.code === "resurrection"
+        ? "Recuperación observada entre verificaciones oficiales."
+        : evaluation.code === "unstoppable"
+          ? "Racha observada en partidas importadas; evaluación independiente del premio comunitario Imparable."
+          : "Especialización en muestra importada.",
     status: evaluation.status,
     statusText: ACHIEVEMENT_STATUS_TEXT[evaluation.status],
     measurement,
@@ -96,6 +101,16 @@ export function achievementPresentation(
     coverageDetails.push(
       `Importación del jugador, todas las colas: ${c.importCounters.processed} IDs procesados, ${c.importCounters.discovered} descubiertos y ${c.importCounters.unavailable} detalles no disponibles. No es un porcentaje de temporada.`,
     );
+  if (
+    c.importCounters &&
+    (c.importCounters.processed > c.importCounters.discovered ||
+      c.importCounters.unavailable > c.importCounters.processed ||
+      (c.historyStatus === "completed" &&
+        c.importCounters.processed !== c.importCounters.discovered))
+  )
+    coverageDetails.push(
+      "Los contadores de importación no concuerdan con el estado informado; la cobertura debe revisarse. No se acredita una muestra completa.",
+    );
   return {
     status: "available",
     demo: result.source === "fictitious",
@@ -114,7 +129,9 @@ export function achievementPresentation(
         : "Registros almacenados por SoloQ",
     coverageText:
       c.historyStatus === "completed"
-        ? "Historial disponible importado; exhaustividad no acreditada"
+        ? c.availability === "partial"
+          ? "Historial marcado como completado; muestra parcial, exhaustividad no acreditada"
+          : "Historial disponible importado; exhaustividad no acreditada"
         : c.historyStatus === "unknown"
           ? "Cobertura histórica desconocida"
           : c.historyStatus === "failed"
