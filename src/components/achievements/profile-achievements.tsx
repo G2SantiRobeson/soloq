@@ -15,7 +15,9 @@ export async function ProfileAchievementsContent(props: Props) {
     props.asOf,
     props.champions,
   );
-  return presentation ? <AchievementPanel presentation={presentation} /> : null;
+  return presentation ? (
+    <AchievementPanel presentation={presentation} champions={props.champions} />
+  ) : null;
 }
 
 /** Native collapsed disclosure: streaming does not push essential information down. */
@@ -23,7 +25,14 @@ export function ProfileAchievements(props: Props) {
   if (!achievementsExperimentalEnabled() || props.view === "5v5") return null;
   return (
     <details className={styles.profile}>
-      <summary>Señales competitivas · Experimental</summary>
+      <summary>
+        <span className={styles.entry}>
+          <strong>
+            Señales competitivas <span className={styles.experimental}>· Experimental</span>
+          </strong>
+          <span className={styles.entryHint}>Observaciones y evidencia</span>
+        </span>
+      </summary>
       <Suspense
         fallback={
           <p role="status" aria-busy="true">

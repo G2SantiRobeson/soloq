@@ -1,17 +1,40 @@
 import { useId } from "react";
 import type { AchievementDisplay, AchievementPresentation } from "@/lib/achievements/presentation";
 import styles from "./achievements.module.css";
+import { championAsset, type ChampionCatalog } from "@/lib/champion-assets";
+import { Avatar } from "@/components/avatar";
 
 export function AchievementBadge({ status }: Pick<AchievementDisplay, "status">) {
   return (
     <span className={styles.badge} data-status={status} aria-hidden="true">
-      {status === "observed" ? "◆" : "◇"}
+      {status === "observed"
+        ? "◆"
+        : status === "insufficient_evidence"
+          ? "?"
+          : status === "invalid_input"
+            ? "!"
+            : "◇"}
     </span>
   );
 }
 
-export function AchievementItem({ item }: { item: AchievementDisplay }) {
+export function AchievementItem({
+  item,
+  champions = {},
+}: {
+  item: AchievementDisplay;
+  champions?: ChampionCatalog;
+}) {
   const id = useId();
+  // Decorative lookup only: retain the complete server measurement unchanged.
+  // An exact catalog name prefix identifies artwork, never achievement evidence.
+  const measurement = item.measurement;
+  const candidates =
+    item.code === "otp-specialist" && measurement
+      ? Object.entries(champions).filter(([, entry]) => measurement.startsWith(`${entry.name} · `))
+      : [];
+  const champion = candidates.length === 1 ? candidates[0] : undefined;
+  const asset = champion ? championAsset(Number(champion[0]), champion[1].name, champions) : null;
   return (
     <li className={styles.item} data-status={item.status} aria-labelledby={id}>
       <div className={styles.identity}>
@@ -22,9 +45,14 @@ export function AchievementItem({ item }: { item: AchievementDisplay }) {
         </div>
       </div>
       <p className={styles.state}>{item.statusText}</p>
-      {item.measurement ? <p className={styles.measurement}>{item.measurement}</p> : null}
+      {item.measurement ? (
+        <div className={styles.measurement}>
+          {asset ? <Avatar decorative champion {...asset} size={44} /> : null}
+          <p>{item.measurement}</p>
+        </div>
+      ) : null}
       <details className={styles.details}>
-        <summary>Criterio y evidencia de {item.name}</summary>
+        <summary aria-label={`Criterio y evidencia de ${item.name}`}>Criterio y evidencia</summary>
         <p>
           Regla {item.ruleVersion} · {item.conditions}
         </p>
@@ -52,19 +80,23 @@ export type FutureAchievement = { key: string; name: string; description: string
 export function AchievementPanel({
   presentation,
   future = [],
+  champions = {},
 }: {
   presentation: AchievementPresentation;
   future?: readonly FutureAchievement[];
+  champions?: ChampionCatalog;
 }) {
   const id = useId();
   return (
     <section className={styles.panel} aria-labelledby={id}>
       <header className={styles.heading}>
         <h2 id={id}>Señales competitivas · Experimental</h2>
-        <span>Sin concesiones permanentes</span>
+        <span className={styles.notice}>Sin concesiones permanentes</span>
       </header>
       {presentation.status !== "available" ? (
-        <p>{presentation.message}</p>
+        <p className={styles.unavailable} role="status">
+          {presentation.message}
+        </p>
       ) : (
         <>
           <p className={styles.context}>
@@ -76,6 +108,9 @@ export function AchievementPanel({
             </p>
           ) : null}
           <p className={styles.context}>{presentation.coverageText}</p>
+          <p className={styles.context}>
+            Observaciones provisionales · Cobertura exhaustiva no acreditada
+          </p>
           <details className={styles.details}>
             <summary>Origen y cobertura de los datos</summary>
             <p>
@@ -90,7 +125,7 @@ export function AchievementPanel({
           </details>
           <ul className={styles.list}>
             {presentation.items.map((item) => (
-              <AchievementItem key={item.code} item={item} />
+              <AchievementItem key={item.code} item={item} champions={champions} />
             ))}
           </ul>
         </>

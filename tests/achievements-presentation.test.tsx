@@ -8,6 +8,23 @@ import { achievementPresentation } from "@/server/achievements/presentation";
 import { uiFixture, uiPresentation, uiStateFixture, withStatus } from "./achievements-ui-fixtures";
 
 describe("server evidence → presentation → isolated SSR components", () => {
+  it("highlights OTP artwork without altering measurements or inferring evidence", async () => {
+    const dto = uiPresentation(await uiFixture());
+    const champions = { "157": { name: "Yasuo", image: "/champ-icons/157.png" } };
+    const html = renderToStaticMarkup(
+      <AchievementPanel presentation={dto} champions={champions} />,
+    );
+    expect(html).toContain('src="/champ-icons/157.png"');
+    expect(html).toContain('alt=""');
+    expect(html).toContain("35 / 50 partidas · 70 %");
+    const without = renderToStaticMarkup(<AchievementPanel presentation={dto} />);
+    expect(without).not.toContain("<img");
+    expect(without).toContain("Yasuo");
+    const ambiguous = renderToStaticMarkup(
+      <AchievementPanel presentation={dto} champions={{ ...champions, "99": champions["157"] }} />,
+    );
+    expect(ambiguous).not.toContain("<img");
+  });
   it.each(Object.keys(ACHIEVEMENT_STATUS_TEXT) as (keyof typeof ACHIEVEMENT_STATUS_TEXT)[])(
     "real fixture evaluations produce %s",
     async (status) => {

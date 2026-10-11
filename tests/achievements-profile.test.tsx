@@ -131,6 +131,12 @@ describe("gated profile integration", () => {
       const wrapper = ProfileAchievements({ ...props, view });
       expect(wrapper?.type).toBe("details");
       expect(wrapper?.props.open).toBeUndefined();
+      const summary = elements(wrapper).find((element) => element.type === "summary");
+      const label = renderToStaticMarkup(summary);
+      expect(label).toContain("<strong>");
+      expect(label).toContain("Observaciones y evidencia");
+      expect(label).toContain("Experimental");
+      expect(label).not.toContain("aria-expanded"); // Native details owns expanded state.
     },
   );
   it("on 5v5 does no work or queue mixing", async () => {

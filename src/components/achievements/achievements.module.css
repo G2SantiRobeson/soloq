@@ -12,14 +12,61 @@
 .profile {
   min-width: 0;
   overflow-wrap: anywhere;
-  border-top: 1px solid var(--line, #253457);
+  border: 1px solid var(--line, #253457);
+  border-left: 3px solid var(--accent, #2fe2ff);
+  border-radius: 6px;
+  background: var(--surface, #0e1528);
   color: var(--muted, #a3b0cf);
   font-size: 14px;
 }
 .profile > summary {
   cursor: pointer;
   min-height: 44px;
-  padding-block: 12px;
+  padding: 14px 16px;
+  color: var(--text, #eef2ff);
+}
+.profile > summary,
+.details > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  list-style: none;
+}
+.profile > summary::-webkit-details-marker,
+.details > summary::-webkit-details-marker {
+  display: none;
+}
+.profile > summary::after,
+.details > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+.profile[open] > summary::after,
+.details[open] > summary::after {
+  transform: rotate(225deg);
+}
+.profile > summary:hover,
+.details > summary:hover {
+  background: #19263a;
+}
+.entry {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.entryHint {
+  color: var(--muted, #a3b0cf);
+  font-size: 13px;
+}
+.experimental {
+  color: var(--muted, #a3b0cf);
+  font-weight: 400;
 }
 .profile > summary:focus-visible {
   outline: 2px solid var(--accent, #2fe2ff);
@@ -44,7 +91,19 @@
   align-items: baseline;
   flex-wrap: wrap;
   gap: 8px 16px;
-  margin-bottom: 8px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line, #253457);
+}
+.notice {
+  border: 1px solid var(--line, #253457);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.unavailable {
+  padding: 12px;
+  border-left: 2px solid var(--muted, #a3b0cf);
 }
 .heading span,
 .description,
@@ -68,14 +127,16 @@
 }
 .item,
 .future {
-  border-top: 1px solid var(--line, #253457);
-  padding-block: 16px;
+  border: 1px solid var(--line, #253457);
+  border-radius: 4px;
+  padding: 14px;
+  margin-top: 12px;
   min-width: 0;
 }
 .identity {
   display: flex;
   gap: 12px;
-  align-items: baseline;
+  align-items: flex-start;
 }
 .identity > div {
   min-width: 0;
@@ -89,15 +150,30 @@
 .item[data-status="observed"] .state {
   color: var(--win, #2df0b0);
 }
+.item[data-status="insufficient_evidence"] .state,
 .item[data-status="invalid_input"] .state {
   color: var(--warning, #ffab3d);
 }
 .panel .state {
   margin-block: 8px;
   font-weight: 600;
+  display: inline-block;
+  padding: 4px 8px;
+  background: #080f1c;
+  border-left: 2px solid currentColor;
+  font-size: 14px;
 }
 .measurement {
   font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text, #eef2ff);
+  font-weight: 600;
+  margin-block: 8px;
+}
+.measurement > p {
+  min-width: 0;
 }
 .details {
   margin-top: 8px;
@@ -106,7 +182,22 @@
 .details summary {
   cursor: pointer;
   min-height: 44px;
-  padding-block: 10px;
+  padding: 10px 12px;
+  color: var(--text, #eef2ff);
+  font-weight: 600;
+  background: #111c2e;
+  border: 1px solid var(--line, #253457);
+  border-radius: 4px;
+}
+.details[open] {
+  background: #080f1c;
+  border-radius: 4px;
+}
+.details[open] > :not(summary) {
+  margin-inline: 12px;
+}
+.details[open] > :last-child {
+  padding-bottom: 12px;
 }
 .details summary:focus-visible {
   outline: 2px solid var(--accent, #2fe2ff);
