@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { writeBackfillVisualDocument } from "./backfill-visual-document";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createAutoBackfill, type AutoBackfillState } from "@/lib/auto-backfill";
 import { AdminBackfillProgress } from "@/components/admin-backfill-progress";
@@ -469,7 +468,7 @@ describe("honest historical progress", () => {
     expect(html).not.toContain("private-puuid");
     expect(html).not.toMatch(/<progress[^>]*value=/);
   });
-  it("renders isolated fictional administrative states (optional visual export)", () => {
+  it("renders isolated fictional administrative states (optional visual export)", async () => {
     const target = process.env.BACKFILL_VISUAL_DIR;
     const partial = result(owner, { processed: 183, discovered: 320, lastId: "LA2_123456789" });
     const automatic: AutoBackfillState = {
@@ -521,14 +520,6 @@ describe("honest historical progress", () => {
     expect(markup).toContain('aria-label="IDs descubiertos procesados"');
     expect(markup).toContain("Detener continuación automática");
     if (!target) return;
-    mkdirSync(target, { recursive: true });
-    const css = readFileSync("src/app/globals.css", "utf8");
-    const axe = existsSync("node_modules/axe-core/axe.min.js");
-    if (axe)
-      writeFileSync(join(target, "axe.min.js"), readFileSync("node_modules/axe-core/axe.min.js"));
-    writeFileSync(
-      join(target, "backfill.html"),
-      `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SoloQ · QA ficticio de backfill</title><style>${css}</style>${axe ? '<script src="axe.min.js"></script>' : ""}</head><body>${markup}${axe ? '<pre id="qa-audit" style="white-space:pre-wrap;overflow-wrap:anywhere">Evaluando…</pre><script>axe.run(document.querySelector("main"),{runOnly:{type:"tag",values:["wcag2a","wcag2aa","wcag21aa"]}}).then(r=>{document.getElementById("qa-audit").textContent=JSON.stringify({violations:r.violations.map(v=>({id:v.id,impact:v.impact,nodes:v.nodes.length})),passes:r.passes.length,incomplete:r.incomplete.map(v=>v.id)})})</script>' : ""}</body></html>`,
-    );
+    await writeBackfillVisualDocument(target, markup);
   });
 });

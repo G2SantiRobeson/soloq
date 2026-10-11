@@ -150,3 +150,42 @@ Archivos de esta implementación:
 - `tests/database.test.ts`
 - `tests/riot-client.test.ts`
 - `docs/INDIVIDUAL_BACKFILL.md`
+
+## Revisión de tipografía del QA antes de publicar
+
+La captura aislada original omitía las variables `--font-body` y `--font-display`
+del layout raíz y pegaba `globals.css` sin procesar Tailwind. El navegador confirmó
+`Times New Roman` en cuerpo, títulos y botones. Una variable CSS ausente invalida
+la declaración completa, incluso si incluye una fuente de respaldo después.
+
+El producto no necesita corrección: `layout.tsx` carga Barlow (400/600) y Barlow
+Condensed (600) con `next/font/local`. El build Demo completo, aislado de secretos
+y servicios remotos, mostró las familias `barlow` y `condensed` en estilos
+computados; `document.fonts` estaba cargado y las tres fuentes respondieron HTTP
+200 con tipo `font/ttf`. No hubo errores de carga en esa aplicación.
+
+El exportador de QA ahora compila el CSS con el PostCSS/Tailwind instalado, copia
+los tres archivos originales y reproduce las variables raíz mediante `@font-face`.
+Comprueba que el mapeo siga coincidiendo con el layout. Una regresión comprueba
+el documento exportado y la igualdad de bytes de las fuentes. No cambia código
+de aplicación, estilos del producto, sincronización ni comportamiento del backfill.
+
+En navegador, el documento corregido utiliza Barlow y Barlow Condensed con fuentes
+cargadas. Se revisaron fixtures de progreso determinado, descubrimiento
+indeterminado, espera por Riot y finalización, a 320 y 390 px: sin desbordamiento
+horizontal; contadores y avisos legibles. El control de parada recibe foco por
+teclado con contorno cian de 2 px. El funcionamiento de parada y reanudación se
+verifica mediante los tests del controlador con mocks; la captura SSR no tiene
+hidratación y no demuestra una sesión administrativa real.
+
+Axe informó cero infracciones, con contraste incompleto. Los colores computados
+revisados sobre el fondo del panel tienen contraste 16,24:1 (texto principal),
+8,36:1 (texto secundario) y 11,62:1 (foco). Esto no certifica toda la accesibilidad.
+Las capturas comparativas se conservan fuera del repositorio. Preview y las
+operaciones reales permanecen pendientes de autorización posterior.
+
+Validación de esta corrección con Node 24.19.0: lint y typecheck correctos;
+837 pruebas aprobadas y 10 omitidas de PostgreSQL local opcional. La regresión
+tipográfica nueva pasó junto con los tests de parada, correlación y progreso.
+Build y smoke HTTP pasaron con el validador Demo aislado existente (`--serve`),
+sin secretos ni conexiones PostgreSQL/Riot. No se ejecutó un deployment.
