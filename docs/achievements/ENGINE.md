@@ -72,7 +72,7 @@ Se proyectan campos conocidos mediante esquemas Zod. No se devuelven PUUID, nomb
 
 ## Catálogo y reglas provisionales
 
-Las definiciones incluyen código, versión `1.1.A-observed-v1`, nombre, categoría, vistas, tipo de evidencia, disponibilidad `observation_only` y limitaciones. No hay rarezas. La configuración concreta utilizada forma parte de la evidencia; cambiar parámetros exige revisar el significado del resultado. Una regla futura estable o incompatible necesitará una nueva versión explícitamente soportada.
+Las definiciones incluyen código, versión `1.1.A-observed-v1` para Resurrección/Imparable y `1.1-otp-observed-v2` para OTP, nombre, categoría, vistas, tipo de evidencia, disponibilidad `observation_only` y limitaciones. No hay rarezas. La configuración concreta utilizada forma parte de la evidencia; cambiar parámetros exige revisar el significado del resultado. Una regla futura estable o incompatible necesitará una nueva versión explícitamente soportada.
 
 ### Resurrección (`resurrection`)
 
@@ -101,11 +101,15 @@ Empates de longitud: racha más antigua. No cuenta remakes antes de la primera v
 
 ### OTP certificado (`otp-specialist`)
 
-El nombre del catálogo es provisional; el resultado significa **especialización observada en la muestra importada**. Umbrales predeterminados: `N >= 50`, `10*C >= 7*N`.
+El nombre del catálogo es provisional; el resultado significa **especialización observada en la muestra importada**. Umbrales predeterminados: `N >= 50`, `20*C >= 13*N` (65 % inclusive).
 
 Se cuentan partidas con remake confirmado falso, resultado conocido y Champion ID válido. Los remakes confirmados se excluyen. Una partida relevante con remake, campeón o resultado desconocido produce insuficiencia, porque descartarla podría sesgar el denominador. Un Champion ID mal formado invalida la entrada. Los empates entre campeones se resuelven por menor ID numérico.
 
 La proporción es racional (`numerator=C`, `denominator=N`), nunca un porcentaje redondeado para decidir. La comparación utiliza multiplicación BigInt internamente; no devuelve BigInt ni valores no serializables. No hay división por cero ni puntos de maestría inferidos.
+
+OTP se versiona independientemente como `1.1-otp-observed-v2`, también en resultados sin evidencia o inválidos. Sustituye el criterio anterior del 70 % por el 65 %. Resurrección e Imparable conservan versión y criterios. Catálogo, configuración, DTO y mensajes muestran el mismo criterio. No se guardan ni conceden logros, y el feature flag no cambia.
+
+Casos de regresión: 32/50 y 64/100 no observados; 33/50 y 65/100 observados; 13/20 insuficiente por muestra menor de 50. Sin redondear: 6499/10000 no cumple. Con los recuentos suministrados, Rengar 59/71 y Samira 173/262 cumplen; Akali 89/149 no cumple. Estas son pruebas sintéticas de proporciones, no una consulta ni certificación del estado actual de esos jugadores.
 
 La evidencia devuelve Champion ID, C, N, proporción exacta, cola, temporada, fechas de las partidas válidas utilizadas, configuración y límites de cobertura. El ámbito temporal completo examinado permanece en `scope`. Añadir partidas antiguas de otros campeones puede invalidar una concentración antes observada. No se persiste automáticamente ninguna conclusión.
 

@@ -99,7 +99,7 @@ describe("demo OTP evidence belongs to the displayed player", () => {
     expect((await otpItem("demo-1", "soloq")).status).toBe("not_observed");
     expect((await otpItem("demo-8", "soloq")).status).toBe("insufficient_evidence");
     const balanced = demoPlayers("soloq").find((p) => p.id === "demo-1")!;
-    expect(balanced.champions[0].games / balanced.stats.games).toBeLessThan(0.7);
+    expect(balanced.champions[0].games / balanced.stats.games).toBeLessThan(0.65);
   });
 
   it("two demo players never share an observation", async () => {

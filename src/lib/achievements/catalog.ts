@@ -8,6 +8,7 @@ import type {
 } from "./types";
 
 export const ACHIEVEMENT_RULE_VERSION: AchievementRuleVersion = "1.1.A-observed-v1";
+export const OTP_RULE_VERSION: AchievementRuleVersion = "1.1-otp-observed-v2";
 export const RESURRECTION_RULE: Readonly<ResurrectionRule> = Object.freeze({
   version: ACHIEVEMENT_RULE_VERSION,
   minDropLp: 50,
@@ -19,9 +20,9 @@ export const UNSTOPPABLE_RULE: Readonly<UnstoppableRule> = Object.freeze({
   minWins: 5,
 });
 export const OTP_RULE: Readonly<OtpRule> = Object.freeze({
-  version: ACHIEVEMENT_RULE_VERSION,
+  version: OTP_RULE_VERSION,
   minGames: 50,
-  minShare: Object.freeze({ numerator: 7, denominator: 10 }),
+  minShare: Object.freeze({ numerator: 13, denominator: 20 }),
 });
 const definitions: AchievementDefinition[] = [
   {
@@ -51,7 +52,7 @@ const definitions: AchievementDefinition[] = [
   },
   {
     code: "otp-specialist",
-    ruleVersion: ACHIEVEMENT_RULE_VERSION,
+    ruleVersion: OTP_RULE_VERSION,
     name: "OTP certificado",
     category: "champion",
     views: ["soloq", "flex"],
@@ -59,7 +60,7 @@ const definitions: AchievementDefinition[] = [
     availability: "observation_only",
     description: "Especialización observada en el historial importado, sin certificación anual.",
     provisionalConditions:
-      "≥50 partidas y concentración ≥7/10. El nombre del catálogo no constituye una certificación de SoloQ ni de Riot.",
+      "≥50 partidas válidas y concentración ≥65 % (13/20). El nombre del catálogo no constituye una certificación de SoloQ ni de Riot.",
   },
 ];
 export const ACHIEVEMENTS: readonly AchievementDefinition[] = Object.freeze(

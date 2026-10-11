@@ -60,7 +60,8 @@ function display(
         { label: "Proporción exacta", value: `${e.share.numerator} / ${e.share.denominator}` },
         { label: "Límite", value: "Especialización provisional; no certificación anual." },
       );
-      conditions = `≥${e.rule.minGames} partidas; proporción ≥${e.rule.minShare.numerator}/${e.rule.minShare.denominator}.`;
+      const threshold = (100 * e.rule.minShare.numerator) / e.rule.minShare.denominator;
+      conditions = `≥${e.rule.minGames} partidas válidas; proporción ≥${threshold} % (${e.rule.minShare.numerator}/${e.rule.minShare.denominator}).`;
     }
   }
   return {

@@ -4,7 +4,7 @@ Base: `bf919ad720e626c16d7953b724e7281d45bb69fe`, después de A/B/C. Remoto insp
 
 ## Auditoría y correcciones
 
-Se conservan `certification: "not_established"`, `grantAuthorized: false`, los cuatro estados, umbrales 50 LP / 30 días / 7 días, cinco victorias y OTP 50 partidas / 7:10, y versión `1.1.A-observed-v1`. Sin grants, endpoints, títulos equipados, persistencia ni cambios de esquema. No se cambia LP, Firma, premios, B1–B5, leaderboard, sincronización, temporadas ni fixtures públicos.
+Se conservan `certification: "not_established"`, `grantAuthorized: false`, los cuatro estados, umbrales 50 LP / 30 días / 7 días, cinco victorias y OTP 50 partidas / 65 % (13/20); OTP usa `1.1-otp-observed-v2` y Resurrección/Imparable conservan `1.1.A-observed-v1`. Sin grants, endpoints, títulos equipados, persistencia ni cambios de esquema. No se cambia LP, Firma, premios, B1–B5, leaderboard, sincronización, temporadas ni fixtures públicos.
 
 Zod acredita estructura, no procedencia: el motor admite fixtures, pero la integración solo evalúa registros del lector interno. UUID validado, jugador habilitado, plataforma almacenada y temporada regional delimitan el ámbito. El navegador no aporta evidencia ni activa el flag. El DTO proyecta mediciones acotadas y mensajes fijos, sin PUUID, credenciales, UUID interno del jugador, excepción, SQL ni stack. Los IDs de MATCH-V5 de evidencia son públicos, limitados a 20 en la UI; no son PUUID.
 

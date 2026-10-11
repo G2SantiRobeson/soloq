@@ -2,7 +2,7 @@ import { z } from "zod";
 import { RANKED_QUEUES, STANDARD_QUEUES, queueIds, rankedQueue } from "../queues";
 import { PLATFORMS } from "../routing";
 import { MAX_RANK_INTERVAL_MS } from "../rank-trajectory";
-import { ACHIEVEMENT_RULE_VERSION } from "./catalog";
+import { ACHIEVEMENT_RULE_VERSION, OTP_RULE_VERSION } from "./catalog";
 import type {
   AchievementReason,
   AchievementScope,
@@ -63,7 +63,7 @@ export const resurrectionRuleSchema = z.object({
 });
 export const unstoppableRuleSchema = z.object({ version, minWins: positive });
 export const otpRuleSchema = z.object({
-  version,
+  version: z.literal(OTP_RULE_VERSION),
   minGames: positive,
   minShare: z
     .object({ numerator: positive, denominator: positive })

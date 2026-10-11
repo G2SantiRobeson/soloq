@@ -4,6 +4,8 @@ import {
   evaluateUnstoppable,
   OTP_RULE,
   UNSTOPPABLE_RULE,
+  RESURRECTION_RULE,
+  ACHIEVEMENTS,
 } from "@/lib/achievements";
 import {
   coverage,
@@ -120,8 +122,14 @@ describe("OTP: exact champion proportion of the imported sample", () => {
   it.each([
     [49, 49, "insufficient_evidence"],
     [50, 35, "observed"],
-    [50, 34, "not_observed"],
-    [100, 69, "not_observed"],
+    [50, 32, "not_observed"],
+    [50, 33, "observed"],
+    [100, 64, "not_observed"],
+    [100, 65, "observed"],
+    [20, 13, "insufficient_evidence"],
+    [71, 59, "observed"],
+    [262, 173, "observed"],
+    [149, 89, "not_observed"],
     [100, 70, "observed"],
     [100, 71, "observed"],
   ])("%i games, %i on the main champion => %s", (n, c, status) => {
@@ -179,11 +187,49 @@ describe("OTP: exact champion proportion of the imported sample", () => {
     );
   });
   it("backfilled older games can contradict the prior observed specialization", () => {
-    const rows = otpMatches();
+    const rows = otpMatches(100, 65);
     expect(evaluateOtpSpecialist(matchContext(rows)).status).toBe("observed");
     expect(
       evaluateOtpSpecialist(matchContext([...rows, match(-1, { championId: 99 })])).status,
     ).toBe("not_observed");
+  });
+  it("keeps the threshold, catalog and every OTP outcome on the new version only", () => {
+    expect(ACHIEVEMENTS.find((d) => d.code === "otp-specialist")).toMatchObject({
+      ruleVersion: OTP_RULE.version,
+      provisionalConditions: expect.stringContaining("65 % (13/20)"),
+    });
+    expect(RESURRECTION_RULE).toMatchObject({
+      version: "1.1.A-observed-v1",
+      minDropLp: 50,
+      maxRecoveryMs: 30 * 86400_000,
+    });
+    expect(UNSTOPPABLE_RULE).toEqual({ version: "1.1.A-observed-v1", minWins: 5 });
+    expect(OTP_RULE).toMatchObject({
+      version: "1.1-otp-observed-v2",
+      minGames: 50,
+      minShare: { numerator: 13, denominator: 20 },
+    });
+    for (const input of [
+      matchContext(otpMatches(100, 65)),
+      matchContext(otpMatches(100, 64)),
+      matchContext([]),
+      null,
+    ]) {
+      const result = evaluateOtpSpecialist(input);
+      expect(result.ruleVersion).toBe(OTP_RULE.version);
+      if (result.evidence) expect(result.evidence.ruleVersion).toBe(OTP_RULE.version);
+    }
+    expect(
+      evaluateOtpSpecialist(matchContext(otpMatches()), {
+        ...OTP_RULE,
+        version: "1.1.A-observed-v1",
+      }).status,
+    ).toBe("invalid_input");
+  });
+  it("does not round 64.99 percent to the inclusive 65 percent threshold", () => {
+    expect(evaluateOtpSpecialist(matchContext(otpMatches(10000, 6499))).status).toBe(
+      "not_observed",
+    );
   });
 });
 

@@ -3,7 +3,7 @@ import type { Platform } from "../routing";
 import type { HistoryStatus } from "../season";
 
 export type AchievementCode = "resurrection" | "unstoppable" | "otp-specialist";
-export type AchievementRuleVersion = "1.1.A-observed-v1";
+export type AchievementRuleVersion = "1.1.A-observed-v1" | "1.1-otp-observed-v2";
 export type RankedAchievementView = Exclude<View, "5v5">;
 /** Half-open season and observation bounds. asOf is supplied by the caller, never a clock read. */
 export type AchievementScope = {

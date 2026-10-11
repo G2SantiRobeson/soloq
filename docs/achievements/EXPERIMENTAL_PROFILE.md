@@ -6,7 +6,7 @@ No hay concesiones, certificación, títulos equipados, tablas, migraciones ni e
 
 ## Auditoría de A y B
 
-Se preservan reglas `1.1.A-observed-v1`, mínimos, scores, evidencias y elección determinista. Resurrección sigue exigiendo snapshots oficiales comparables con sus barreras; Imparable evalúa secuencias registradas y distingue remakes confirmados de desconocidos; OTP compara proporciones racionales de la muestra importada. Permanecen el oráculo exhaustivo y las propiedades adversariales del motor. No se modifican LP, Firma, premios, estadísticas, fixtures públicos, leaderboard ni sincronización.
+Resurrección e Imparable preservan `1.1.A-observed-v1`, mínimos, scores, evidencias y elección determinista. OTP usa `1.1-otp-observed-v2`, mínimo 50 partidas válidas y concentración ≥65 % (13/20). Resurrección sigue exigiendo snapshots oficiales comparables con sus barreras; Imparable evalúa secuencias registradas y distingue remakes confirmados de desconocidos; OTP compara proporciones racionales de la muestra importada. Permanecen el oráculo exhaustivo y las propiedades adversariales del motor. No se modifican LP, Firma, premios, estadísticas, fixtures públicos, leaderboard ni sincronización.
 
 Defectos/fronteras confirmados y corregidos:
 

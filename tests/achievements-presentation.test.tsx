@@ -47,6 +47,8 @@ describe("server evidence → presentation → isolated SSR components", () => {
       "70 %",
       "Yasuo",
       "1.1.A-observed-v1",
+      "1.1-otp-observed-v2",
+      "≥50 partidas válidas; proporción ≥65 % (13/20).",
       "2026-09-01T12:00:00Z",
       "No se conoce la trayectoria intermedia",
       "No acredita ausencia de partidas",

@@ -72,10 +72,11 @@ describe("1.1.B adversarial engine review", () => {
       expect(result.reasons).toContain("unproven_interval");
     }
   });
-  it("70% exact arithmetic remains reversible after historical discovery", () => {
-    expect(evaluateOtpSpecialist(matchContext(otpMatches())).status).toBe("observed");
+  it("65% exact arithmetic remains reversible after historical discovery", () => {
+    expect(evaluateOtpSpecialist(matchContext(otpMatches(100, 65))).status).toBe("observed");
     expect(
-      evaluateOtpSpecialist(matchContext([...otpMatches(), match(100, { championId: 99 })])).status,
+      evaluateOtpSpecialist(matchContext([...otpMatches(100, 65), match(100, { championId: 99 })]))
+        .status,
     ).toBe("not_observed");
   });
 });

@@ -1,4 +1,4 @@
-import { ACHIEVEMENT_RULE_VERSION } from "./catalog";
+import { ACHIEVEMENT_RULE_VERSION, OTP_RULE_VERSION } from "./catalog";
 import type {
   AchievementCode,
   AchievementEvaluation,
@@ -20,7 +20,7 @@ export function evaluation<E extends AchievementEvidence>(
 ): AchievementEvaluation<E> {
   const base = {
     code,
-    ruleVersion: ACHIEVEMENT_RULE_VERSION,
+    ruleVersion: code === "otp-specialist" ? OTP_RULE_VERSION : ACHIEVEMENT_RULE_VERSION,
     scope,
     reasons: normalizeReasons(["provisional_rule", ...reasons]),
     certification: "not_established" as const,
