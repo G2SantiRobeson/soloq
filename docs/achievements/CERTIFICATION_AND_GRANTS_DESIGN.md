@@ -1,10 +1,10 @@
 # 1.2.A — Certificación, concesión y ciclo de vida de insignias
 
-Fecha de inspección: 11 de octubre de 2026. Base local y remota verificada: `2190a34d22d4690a56670abb8e78eb3fd64a9072`, rama `staging`, sin commits divergentes.
+Fecha de inspección inicial de 1.2.A: 11 de octubre de 2026. Base local y remota verificada entonces: `2190a34d22d4690a56670abb8e78eb3fd64a9072`, rama `staging`, sin commits divergentes. La aprobación posterior y la auditoría final de B.1 se registran en §18–19.
 
-**Estado: diseño para aprobación, no habilitación.** Este documento no cambia contratos, reglas, flags, esquema, sincronización ni interfaces. No autoriza conceder insignias. En el sistema activo siguen siendo obligatorios `certification: "not_established"` y `grantAuthorized: false`.
+**Estado: políticas de producto D01–D18 aprobadas por el propietario; implementación adicional y habilitación no autorizadas.** Registro de aprobación: **11 de octubre de 2026**, por instrucción expresa del propietario en la auditoría final de 1.2.B.1. La aprobación no autoriza implementación adicional, push, deployment, migraciones ni grants. Este documento no cambia contratos, reglas, flags, esquema, sincronización ni interfaces. En el sistema activo siguen siendo obligatorios `certification: "not_established"` y `grantAuthorized: false`.
 
-Leyenda: **HECHO VERIFICADO** procede de la inspección del código o de Git; **PROPUESTA** es una recomendación no implementada; **RIESGO** identifica una limitación; **DECISIÓN PENDIENTE** requiere aprobación del propietario. Las políticas propuestas no son reglas vigentes.
+Leyenda: **HECHO VERIFICADO** procede de la inspección del código o de Git; **POLÍTICA APROBADA** es una decisión de producto registrada en §18, no permiso de escritura; **PROPUESTA** es un detalle de implementación no autorizado; **RIESGO** identifica una limitación; **PENDIENTE OPERATIVO** requiere definición y validación antes de habilitarlo. Las políticas aprobadas no activan políticas de concesión en el runtime. Las alternativas técnicas del diseño inicial permanecen como referencia, subordinadas a D01–D18.
 
 ## 1. Resumen ejecutivo
 
@@ -14,9 +14,9 @@ Recomendación para la escala actual: concesiones con estado actual y un histori
 
 Recomendación de producto: reconocimientos históricos de acontecimientos verificables para Resurrección y Racha imparable; señal OTP dinámica durante la temporada y posible reconocimiento histórico al cierre, condicionado a reconciliación documentada. Ninguna insignia será irrevocable ante evidencia contradictoria o defectos demostrados.
 
-**DECISIÓN PENDIENTE.** Adoptar este modelo híbrido restringido y su terminología. Es una elección por la distinta naturaleza de los criterios, no una garantía de exhaustividad ni una decisión ya aprobada.
+**POLÍTICA APROBADA (D01–D05).** Modelo híbrido restringido: verificado por SoloQ sobre registros disponibles; Resurrección acredita recuperación observada, Racha requiere reconciliación del intervalo y OTP permanece dinámico hasta un cierre reconciliado. La aprobación no garantiza exhaustividad ni autoriza concesiones.
 
-**Bloqueadores de concesión actual:** reglas provisionales; ausencia de autorización de grants; ausencia de prueba persistente por intervalo/cola para rachas y temporada para OTP; ausencia de control de cambios de fuentes para una decisión concurrente; política de eliminación y conservación todavía sin definir. Completar un backfill no resuelve estos bloqueadores.
+**Bloqueadores de concesión actual:** ausencia de autorización de grants y de control operacional versionado; ausencia de prueba persistente por intervalo/cola para rachas y temporada para OTP; ausencia de revisión monotónica transaccional de fuentes; calendario/plazos de cierre sin definir; implementación de eliminación D13 y acceso privado D18 pendiente. No hay retención mínima aprobada: requeriría finalidad y plazo justificados y definidos. Completar un backfill no resuelve estos bloqueadores.
 
 ## 2. Arquitectura actual verificada
 
@@ -88,7 +88,7 @@ Recomendación de producto: reconocimientos históricos de acontecimientos verif
 
 **PROPUESTA.** Usar «certificación» solo en contratos internos con `policyVersion` y alcance explícito; evitar «certificado» aislado en UI, especialmente OTP. Si el propietario elige esa palabra pública, debe acompañarse de «por SoloQ, sobre registros disponibles; no certificado por Riot».
 
-Ejemplos: I1 puede estar observado y no ser certificable por falta de reconciliación del intervalo; R1 verificable puede seguir sin grant por política no aprobada; una concesión puede pasar a revisión por derrota tardía; un grant antiguo conserva su regla original; un OTP histórico no prueba especialización vigente. Ninguno de estos casos modifica los cuatro estados del motor actual.
+Ejemplos: I1 puede estar observado y no ser certificable por falta de reconciliación del intervalo; R1 verificable puede seguir sin grant por falta de autorización operacional, aunque el principio de producto esté aprobado; una concesión puede pasar a revisión por derrota tardía; un grant antiguo conserva su regla original; un OTP histórico no prueba especialización vigente. Ninguno de estos casos modifica los cuatro estados del motor actual.
 
 ## 5. Políticas específicas por logro
 
@@ -186,13 +186,13 @@ Un marcador de cambios pendiente debe persistir si la revisión automática se i
 
 ## 9. Política de revocación y conservación
 
-**PROPUESTA.** Permanencia significa conservar una decisión histórica válida; no inmunidad ante errores. Revocar solo cuando una revisión determina incumplimiento de la política original o evidencia/identidad incorrecta. Documentar motivo público breve y detalle interno sanitizado. El jugador debe poder entender la causa y la fecha.
+**POLÍTICA APROBADA (D09–D10).** Permanencia significa conservar una decisión histórica válida; no inmunidad ante errores. Suspender ante duda material y revocar solo con fundamento, conservando versiones originales y sin regrant automático. El detalle de causa y fecha debe respetar D18: no destacar motivos sensibles públicamente y no exponerlos sin la futura autenticación apropiada.
 
 Suspensión es reversible y bloquea equipamiento; revocación conserva el registro original y añade evento. Revisión positiva conserva el grant ID y puede añadir evidencia corregida. Si el defecto era de producto y se decide cambiar un criterio, no invalidar retroactivamente sin una política de transición aprobada.
 
-**DECISIÓN PENDIENTE.** Visibilidad pública de revocados: recomendar motivo mínimo en el detalle histórico del propio perfil, sin destacarlos en leaderboard; no convertirlos en sanciones o acusaciones. No inventar plazos de apelación ni conservación. No existe todavía autenticación de jugadores para un historial privado: definirla antes de prometer controles personales.
+**POLÍTICA APROBADA (D18).** Motivos sensibles no destacados públicamente; consulta privada sujeta a autenticación. No convertir revisiones en sanciones o acusaciones. Los campos públicos sanitizados, permisos y autenticación del acceso privado quedan pendientes operativos; no publicar detalles sensibles mientras no estén definidos. No inventar plazos de apelación ni conservación.
 
-El borrado real de un jugador es distinto de una revocación. Hace falta decidir conservación, anonimización o eliminación de evidencia asociada y quién lo autoriza. No añadir FKs con cascada a grants ni retención indefinida por defecto; tampoco hacer RESTRICT sin adaptar la eliminación, porque rompería el control actual. Resolver esto antes de migraciones o concesiones. El archivo histórico no justifica conservar datos personales contra una política futura de eliminación.
+**POLÍTICA APROBADA (D13).** El borrado real de un jugador es distinto de una revocación: debe eliminar concesiones y evidencia personal asociada, incluidos los datos personales de eventos y equipamiento. Cualquier retención mínima solo procede si su finalidad, alcance y plazo están justificados y definidos; actualmente no existe esa excepción aprobada. La continuidad de identidad tras recreación y la mecánica transaccional de borrado quedan pendientes. No implementar cascadas ni RESTRICT ahora; diseñarlos sin romper la eliminación administrativa antes de cualquier migración o concesión. Un archivo histórico o un evento append-only no exime de D13.
 
 ## 10. Identidad y prevención de duplicados
 
@@ -245,7 +245,7 @@ Comparación de alternativas:
 
 **PROPUESTA.** Elegir 2. No guardar payloads Riot completos, PUUID duplicados o todas las evaluaciones negativas. Para OTP, el manifiesto puede ser voluminoso: conservar un conjunto canónico completo de IDs/clasificaciones/campos necesarios para reproducir C/N y recibo, no solo conteo/hash; acotar tamaño de decisión y posponer si excede presupuesto, nunca truncar prueba para conceder. Al crecer, evaluar tabla de evidencia separada por medición, no añadir almacenamiento externo ahora.
 
-No inventar evidencia retroactiva a partir de un estado `completed`. Migración futura aditiva crea estructuras vacías; los jugadores existentes no reciben grants ni timestamps por defecto. FK a fuentes puede ser referencia opcional de navegación, nunca única evidencia ni cascada destructiva sobre decisiones. Política de eliminación pendiente bloquea fijar DDL definitivo.
+No inventar evidencia retroactiva a partir de un estado `completed`. Migración futura aditiva crea estructuras vacías; los jugadores existentes no reciben grants ni timestamps por defecto. FK a fuentes puede ser referencia opcional de navegación, nunca única evidencia ni borrado automático de decisiones por una corrección de fuente. El borrado del jugador debe cumplir D13, también sobre copias de evidencia y eventos personales; definir y probar esa mecánica antes de fijar el DDL. No hay migración autorizada por este documento.
 
 ## 12. Seguridad y concurrencia
 
@@ -261,7 +261,7 @@ Separar capacidades de lectura, concesión, revocación y equipamiento. En una f
 
 **HECHO VERIFICADO.** La transacción de lectura actual acaba antes de evaluar y no evita escrituras posteriores. [PostgreSQL distingue la fotografía estable de Repeatable Read de las garantías de Serializable, que pueden exigir reintentar toda la transacción](https://www.postgresql.org/docs/current/transaction-iso.html). Ninguno de esos niveles prueba autenticidad o cobertura. Una segunda lectura de hash sin coordinación tampoco elimina la carrera entre esa lectura y el grant.
 
-**PROPUESTA.** Antes de concesión automática, introducir una revisión monotónica de datos por jugador, incrementada **en la misma transacción** por todo escritor de partidas/participaciones, snapshots, clasificación de remake, correcciones, identidad/eligibilidad o pruebas de cobertura que afecten al ámbito. Es un cambio futuro de persistencia y escritores que necesita autorización; hoy no existe. No usar `updatedAt`, contadores, timestamps ni revisión de `run_progress` como sustituto.
+**POLÍTICA APROBADA (D12), implementación pendiente.** Antes de cualquier grant, introducir una revisión monotónica transaccional de fuentes. La propuesta técnica es una revisión por jugador, incrementada **en la misma transacción** por todo escritor de partidas/participaciones, snapshots, clasificación de remake, correcciones, identidad/eligibilidad o pruebas de cobertura que afecten al ámbito. Es un cambio futuro de persistencia y escritores que necesita autorización; hoy no existe. No usar `updatedAt`, contadores, timestamps ni revisión de `run_progress` como sustituto.
 
 Secuencia futura:
 
@@ -275,7 +275,7 @@ El arbitraje corto usa la coordinación transaccional normal de la fila, no otro
 
 El marcador pendiente se deriva de revisión actual > revisión comprobada, por lo que sobrevive interrupciones sin una cola externa. Un reconciliador interno autorizado trabaja en lotes y confirma revisión incluso si el cambio era irrelevante. No afirmar vigencia recién verificada cuando está pendiente. No necesita guardar una evaluación cada vez que llega una partida.
 
-Alternativas: calcular todo dentro de una transacción de escritura prolonga locks/CPU y no se recomienda; serializable por sí solo no coordina la certeza de estar al día con escritores ajenos al protocolo; comprobar que el lease está libre sin adquirir coordinación tiene una carrera. Para una primera concesión manual limitada podría aprobarse una ventana operacional sin escritores, pero no presentarla como garantía automática ni activar esa pausa ahora.
+Alternativas: calcular todo dentro de una transacción de escritura prolonga locks/CPU y no se recomienda; serializable por sí solo no coordina la certeza de estar al día con escritores ajenos al protocolo; comprobar que el lease está libre sin adquirir coordinación tiene una carrera. La alternativa inicial de una ventana manual sin escritores no satisface por sí sola D12 y no está autorizada como excepción para conceder.
 
 ### Reintentos y atomicidad
 
@@ -287,7 +287,7 @@ Manifestaciones de política inmutables y lista de versiones autorizadas evitan 
 
 **PROPUESTA.** Conservar Señales competitivas experimental como observación. Cuando exista una concesión aprobada, distinguirla en un bloque compacto de reconocimientos dentro del perfil Bento, sin otra portada o diez tarjetas. No reemplazar Firma ni premios comunitarios.
 
-Cada reconocimiento: nombre, cola, temporada, estado textual, fecha/intervalo observado y fecha concedida. Detalle accesible: regla/política de la decisión, fuentes resumidas, evidencia consultable, limitaciones, última revisión y motivo de suspensión/invalidez. Mantener el texto de insuficiencia y el estado neutro de infraestructura; no mostrar «Nunca conseguido» por falta de datos.
+Cada reconocimiento: nombre, cola, temporada, estado textual, fecha/intervalo observado y fecha concedida. Detalle accesible: regla/política de la decisión, fuentes resumidas, evidencia consultable, limitaciones y última revisión. Motivos sensibles de suspensión/invalidez solo mediante acceso privado autenticado conforme a D18; el contrato público sanitizado queda pendiente. Mantener el texto de insuficiencia y el estado neutro de infraestructura; no mostrar «Nunca conseguido» por falta de datos.
 
 Jerarquía: identidad/rango primero; una insignia destacada discreta después; archivo histórico plegado; señales experimentales con etiqueta propia. Color acompañado de texto/icono, controles táctiles ≥44 px, foco visible y desplegables semánticos. Un badge no añade rareza, nivel o título automáticamente.
 
@@ -312,11 +312,11 @@ No crear un sello «certificado por Riot», assets raster, página nueva ni meda
 
 ## 15. Plan incremental de implementación futura
 
-Todos los incrementos necesitan una autorización posterior. Ninguno se ejecuta en 1.2.A.
+B.1 ya se implementó bajo autorización independiente. Los incrementos restantes necesitan autorización posterior; ninguno se ejecuta por este documento ni por la aprobación de las políticas.
 
 | Incremento | Objetivo / dependencias | Riesgos y pruebas | Aceptación / rollback / aprobación |
 | --- | --- | --- | --- |
-| **1.2.B.1 Contratos de verificación** | Políticas y definiciones aprobadas; tipos separados de observación/grant; recibos conceptuales convertidos en contratos internos versionados. | Pruebas de frontera, falsos certificados, Demo, 5v5, reglas antiguas y discrepancias de muestra. | Motor actual conserva resultados/literales. Proceso de decisión solo dry-run, sin persistencia. Revertir código. Aprobar D01–D05 primero. |
+| **1.2.B.1 Contratos de verificación** | Políticas de producto aprobadas; contratos internos y dry-run implementados en `2383637`, sin activar concesiones. | Pruebas de frontera, falsos certificados, Demo, reglas antiguas y discrepancias de muestra. | Motor conserva resultados/literales. Proceso de decisión solo dry-run, sin persistencia; no equivale a materializador confiable o autorización de grants. |
 | **1.2.B.2 Evidencia y revisión de fuentes** | Definir manifestaciones por cola/intervalo, ámbito estacional, identidad y revisión monotónica; instrumentar escritores solo con aprobación. | Datos tardíos, 404, remakes, scripts antiguos, límites temporales, dos sesiones PG, interrupciones. | Ninguna revisión perdida ni falso porcentaje; impacto en ingesta acotado y sin cambios de presupuestos. Migración aditiva revisada/local, respaldo y aplicación staging autorizada aparte. Rollback del lector manteniendo columnas; retirar instrumentación solo con grants apagados. |
 | **1.2.B.3 Persistencia mínima** | Concesiones + eventos, evidencia y unicidad; política de borrado resuelta. | Duplicados, NULL, cascadas, auditoría, compatibilidad con filas existentes. | Estructuras vacías; cero grants retroactivos. Probar PostgreSQL local/efímero y migración antes de staging. Migración antes del código; rollback de código con datos conservados, no DROP. Aprobar modelo/DDL y aplicación por separado. |
 | **1.2.B.4 Decisión autorizada en servidor** | Verificador + datos + autorización de versiones/entorno, sin grant desde perfil. Empezar por R1 limitado. | Carreras, revisión obsoleta, timeout después de commit, políticas retiradas, Demo y aislamiento de entornos. | Concesión/evento atómicos, idempotentes, evidencia reproducible. Default off; apagar escritor revierte activación sin borrar decisiones. Autorización expresa de grants de prueba solo staging. |
@@ -341,7 +341,7 @@ Archivos previsiblemente implicados después de aprobación: nuevos contratos/se
 
 ## 16. Riesgos y limitaciones
 
-**Críticos:** confundir importación completada con cobertura; conceder desde datos Demo o cliente; decidir con revisión obsoleta; perder evidencia por cascada; equipar sin propiedad acreditada; copiar grants de staging a Production; usar políticas provisionales como aprobadas.
+**Críticos:** confundir importación completada con cobertura; conceder desde datos Demo o cliente; decidir con revisión obsoleta; perder evidencia por borrados de fuentes o conservarla contra D13; equipar sin propiedad acreditada; copiar grants de staging a Production; confundir aprobación de producto con autorización operacional de concesión; exponer motivos sensibles sin cumplir D18.
 
 **Importantes:** ventanas Riot recuperables y cambios tardíos; desconocidos en remakes; costo de manifestaciones OTP; sesgo por densidad de snapshots; vigencia durante reevaluación; versiones antiguas ejecutadas por despliegues coexistentes; identidad tras borrado/recreación; fin de temporada y retención sin definir.
 
@@ -351,35 +351,49 @@ Los tests MVCC locales descritos en `HARDENING.md` no prueban red, pooling ni ro
 
 ## 17. Recomendación de arquitectura y alcance de esta entrega
 
-**PROPUESTA.** Mantener las observaciones actuales intactas; añadir posteriormente un verificador separado con política explícita, evidencia inmutable y concesiones + eventos. Autorizar primero R1 con afirmación limitada a snapshots; posponer grants de racha hasta tener recibo de intervalo y OTP histórico hasta cierre/reconciliación de temporada. Usar una revisión transaccional de fuentes antes de cualquier automatización, con permisos/entornos cerrados y reintentos idempotentes. Equipamiento es presentación posterior, no otra forma de conceder.
+**PROPUESTA de implementación futura.** Mantener las observaciones actuales intactas; evolucionar el dry-run de B.1 con procedencia confiable y, solo tras autorización separada, evidencia reproducible y concesiones + eventos. Posponer grants de racha hasta tener recibo de intervalo y OTP histórico hasta cierre/reconciliación de temporada. Usar una revisión transaccional de fuentes antes de cualquier grant, con permisos/entornos cerrados y reintentos idempotentes. Equipamiento es presentación posterior, no otra forma de conceder.
 
-**HECHO VERIFICADO de esta entrega.** Solo se añade este documento. Se leyeron el código y las guías del motor, hardening, revisión de reglas, integración y perfil experimental. Se contrastaron conceptos de aislamiento/constraints con documentación primaria de PostgreSQL; [la guía oficial Riot](https://developer.riotgames.com/docs/lol) es referencia de integración, no una garantía asumida de cobertura exhaustiva. No se ejecutó SQL, Riot, sincronización, migración ni cambio de flag. `main`/Production y archivos protegidos no forman parte del cambio.
+**Registro histórico de la entrega inicial 1.2.A.** Solo se añadió este documento. Se leyeron el código y las guías del motor, hardening, revisión de reglas, integración y perfil experimental. Se contrastaron conceptos de aislamiento/constraints con documentación primaria de PostgreSQL; [la guía oficial Riot](https://developer.riotgames.com/docs/lol) es referencia de integración, no una garantía asumida de cobertura exhaustiva. No se ejecutó SQL, Riot, sincronización, migración ni cambio de flag. `main`/Production y archivos protegidos no formaron parte del cambio.
 
-Validación documental: revisión del archivo nuevo y del alcance Git; `git diff --no-index --check -- NUL docs/achievements/CERTIFICATION_AND_GRANTS_DESIGN.md` sin errores de whitespace. `git diff --check` global señala únicamente whitespace preexistente en `CLAUDE.md:2`, que se preserva fuera del commit. Se comprueba también el diff staged antes de registrar el documento. No se ejecutan lint/typecheck/test/build por documentación sola; no se afirma una nueva ejecución de esas suites.
+Validación histórica de 1.2.A: revisión del archivo nuevo y del alcance Git; `git diff --no-index --check -- NUL docs/achievements/CERTIFICATION_AND_GRANTS_DESIGN.md` sin errores de whitespace. `git diff --check` global señaló únicamente whitespace preexistente en `CLAUDE.md:2`, preservado fuera del commit. No se ejecutaron lint/typecheck/test/build en aquella entrega documental. Las validaciones de la auditoría final son independientes de ese registro.
 
-## 18. Decisiones pendientes de aprobación
+## 18. Registro de decisiones aprobadas por el propietario
 
-Todas las filas están **pendientes**. El documento y su commit no aprueban ninguna.
+**Fecha: 11 de octubre de 2026.** Fuente: instrucción expresa «1.2.B.1 | Auditoría final y registro de decisiones». D01–D18 están aprobadas como políticas de producto, con los pendientes operativos indicados. Esta constancia no es autorización operacional de una versión de política, ni autoriza implementación adicional, push, deployment, migraciones, equipamiento o grants. Los commits anteriores `3a780ec` (diseño) y `2383637` (contratos y dry-run) permanecen intactos.
 
-| ID | Pregunta | Alternativas | Recomendación | Impacto | Estado |
-| --- | --- | --- | --- | --- | --- |
-| D01 | ¿Terminología pública de certificación? | Certificado sin matiz / verificado por SoloQ con alcance / solo observado | Verificado por SoloQ sobre registros disponibles; no Riot. | Contratos y confianza del usuario. | pendiente |
-| D02 | ¿Modelo de permanencia? | A permanente / B dinámico / C híbrido restringido | C para hechos históricos y señales actuales separadas. | Lifecycle y presentación. | pendiente |
-| D03 | ¿Qué concede R1? | Trayectoria real / recuperación observada / no conceder | Recuperación observada bajo R1 aprobado, sin trayectoria inferida. | Alcance acreditable y prueba. | pendiente |
-| D04 | ¿Prueba mínima de racha? | Cinco importadas / intervalo recuperable reconciliado / exhaustividad absoluta | Recibo del intervalo recuperable y reservas; sin recibo, solo observación. | Instrumentación, presupuesto y datos. | pendiente |
-| D05 | ¿OTP permanente durante temporada? | Corte parcial permanente / señal dinámica / solo temporada cerrada | Señal dinámica; histórico solo al cierre reconciliado. | Denominador, justicia y archivo. | pendiente |
-| D06 | ¿Cerrar cuándo y con qué reservas? | Espera fija / reconciliación y plazo aprobado / sin grants históricos OTP | Reconciliación y calendario/plazo expresamente aprobados; no inventarlos. | Operación y alcance recuperable. | pendiente |
-| D07 | ¿Repetir episodios en una temporada? | Uno por código/cola / episodios ilimitados / límite aprobado | Uno inicialmente; estudiar solapamientos antes de ampliar. | Claves únicas, saturación y evaluador. | pendiente |
-| D08 | ¿OTP de varios campeones por misma cola/temporada? | Grants por cada corte / uno con contexto campeón | Uno, revisable por corrección; otra temporada independiente. | Prevención de duplicados. | pendiente |
-| D09 | ¿Correcciones y revocación? | Irrevocable / borrado / suspensión y eventos de invalidación | Suspensión por duda material, revocación por prueba y motivo conservado. | Recuperación y confianza. | pendiente |
-| D10 | ¿Cambios retroactivos de criterio? | Regrant automático / mantener versión / migración aprobada | Mantener versión; transición/reparación explícitas. | Compatibilidad histórica. | pendiente |
-| D11 | ¿Persistencia mínima? | Solo grants / grants + eventos / event sourcing | Grants + eventos y evidencia de decisión mínima reproducible. | DDL, auditoría y costo. | pendiente |
-| D12 | ¿Coordinación de fuentes? | Timestamps / ventana manual / revisión monotónica transaccional | Revisión antes de automatizar, con todos los escritores incluidos. | Cambio futuro de esquema/escritores, pruebas de carreras. | pendiente |
-| D13 | ¿Eliminación/recreación y conservación? | Cascada / anonimización / conservación autorizada y limitada | Definir política y continuidad de identidad antes de grants/FKs. Sin plazo inventado. | Datos personales, borrado y auditoría. | pendiente |
-| D14 | ¿Equipamiento y titularidad? | Admin / cuenta acreditada / ninguno | Posponer a identidad aprobada; un slot de perfil inicialmente. | Autenticación y prevención de IDOR. | pendiente |
-| D15 | ¿Históricos equipables y leaderboard? | Solo vigente / histórico con año / múltiples/leaderboard | Históricos con año/cola en perfil; leaderboard/títulos separados. | Saturación y promesa pública. | pendiente |
-| D16 | ¿Concesión automática o revisión inicial? | Automática inmediata / dry-run + revisión / no grants | Dry-run, revisión y autorización separada, primero R1. | Seguridad y exposición del rollout. | pendiente |
-| D17 | ¿Quién retira una política autorizada? | Solo nuevo deploy / registro comprobable por escritor | Control de autorización versionado verificable antes del commit de decisión. | Despliegues coexistentes y reparaciones. | pendiente |
-| D18 | ¿Exposición de suspendidas/revocadas? | Borrar / publicar todas / detalle mínimo contextual | Motivo mínimo, sin destacado; privacidad por definir. | UX y exposición pública. | pendiente |
+| ID | Política aprobada | Pendiente operativo / alcance |
+| --- | --- | --- |
+| D01 | Verificado por SoloQ sobre registros disponibles. | No certificación Riot ni prueba de historial absoluto. |
+| D02 | Modelo híbrido restringido. | Implementación y presentación de concesiones no autorizadas. |
+| D03 | Resurrección acredita recuperación observada. | Mantener R1; procedencia y revisión de fuentes confiables antes de grants. No acreditar trayectoria completa. |
+| D04 | Racha requiere reconciliación del intervalo. | Productor del recibo, límites, procedencia y reservas recuperables por definir y validar. Cinco importadas no bastan. |
+| D05 | OTP dinámico; histórico al cierre reconciliado. | Denominador estacional reconciliado y cierre confirmado antes de reconocimiento histórico. |
+| D06 | Principio de cierre reconciliado aprobado. | Fechas regionales, plazos y reservas operacionales pendientes; no inventarlos ni marcarlos resueltos. |
+| D07 | Una insignia por código/jugador/cola/temporada. | Claves y pruebas de unicidad pendientes de diseño de persistencia autorizado. |
+| D08 | Un OTP histórico por cola/temporada, con contexto campeón. | Correcciones revisan el mismo reconocimiento; cortes parciales no crean otros grants. |
+| D09 | Suspensión por duda material; revocación fundada. | Motivos, eventos y revisión auditables bajo D13/D18; infraestructura caída no equivale a revocación. |
+| D10 | Versiones originales y sin regrant automático. | Reparaciones o transición retroactiva requieren plan y autorización separados. |
+| D11 | Concesiones + eventos + evidencia reproducible. | Esquema, formato, atomicidad y presupuesto pendientes. Inmutabilidad de revisión sujeta al borrado personal D13. |
+| D12 | Revisión monotónica transaccional antes de grants. | Protocolo de todos los escritores y concurrencia por demostrar. `sourceRevision` del dry-run no lo implementa. |
+| D13 | Eliminar concesiones y evidencia personal al eliminar al jugador; retención mínima solo si está justificada y definida. | Mecánica de borrado y continuidad tras recreación pendientes. Ninguna finalidad/plazo de retención aprobado; no retención indefinida implícita. |
+| D14 | Un slot; titularidad acreditada antes de equipar. | Método de acreditación, autenticación y controles de propiedad pendientes. |
+| D15 | Históricos con año/cola; leaderboard y títulos después. | Diseño visual y funcionalidades posteriores requieren autorización independiente. |
+| D16 | Dry-run y revisión supervisada antes de autorizar concesiones. | La simulación B.1 no concede ni persiste verificaciones. La revisión no sustituye D12/D17. |
+| D17 | Autorización versionada verificable. | Control operacional y comprobación por el escritor antes de confirmar una decisión, todavía inexistentes. |
+| D18 | Motivos sensibles no destacados públicamente; acceso privado sujeto a autenticación. | Contratos públicos sanitizados, campos privados y permisos pendientes; no publicar motivos sensibles sin esa frontera. |
 
-Siguiente paso recomendado: aprobar o corregir D01–D05 y D07–D13; autorizar después **1.2.B.1, contratos y verificación sin escritura**, como tarea independiente. No comenzar persistencia, equipamiento, nuevos gráficos ni concesiones sin sus autorizaciones.
+Siguiente paso: esperar autorización específica de 1.2.B.2. El principio de política está aprobado, pero procedencia, recibos operacionales, revisión transaccional, calendario/plazos, eliminación y acceso privado siguen pendientes. No comenzar persistencia, equipamiento, nuevos gráficos ni concesiones por registrar estas decisiones.
+
+## 19. Auditoría final focalizada de B.1
+
+Inspección del 11 de octubre de 2026 sobre HEAD `2383637e9e0faeebea80960a43cd1bb8724ee10a`, rama `staging`, dos commits por delante y cero por detrás de la referencia `origin/staging` `2190a34d22d4690a56670abb8e78eb3fd64a9072`. Working tree inicial: únicamente `CLAUDE.md` modificado y `.claude/` sin seguimiento, ajenos y protegidos; `.env.local` también preservado.
+
+**Veredicto:** no se encontró un defecto de código que requiera corrección dentro del alcance de B.1. Se revisaron contratos, schemas, verificador, regresiones y `VERIFICATION_CONTRACTS.md`. El nuevo módulo importa `server-only`; solo lo llaman sus tests, no perfiles, servicios, endpoints ni jobs. No lee variables/flags, ejecuta SQL, llama Riot o escribe. No existe endpoint de concesión ni capacidad de grants en Demo o Production.
+
+La simulación siempre conserva `certification: "not_established"`, `grantAuthorized: false`, `writes: "none"` y `provenanceAuthentication: "not_performed"`. Recalcula con los evaluadores y versiones vigentes: R1/I1 `1.1.A-observed-v1`; OTP `1.1-otp-observed-v2`, 50 partidas y 13/20. Falta de evidencia, fechas/ámbito incoherentes, procedencia ausente, recibos insuficientes, política desconocida y temporada abierta impiden un resultado positivo. Indisponibilidad no se transforma en condición no observada. `completed` y cinco victorias no sustituyen reconciliación.
+
+**Riesgos pendientes, no garantías implementadas:** alguien que controle todo el contexto interno puede fabricar objetos estructuralmente coherentes; `server-only` y schemas no autentican Riot. `requirements_satisfied` es un resultado condicionado de simulación, nunca certificado o autorización. El entorno, procedencia, recibos y autorización aún necesitan productores confiables; una revisión opaca conocida no demuestra revalidación transaccional. No conectar este módulo a peticiones de cliente ni a un escritor antes de resolver esas fronteras con autorización nueva.
+
+Validación de esta auditoría con **Node 24.19.0**: `npm run lint` y `npm run typecheck` correctos; `npm run test -- --maxWorkers=2 --hookTimeout=60000 --reporter=verbose` finalizó con **906 aprobadas y 10 omitidas**, incluidos los 53 casos de B.1. Las diez omisiones son opt-in de PostgreSQL local con conexiones independientes, no prueba de concurrencia aprobada. Persisten avisos existentes de React sobre claves de listas en exports de perfil. No se modificaron código ni tests, pues no se identificó un defecto que lo justificara.
+
+`scripts/validate-production-demo.mjs` ejecutó `npm run build` y smoke HTTP con Node 24 en una copia local aislada sin `.env*` ni los cinco secretos, con guard de red activo: **PRODUCTION_DEMO_PASS**. No se usó Neon ni Riot. Las escrituras de fixtures PGlite fueron exclusivamente efímeras; la simulación no escribió ni persistió verificaciones o concesiones. El único archivo de esta auditoría es este documento; los protegidos permanecen intactos. La aprobación registrada no autoriza B.2, publicación ni habilitación.
