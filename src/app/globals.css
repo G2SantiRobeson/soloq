@@ -71,6 +71,14 @@
   /* Main-table cell inset: kept at its original 12px so column widths do not change */
   --space-cell: calc(var(--space-1) + var(--space-half));
   --radius: 2px;
+  /* Interactive controls: a visible boundary (--border, >=3:1) before hover, never --line */
+  --control-bg: var(--surface-2);
+  --control-bg-hover: var(--surface-raised);
+  --control-border: var(--border);
+  --control-border-hover: var(--accent);
+  --control-icon: var(--accent);
+  --target-min: 44px;
+  --target-floor: 24px;
 }
 * {
   box-sizing: border-box;
@@ -559,6 +567,7 @@ select {
   color: var(--text);
   outline: none;
   font-size: var(--fs-2);
+  cursor: pointer;
 }
 select option {
   background: var(--surface);
@@ -663,6 +672,16 @@ select option {
 }
 .sort-faint {
   color: var(--muted);
+}
+/* Sortable headers: the arrow lights up on hover so the button reads as a control. */
+.sort:hover {
+  color: var(--text);
+}
+.sort:hover .sort-faint {
+  color: var(--accent);
+}
+.active-sort:hover {
+  color: var(--accent-hover);
 }
 .identity-cell {
   width: 28%;
@@ -927,6 +946,176 @@ select option {
   background: var(--surface-raised);
   border-color: var(--accent);
 }
+/* Disabled reads as "off" without relying on opacity alone: no fill, faint edge, muted text. */
+.button.secondary:disabled,
+.button.secondary:disabled:hover {
+  opacity: 1;
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.button > svg {
+  flex-shrink: 0;
+}
+.button.secondary > svg {
+  color: var(--control-icon);
+}
+.button.secondary:disabled > svg {
+  color: inherit;
+}
+/* Disclosure: a native <details> whose summary is a bounded control with a chevron
+   (down = closed, up = open), so it reads as expandable before any hover. */
+.disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--target-min);
+  cursor: pointer;
+  list-style: none;
+  color: var(--text);
+}
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.disclosure-chevron,
+.disclosure-inline > summary::after {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-bottom: 3px;
+  border-right: 2px solid var(--control-icon);
+  border-bottom: 2px solid var(--control-icon);
+  transform: rotate(45deg);
+  transition: transform 120ms;
+}
+.disclosure-inline > summary::after {
+  content: "";
+}
+.disclosure[open] > summary .disclosure-chevron,
+.disclosure-inline[open] > summary::after {
+  margin: 3px 0 0;
+  transform: rotate(225deg);
+}
+/* Compact variant: secondary-button weight for "see more" inside a block. */
+.disclosure-inline > summary {
+  width: fit-content;
+  max-width: 100%;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  background: var(--control-bg);
+  font-size: var(--fs-2);
+  font-weight: 600;
+}
+.disclosure-inline > summary:hover,
+.disclosure-inline[open] > summary {
+  border-color: var(--control-border-hover);
+}
+.disclosure-inline > summary:hover {
+  background: var(--control-bg-hover);
+}
+/* Section variant: icon, title, purpose and an explicit Mostrar/Ocultar affordance. */
+.disclosure-block {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.disclosure-block > summary {
+  padding: var(--space-cell) var(--space-2);
+}
+.disclosure-block > summary:hover {
+  background: var(--surface-2);
+}
+.disclosure-block[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+.disclosure-block > :not(summary) {
+  margin-inline: var(--space-2);
+}
+.disclosure-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--accent);
+}
+.disclosure-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.disclosure-text > strong {
+  font:
+    600 var(--fs-4) / 1.2 var(--font-display),
+    sans-serif;
+}
+.disclosure-hint {
+  color: var(--muted);
+  font-size: var(--fs-2);
+}
+.disclosure-badge {
+  display: inline-block;
+  margin-left: var(--space-1);
+  padding: 0 var(--space-half);
+  border: 1px solid var(--warm);
+  border-radius: var(--radius);
+  color: var(--warm);
+  font:
+    600 var(--fs-1) / 1.5 var(--font-body),
+    sans-serif;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.disclosure-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  min-height: 32px;
+  margin-left: auto;
+  padding: 0 var(--space-cell);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius);
+  background: var(--control-bg);
+  color: var(--text);
+  font-size: var(--fs-2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.disclosure-block > summary:hover .disclosure-toggle,
+.disclosure-block[open] > summary .disclosure-toggle {
+  border-color: var(--control-border-hover);
+}
+.disclosure-block > summary:hover .disclosure-toggle {
+  background: var(--control-bg-hover);
+}
+.disclosure-hide,
+.disclosure[open] > summary .disclosure-show {
+  display: none;
+}
+.disclosure[open] > summary .disclosure-hide {
+  display: inline;
+}
+@media (max-width: 480px) {
+  .disclosure-block > summary {
+    gap: var(--space-1);
+    padding-inline: var(--space-cell);
+  }
+  .disclosure-block > :not(summary) {
+    margin-inline: var(--space-cell);
+  }
+  .disclosure-icon {
+    display: none;
+  }
+}
 .full-width {
   width: 100%;
 }
@@ -1007,8 +1196,13 @@ select option {
   min-height: 40px;
   margin-bottom: var(--space-3);
 }
+.back-link > svg {
+  color: var(--control-icon);
+}
 .back-link:hover {
   color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 .profile-header {
   display: flex;
@@ -1060,64 +1254,195 @@ select option {
   color: var(--text);
   font-weight: 400;
 }
-.profile-grid {
+/* Player overview bento (same language as /metrics): the rank block leads and spans two
+   rows; record, form and combat follow; pool and extended readings take the full width.
+   DOM order is also the mobile reading order. Page-scoped type keeps secondary text >=12px. */
+.profile-bento {
+  --fs-1: 12px;
+  --fs-2: 14px;
   display: grid;
-  grid-template-columns: 290px minmax(0, 1fr);
-  border-block: 1px solid var(--line);
-  background: var(--surface);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-2);
 }
-.profile-grid > .panel {
-  border: 0;
-  background: transparent;
+.profile-bento > * {
+  grid-column: 1 / -1;
 }
-.profile-grid .rank-panel {
-  border-right: 1px solid var(--line);
+.profile-bento > .bento-block {
+  gap: var(--space-1);
+  padding: var(--space-2);
 }
-.rank-panel > .rank-display {
-  margin-top: var(--space-3);
+.profile-bento > .profile-block-rank {
+  grid-column: 1 / span 4;
+  grid-row: span 2;
+}
+.profile-bento > .profile-block-rank,
+.profile-bento.is-5v5 > .profile-block-record {
+  border-top: 2px solid var(--accent);
+}
+.profile-bento > .profile-block-record,
+.profile-bento > .profile-block-form {
+  grid-column: span 4;
+}
+.profile-bento > .profile-block-combat {
+  grid-column: span 8;
+}
+/* 5v5 has no rank: the imported record leads one row, combat takes the next. */
+.profile-bento.is-5v5 > .profile-block-record {
+  grid-column: 1 / span 5;
+}
+.profile-bento.is-5v5 > .profile-block-form {
+  grid-column: span 7;
+}
+.profile-bento.is-5v5 > .profile-block-combat {
+  grid-column: 1 / -1;
+}
+.profile-block-rank > .profile-rank-heading {
+  flex: 1;
+  align-content: center;
+}
+.bento-tag {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--fs-1);
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.profile-rank-copy {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.profile-rank-copy .rank-display {
   font-size: var(--fs-4);
 }
-.profile-lp {
-  margin: var(--space-2) 0;
-}
-.profile-lp .lp-display strong {
+.profile-rank-copy .lp-display strong {
   font-size: var(--fs-6);
 }
-.profile-lp .lp-display > span {
+.profile-rank-copy .lp-display > span {
   font-size: var(--fs-3);
 }
-.profile-record {
+.profile-momentum {
+  position: relative;
+  margin-top: auto;
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--line);
+}
+.record-summary {
   display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+}
+.record-rate {
+  font:
+    600 var(--fs-5) / 1.1 var(--font-display),
+    sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.is-5v5 .record-rate {
+  font-size: var(--fs-6);
+}
+.record-rate small {
+  color: var(--muted);
+  font:
+    600 var(--fs-2) var(--font-body),
+    sans-serif;
+}
+.profile-record {
+  display: inline-flex;
   gap: var(--space-2);
-  font-size: var(--fs-2);
+  font-size: var(--fs-3);
+  font-variant-numeric: tabular-nums;
 }
 .profile-record > span {
   color: var(--loss);
 }
-.profile-record b {
-  margin-left: auto;
-  font-weight: 600;
-}
-.rank-panel .winrate-track {
+.profile-block-record .winrate-track {
   width: 100%;
-  height: 3px;
-  margin-top: var(--space-2);
+  height: 4px;
+  margin-top: 0;
 }
-.rank-panel > p {
-  margin-top: var(--space-1);
+.record-caption {
+  color: var(--muted);
   font-size: var(--fs-2);
 }
 .profile-form {
-  margin-top: var(--space-3);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-1);
+  min-height: 40px;
 }
-.profile-form > span:first-child {
-  font-size: var(--fs-1);
-  color: var(--muted);
-  letter-spacing: 0.5px;
+.profile-block-combat .history-status-compact {
+  margin: 0;
+}
+.profile-block-combat .stat-strip {
+  margin: 0;
+  padding: var(--space-1) 0 0;
+  border: 0;
+}
+.profile-block-combat .stat-strip > div {
+  padding-inline: var(--space-2);
+}
+.profile-block-combat .stat-strip > div:first-child {
+  padding-left: 0;
+}
+.profile-pool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: var(--space-3);
+}
+.profile-pool-grid .champion-row {
+  padding-block: var(--space-1);
+}
+.profile-pool-more {
+  margin-top: var(--space-1);
+}
+.profile-pool-more[open] > summary {
+  margin-bottom: var(--space-1);
+}
+.profile-block-pool .metric-note {
+  margin-top: var(--space-1);
+}
+.profile-disclosure .signature,
+.lp-history-details .lp-summary {
+  border-bottom: 0;
+}
+@media (max-width: 1100px) {
+  .profile-bento {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .profile-bento > .profile-block-rank {
+    grid-column: 1 / span 3;
+  }
+  .profile-bento > .profile-block-record,
+  .profile-bento > .profile-block-form,
+  .profile-bento.is-5v5 > .profile-block-record,
+  .profile-bento.is-5v5 > .profile-block-form {
+    grid-column: span 3;
+  }
+  .profile-bento > .profile-block-combat {
+    grid-column: 1 / -1;
+  }
+  .profile-pool-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .profile-bento {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .profile-bento > .profile-block-rank,
+  .profile-bento > .profile-block-record,
+  .profile-bento > .profile-block-form,
+  .profile-bento > .profile-block-combat,
+  .profile-bento.is-5v5 > .profile-block-record,
+  .profile-bento.is-5v5 > .profile-block-form {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+  .profile-pool-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .chart {
   min-width: 0;
@@ -1627,13 +1952,20 @@ select option {
   flex: 1;
   gap: var(--space-1);
 }
+/* Mirrors the profile bento: tall rank block, record and form, wide combat block. */
 .skeleton-profile-grid {
   display: grid;
-  grid-template-columns: 290px minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
 }
+.skeleton-profile-grid > :first-child {
+  grid-row: span 2;
+}
+.skeleton-profile-grid > :last-child {
+  grid-column: span 2;
+}
 .skeleton-panel {
-  height: 280px;
+  height: 256px;
 }
 .skeleton-highlights {
   display: grid;
@@ -1646,6 +1978,11 @@ select option {
 @media (max-width: 700px) {
   .skeleton-profile-grid {
     grid-template-columns: 1fr;
+  }
+  .skeleton-profile-grid > :first-child,
+  .skeleton-profile-grid > :last-child {
+    grid-row: auto;
+    grid-column: auto;
   }
   .skeleton-highlights {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2024,39 +2361,6 @@ select option {
     font-size: var(--fs-1);
     letter-spacing: 1px;
   }
-  .profile-grid {
-    grid-template-columns: 1fr;
-  }
-  .profile-grid .rank-panel {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    column-gap: var(--space-2);
-    padding: var(--space-3);
-  }
-  .rank-panel .card-label {
-    grid-column: 1 / -1;
-  }
-  .rank-panel > .rank-display {
-    margin-top: var(--space-2);
-  }
-  .profile-lp {
-    margin: var(--space-2) 0 0;
-    text-align: right;
-  }
-  .profile-lp .lp-display strong {
-    font-size: var(--fs-6);
-  }
-  .profile-record {
-    margin-top: var(--space-3);
-    grid-column: 1 / -1;
-  }
-  .rank-panel .winrate-track,
-  .rank-panel > p,
-  .profile-form {
-    grid-column: 1 / -1;
-  }
   .panel {
     padding: var(--space-3);
   }
@@ -2318,15 +2622,13 @@ dialog.confirm-dialog::backdrop {
 .momentum.unavailable {
   color: var(--muted);
 }
-.profile-lp .momentum {
+.profile-momentum .momentum {
   justify-content: flex-start;
+  margin-top: 0;
   font-size: var(--fs-2);
 }
-.profile-lp .momentum > span:not(.sr-only) {
+.profile-momentum .momentum > span:not(.sr-only) {
   font-size: var(--fs-1);
-}
-.profile-form {
-  flex-wrap: wrap;
 }
 .section-heading {
   display: flex;
@@ -2391,9 +2693,6 @@ dialog.confirm-dialog::backdrop {
   .momentum {
     font-size: var(--fs-1);
   }
-  .profile-lp .momentum {
-    justify-content: flex-end;
-  }
   .form-cell:before {
     vertical-align: middle;
   }
@@ -2406,9 +2705,6 @@ dialog.confirm-dialog::backdrop {
 @media (max-width: 360px) {
   .form-cell:before {
     display: none;
-  }
-  .profile-form {
-    gap: var(--space-2);
   }
 }
 
@@ -2484,10 +2780,7 @@ dialog.confirm-dialog::backdrop {
   flex-wrap: wrap;
   min-width: 0;
   gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-.profile-rank-heading .rank-display {
-  font-size: var(--fs-4);
+  margin-block: var(--space-1);
 }
 .ladder-navigation {
   display: flex;
@@ -2763,11 +3056,6 @@ dialog.confirm-dialog::backdrop {
 .admin-sync-details {
   margin-top: var(--space-2);
 }
-.admin-sync-details summary {
-  cursor: pointer;
-  padding: var(--space-1) 0;
-  font-size: var(--fs-2);
-}
 .admin-phase-details {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding-top: var(--space-2);
@@ -2823,22 +3111,12 @@ dialog.confirm-dialog::backdrop {
 }
 .admin-heading .button,
 .admin-actions .button,
-.admin-actions .tracking-switch,
-.admin-add-summary,
-.admin-sync-details summary,
-.admin-batch-summary summary {
+.admin-actions .tracking-switch {
   min-height: 44px;
 }
-.admin-add-summary {
-  cursor: pointer;
-  color: var(--text);
-  font-weight: 600;
-  padding-block: var(--space-1);
-}
-.admin-add-summary svg {
-  display: inline;
-  vertical-align: middle;
-  margin-right: var(--space-1);
+/* Admin disclosures share the inline disclosure control (.disclosure-inline). */
+.admin-add-summary > svg {
+  color: var(--control-icon);
 }
 .add-player[open] .add-form {
   margin-top: var(--space-2);
@@ -3003,9 +3281,10 @@ dialog.confirm-dialog::backdrop {
   margin-bottom: var(--space-1);
   font-size: var(--fs-2);
 }
-.admin-batch-summary summary {
-  cursor: pointer;
-  padding-block: var(--space-1);
+.admin-sync-details[open] > summary,
+.admin-batch-summary[open] > summary,
+.admin-sync-details details[open] > summary {
+  margin-bottom: var(--space-1);
 }
 @media (max-width: 550px) {
   .admin-heading-actions {
@@ -3054,6 +3333,25 @@ dialog.confirm-dialog::backdrop {
 .search-input,
 .region-filter {
   height: 46px;
+}
+/* The whole bounded region field opens the select, not only its 18px text line. */
+.region-filter {
+  padding-inline: 0;
+}
+.region-filter select {
+  align-self: stretch;
+  width: 100%;
+  padding-inline: var(--space-2) var(--space-1);
+}
+/* Short header terms keep the 24px minimum target without widening the column. */
+.lp-column .info-tip-term .info-tip-button {
+  min-width: var(--target-floor);
+  justify-items: end;
+}
+@media (max-width: 700px) {
+  .region-filter select {
+    padding-inline: var(--space-1) 0;
+  }
 }
 @media (max-width: 1100px) {
   .mobile-sort select,
@@ -3293,13 +3591,15 @@ dialog.confirm-dialog::backdrop {
   align-items: center;
   min-height: 32px;
   padding: 0 var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: 16px;
+  /* Read-only figures: flat, unbounded. Only the interactive warning keeps a pill edge. */
+  border: 1px solid transparent;
+  border-radius: var(--radius);
   background: var(--surface);
   font-size: var(--fs-2);
 }
 .metrics-chips .chip-warning {
   border-color: var(--warning);
+  border-radius: 16px;
   color: var(--warning);
 }
 .chip-warning .info-tip-button {
@@ -3788,13 +4088,11 @@ dialog.confirm-dialog::backdrop {
   font-size: var(--fs-2);
   overflow-wrap: anywhere;
 }
-.profile-lp {
-  position: relative;
-}
-.profile-lp .momentum-detail .info-tip {
+/* The ΔLP explanation spans the whole rank block instead of a narrow inline column. */
+.profile-momentum .momentum-detail .info-tip {
   position: static;
 }
-.profile-lp .momentum-detail .info-tip-bubble:not([hidden]) {
+.profile-momentum .momentum-detail .info-tip-bubble:not([hidden]) {
   right: 0;
   left: 0;
   width: auto;
@@ -3812,16 +4110,6 @@ dialog.confirm-dialog::backdrop {
     left: 0;
     width: auto;
     max-width: 100%;
-  }
-  .rank-panel {
-    position: relative;
-  }
-  .profile-lp {
-    position: static;
-  }
-  .profile-lp .momentum-detail .info-tip-bubble:not([hidden]) {
-    right: var(--space-3);
-    left: var(--space-3);
   }
   .signature > .info-tip {
     display: block;
@@ -3906,62 +4194,23 @@ dialog.confirm-dialog::backdrop {
   gap: 2px;
   min-width: 0;
 }
-/* Player profile: competitive summary first, then progression and match history. */
-.competitive-overview {
-  min-width: 0;
-  padding: var(--space-3);
-}
-.competitive-overview .stat-strip {
-  padding-top: 0;
-  margin-bottom: var(--space-2);
-}
-.competitive-overview .stat-strip > div {
-  padding-inline: var(--space-2);
-}
-.competitive-overview .stat-strip > div:first-child {
-  padding-left: 0;
-}
-.competitive-overview .champion-panel {
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-.competitive-overview .champion-row {
-  padding-block: var(--space-1);
-}
+/* Player profile, lower half: same card language as the overview bento above it. */
 .profile-progression-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: var(--space-3);
-  border-block: 1px solid var(--line);
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 .profile-progression-grid > .panel {
   margin: 0;
   min-width: 0;
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
   padding: var(--space-3);
 }
-.profile-progression-grid > .panel + .panel {
-  border-left: 1px solid var(--line);
-}
-.profile-extra > summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: var(--fs-2);
-  padding-block: var(--space-2);
-}
-.profile-extra > summary:hover {
-  color: var(--text);
-}
-.profile-extra > summary:focus-visible,
-.match-history-controls button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 .lp-history-details {
-  margin-bottom: var(--space-3);
-  border-bottom: 1px solid var(--line);
+  margin-block: var(--space-2) var(--space-3);
 }
 .match-panel {
   padding: 0;
@@ -3973,27 +4222,16 @@ dialog.confirm-dialog::backdrop {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 .match-history-controls {
   padding-block: var(--space-2);
   justify-content: space-between;
 }
 .match-history-controls > span {
+  margin-right: auto;
   font-size: var(--fs-2);
   color: var(--muted);
-}
-.match-history-controls button {
-  min-height: 44px;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-}
-.match-history-controls button:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 .rank-chart-plot {
   position: relative;
@@ -4010,21 +4248,8 @@ dialog.confirm-dialog::backdrop {
   .profile-progression-grid {
     grid-template-columns: 1fr;
   }
-  .profile-progression-grid > .panel + .panel {
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
 }
 @media (max-width: 700px) {
-  .profile-grid .rank-panel {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .competitive-overview .stat-strip > div:nth-child(3) {
-    padding-left: 0;
-  }
-  .competitive-overview .stat-strip {
-    gap: var(--space-2) 0;
-  }
   .match-history-controls > span {
     flex-basis: 100%;
   }

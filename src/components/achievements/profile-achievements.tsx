@@ -1,9 +1,11 @@
 import { Suspense } from "react";
+import { Radar } from "lucide-react";
 import type { View } from "@/lib/queues";
 import type { ChampionCatalog } from "@/lib/champion-assets";
 import { achievementsExperimentalEnabled } from "@/server/achievements/feature";
 import { profileAchievementPresentation } from "@/server/achievements/profile";
 import { AchievementPanel } from "./achievement-panel";
+import { DisclosureLabel } from "@/components/disclosure";
 import styles from "./achievements.module.css";
 
 type Props = { playerId: string; view: View; asOf: string; champions: ChampionCatalog };
@@ -24,14 +26,14 @@ export async function ProfileAchievementsContent(props: Props) {
 export function ProfileAchievements(props: Props) {
   if (!achievementsExperimentalEnabled() || props.view === "5v5") return null;
   return (
-    <details className={styles.profile}>
+    <details className={`disclosure disclosure-block profile-disclosure ${styles.profile}`}>
       <summary>
-        <span className={styles.entry}>
-          <strong>
-            Señales competitivas <span className={styles.experimental}>· Experimental</span>
-          </strong>
-          <span className={styles.entryHint}>Observaciones y evidencia</span>
-        </span>
+        <DisclosureLabel
+          icon={<Radar size={18} />}
+          title="Señales competitivas"
+          badge="Experimental"
+          hint="Observaciones y evidencia · sin concesiones permanentes"
+        />
       </summary>
       <Suspense
         fallback={

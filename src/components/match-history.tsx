@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { matchPage, MATCH_SUMMARY_SIZE } from "@/lib/match-pagination";
 
 /** Keep the existing server-rendered match rows; only their visible window changes. */
@@ -49,25 +50,40 @@ export function MatchHistory({ rows, demo = false }: { rows: ReactNode[]; demo?:
               <nav aria-label="Páginas del historial">
                 <button
                   type="button"
+                  className="button secondary"
                   disabled={current.page === 0}
                   onClick={() => navigate(current.page - 1)}
                   aria-controls={id}
                 >
+                  <ChevronLeft size={16} aria-hidden="true" />
                   Anterior
                 </button>
                 <button
                   type="button"
+                  className="button secondary"
                   disabled={current.page === current.pages - 1}
                   onClick={() => navigate(current.page + 1)}
                   aria-controls={id}
                 >
                   Siguiente
+                  <ChevronRight size={16} aria-hidden="true" />
                 </button>
               </nav>
             )}
             {rows.length > MATCH_SUMMARY_SIZE && (
-              <button type="button" onClick={toggle} aria-expanded={expanded} aria-controls={id}>
+              <button
+                type="button"
+                className="button secondary match-history-toggle"
+                onClick={toggle}
+                aria-expanded={expanded}
+                aria-controls={id}
+              >
                 {expanded ? "Volver al resumen" : "Ver más partidas"}
+                {expanded ? (
+                  <ChevronUp size={16} aria-hidden="true" />
+                ) : (
+                  <ChevronDown size={16} aria-hidden="true" />
+                )}
               </button>
             )}
           </div>

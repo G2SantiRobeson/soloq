@@ -293,7 +293,10 @@ export function AdminPanel({
             activa. Revisa los diagnósticos antes de iniciar otra acción.
           </p>
         )}
-      <details className="panel add-player" open={players.length === 0 || !!addError}>
+      <details
+        className="panel add-player disclosure disclosure-inline"
+        open={players.length === 0 || !!addError}
+      >
         <summary className="admin-add-summary" id={`${ids}-add-title`}>
           <Plus size={18} aria-hidden="true" /> Añadir jugador
         </summary>

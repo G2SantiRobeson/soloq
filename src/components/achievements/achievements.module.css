@@ -9,71 +9,45 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* Profile entry: summary, chevron and states come from the global .disclosure-block. */
 .profile {
-  min-width: 0;
   overflow-wrap: anywhere;
-  border: 1px solid var(--line, #253457);
-  border-left: 3px solid var(--accent, #2fe2ff);
-  border-radius: 6px;
-  background: var(--surface, #0e1528);
   color: var(--muted, #a3b0cf);
   font-size: 14px;
 }
-.profile > summary {
-  cursor: pointer;
-  min-height: 44px;
-  padding: 14px 16px;
-  color: var(--text, #eef2ff);
+.profile > .panel {
+  padding-inline: 0;
+  border-block: 0;
+  background: transparent;
 }
-.profile > summary,
+.profile > p {
+  padding-block: 12px;
+}
 .details > summary {
   display: flex;
   align-items: center;
   gap: 12px;
   list-style: none;
 }
-.profile > summary::-webkit-details-marker,
 .details > summary::-webkit-details-marker {
   display: none;
 }
-.profile > summary::after,
 .details > summary::after {
   content: "";
   width: 8px;
   height: 8px;
   flex: 0 0 8px;
   margin-left: auto;
-  border-right: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
+  border-right: 2px solid var(--control-icon, #2fe2ff);
+  border-bottom: 2px solid var(--control-icon, #2fe2ff);
   transform: rotate(45deg);
 }
-.profile[open] > summary::after,
 .details[open] > summary::after {
   transform: rotate(225deg);
 }
-.profile > summary:hover,
 .details > summary:hover {
-  background: #19263a;
-}
-.entry {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-.entryHint {
-  color: var(--muted, #a3b0cf);
-  font-size: 13px;
-}
-.experimental {
-  color: var(--muted, #a3b0cf);
-  font-weight: 400;
-}
-.profile > summary:focus-visible {
-  outline: 2px solid var(--accent, #2fe2ff);
-  outline-offset: 3px;
-}
-.profile > p {
-  padding: 12px;
+  border-color: var(--control-border-hover, #2fe2ff);
+  background: var(--control-bg-hover, #1c2848);
 }
 .panel h2,
 .panel h3,
@@ -159,7 +133,7 @@
   font-weight: 600;
   display: inline-block;
   padding: 4px 8px;
-  background: #080f1c;
+  background: var(--bg, #070b18);
   border-left: 2px solid currentColor;
   font-size: 14px;
 }
@@ -185,12 +159,15 @@
   padding: 10px 12px;
   color: var(--text, #eef2ff);
   font-weight: 600;
-  background: #111c2e;
-  border: 1px solid var(--line, #253457);
+  background: var(--control-bg, #141d36);
+  border: 1px solid var(--control-border, #62759f);
   border-radius: 4px;
 }
+.details[open] > summary {
+  border-color: var(--control-border-hover, #2fe2ff);
+}
 .details[open] {
-  background: #080f1c;
+  background: var(--bg, #070b18);
   border-radius: 4px;
 }
 .details[open] > :not(summary) {

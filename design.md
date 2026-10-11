@@ -43,16 +43,38 @@ Riot ID legible, tag secundario. Nombres largos envuelven; nunca se pierde la id
 - Inputs con label, fondo oscuro y foco visible también en su contenedor.
 - Tabla compacta, avatar con marco específico del tier y emblema de 44 px junto al rango, posición secundaria, LP separado, líderes con acento sutil.
   Sorting explícito; búsqueda, región y orden disponibles también en móvil.
-- Perfil: cabecera de identidad, columna de rango y área de evolución en una misma banda;
-  métricas en línea, repertorio de campeones y registro de partidas separados por reglas.
+- Perfil: cabecera de identidad y un bento (lenguaje de `/metrics`): Rango actual (2 filas),
+  Registro, Forma reciente, Combate y Pool de campeones; Firma y Señales como secciones
+  desplegables a todo el ancho. Cada bloque etiqueta su procedencia (OFICIAL / FICTICIO /
+  HISTORIAL IMPORTADO). 5v5 no muestra bloque de rango ni LP; el registro importado lidera.
 - Iconos solo para acciones o información. Wordmark textual propio, sin logotipo de League.
+
+## Controles interactivos
+
+Un control debe reconocerse sin hover. Tokens `--control-*` y `--target-*` en `globals.css`;
+los límites de control usan `--border` (≥3:1), nunca `--line`, que es decorativo.
+
+- Acción primaria: `.button.primary`, relleno cyan. Una por zona.
+- Acción secundaria: `.button.secondary`, borde visible e icono cyan de dirección.
+  Deshabilitado: sin relleno, borde tenue, texto muted y cursor `not-allowed`.
+- Desplegable compacto: `details.disclosure.disclosure-inline`, borde de control y chevron
+  (abajo cerrado, arriba abierto). Para "ver más" dentro de un bloque.
+- Desplegable de sección: `details.disclosure.disclosure-block` + `DisclosureLabel`: icono,
+  título, propósito y pastilla Mostrar/Ocultar con chevron (oculta a tecnologías de apoyo;
+  el `<details>` nativo anuncia el estado). Sin controles anidados en `<summary>`.
+- Filtros y pestañas: estado activo con relleno o regla cyan y `aria-current`.
+- Ayuda contextual: `InfoTip` (icono ⓘ de 24 px o término subrayado punteado). Hover, foco,
+  clic o tap; segundo clic, Escape o tap fuera cierran; la burbuja se ajusta al viewport.
+- Enlaces: navegación en texto con flecha cyan y subrayado en hover; no se convierten en botones.
+- Información: etiquetas de procedencia y cifras resumen sin borde ni forma de botón.
 
 ## Responsive y estados
 
 Desktop ≥1100 px: tabla completa. Laptop/tablet: ocultar métricas secundarias primero.
 Móvil ≤700 px: una fila se transforma en ficha compacta de resultados, con posición,
 jugador, rango, LP, WR y forma; sin scroll horizontal. Orden mediante select accesible.
-Perfil pasa a una columna; historial reorganizado y métricas en 2×2 sin tarjetas.
+Perfil: 12 columnas en escritorio, 6 en tablet y una en móvil, en orden de lectura
+(rango/registro, forma, combate 2×2, campeones, secciones desplegables).
 Vacío, carga, error, datos antiguos, sin rango y 5v5 mantienen el mismo sistema.
 No se inventan cambios de posición: los datos actuales no incluyen posiciones históricas.
 

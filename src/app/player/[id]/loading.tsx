@@ -13,7 +13,9 @@ export default function ProfileLoading() {
       <div className="skeleton skeleton-tabs" aria-hidden="true" />
       <div className="skeleton-profile-grid" aria-hidden="true">
         <div className="skeleton skeleton-panel" />
-        <div className="skeleton skeleton-panel" />
+        <div className="skeleton skeleton-highlight" />
+        <div className="skeleton skeleton-highlight" />
+        <div className="skeleton skeleton-highlight" />
       </div>
     </div>
   );

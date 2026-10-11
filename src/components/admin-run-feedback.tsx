@@ -152,7 +152,7 @@ export function AdminRunFeedback({
           </p>
         )}
         {run.players.length > 0 && (
-          <details className="admin-batch-summary">
+          <details className="admin-batch-summary disclosure disclosure-inline">
             <summary>Checkpoints por jugador ({run.players.length})</summary>
             {run.players.map((p) => (
               <div className="admin-run-player" key={p.playerId}>

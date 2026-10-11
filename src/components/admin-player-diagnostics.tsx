@@ -66,7 +66,7 @@ export function AdminPlayerDiagnostics({
   return (
     <div className="admin-diagnostics">
       {(recentResult || historyResult) && (
-        <details className="admin-batch-summary">
+        <details className="admin-batch-summary disclosure disclosure-inline">
           <summary>Resultado global de este panel</summary>
           <p className="muted">
             Última ejecución global solicitada desde este panel:
@@ -147,7 +147,7 @@ export function AdminPlayerDiagnostics({
                   ? "Histórico incompleto; puede continuar"
                   : "Verificaciones y cobertura registradas"}
       </p>
-      <details className="admin-sync-details">
+      <details className="admin-sync-details disclosure disclosure-inline">
         <summary>Ver diagnóstico y fechas</summary>
         <div className="admin-phase-details">
           <section>
@@ -181,7 +181,7 @@ export function AdminPlayerDiagnostics({
             {(s.history.status !== "completed" ||
               s.history.cursor.pending > 0 ||
               s.history.cursor.through) && (
-              <details>
+              <details className="disclosure disclosure-inline">
                 <summary>Cursor histórico guardado</summary>
                 <p>Temporada del cursor: {s.history.cursor.season ?? "Desconocida"}</p>
                 <p>

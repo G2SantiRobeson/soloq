@@ -21,15 +21,20 @@ import type { View } from "@/lib/queues";
 import type { Award, FormRow } from "@/lib/awards";
 import { InfoTip } from "./info-tip";
 
-/** One bento cell: short heading, optional "how it's calculated" toggletip, content. */
+/**
+ * One bento cell: short heading, optional data-provenance tag, optional
+ * "how it's calculated" toggletip, content.
+ */
 export function Block({
   title,
   info,
+  tag,
   className = "",
   children,
 }: {
   title: string;
   info?: ReactNode;
+  tag?: string;
   className?: string;
   children: ReactNode;
 }) {
@@ -37,6 +42,7 @@ export function Block({
     <section className={`bento-block ${className}`} aria-label={title}>
       <header className="bento-head">
         <h2>{title}</h2>
+        {tag && <span className="bento-tag">{tag}</span>}
         {info && (
           <InfoTip label={`Cómo se calcula: ${title}`} align="end">
             {info}
