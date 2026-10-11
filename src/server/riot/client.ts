@@ -30,17 +30,20 @@ export class SyncBudget extends SyncDeadline {
   }
 }
 export function retryAfterMs(value: string | null, now = Date.now()) {
-  if (!value) return 2000;
+  if (!value?.trim()) return 60_000;
   const seconds = Number(value);
-  return Number.isFinite(seconds)
-    ? Math.max(0, seconds * 1000)
-    : Math.max(0, Date.parse(value) - now) || 2000;
+  const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(value) - now;
+  return Number.isFinite(delay) && delay > 0 && Math.abs(now + delay) < 8.64e15
+    ? Math.max(1300, delay)
+    : 60_000;
 }
 type Dependencies = {
   fetcher?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   interval?: number;
+  random?: () => number;
+  onRateLimit?: (delay: number) => Promise<void>;
 };
 // Only instantiated inside the database-backed global sync lease. One request at a time.
 export class RiotClient {
@@ -50,6 +53,8 @@ export class RiotClient {
   private sleep: (ms: number) => Promise<void>;
   private now: () => number;
   private interval: number;
+  private random: () => number;
+  private onRateLimit?: Dependencies["onRateLimit"];
   constructor(
     private deadline = Date.now() + 230_000,
     deps: Dependencies = {},
@@ -57,6 +62,8 @@ export class RiotClient {
     this.fetcher = deps.fetcher ?? fetch;
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.now = deps.now ?? Date.now;
+    this.random = deps.random ?? Math.random;
+    this.onRateLimit = deps.onRateLimit;
     const configured = Number(process.env.RIOT_REQUEST_INTERVAL_MS ?? 1300);
     this.interval = Math.max(
       1300,
@@ -114,7 +121,7 @@ export class RiotClient {
       } catch {
         retryError = new RiotError(503);
         if (attempt === 2) throw retryError;
-        this.nextRequestAt = Math.max(this.nextRequestAt, this.now() + 1000 * 2 ** attempt);
+        this.nextRequestAt = Math.max(this.nextRequestAt, this.now() + this.backoff(attempt));
         continue;
       }
       if (response.ok) {
@@ -126,12 +133,17 @@ export class RiotClient {
       const delay =
         response.status === 429
           ? retryAfterMs(response.headers.get("retry-after"), this.now())
-          : 1000 * 2 ** attempt;
+          : this.backoff(attempt);
       retryError = new RiotError(response.status, delay);
       this.nextRequestAt = Math.max(this.nextRequestAt, this.now() + delay);
+      // Persist before retrying: a terminated worker must not forget a shared quota wait.
+      if (response.status === 429) await this.onRateLimit?.(delay);
       if (attempt === 2 || this.now() + delay + 12_000 > this.deadline) throw retryError;
     }
     throw new RiotError(503);
+  }
+  private backoff(attempt: number) {
+    return 1000 * 2 ** attempt + Math.floor(this.random() * 500);
   }
   account(platform: Platform, gameName: string, tagLine: string) {
     return this.request(

@@ -229,7 +229,13 @@ export async function importHistory(
           .where(eq(players.id, playerId));
         return added;
       },
-      (added) => ({ type: "import", pass: "history", playerId, imported: added }),
+      (added) => ({
+        type: "import",
+        pass: "history",
+        playerId,
+        imported: added,
+        confirmedMatchId: matchId,
+      }),
     );
     pending = next;
     processed++;

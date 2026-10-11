@@ -8,7 +8,14 @@ import { RiotClient, RiotError, SyncDeadline } from "../riot/client";
 import { SYNC_LEASE_MS } from "@/lib/sync-status";
 import { CURRENT_SEASON } from "@/lib/season";
 import { finishRun, newRun, type RunMeta } from "@/lib/sync-progress";
-import { bindLease, databaseNow, LeaseLost, parseEnvelope, type LeaseContext } from "./progress";
+import {
+  bindLease,
+  databaseNow,
+  LeaseLost,
+  parseEnvelope,
+  syncWrite,
+  type LeaseContext,
+} from "./progress";
 const runErrors = new WeakMap<Error, { runId: string; requestId: string | null }>();
 export function runErrorIdentity(error: unknown): { runId?: string; requestId?: string | null } {
   return error instanceof Error ? (runErrors.get(error) ?? {}) : {};
@@ -80,7 +87,38 @@ export async function withSyncLease<T>(
     await tx.update(syncLocks).set({ runProgress: envelope }).where(eq(syncLocks.name, "riot"));
     return { owner, runId, envelope };
   });
-  const client = new RiotClient(Date.now() + budgetMs);
+  const client = new RiotClient(Date.now() + budgetMs, {
+    async onRateLimit(delay) {
+      await syncWrite(
+        client,
+        async (tx) => {
+          const now = await databaseNow(tx);
+          const until = new Date(now.getTime() + delay);
+          await tx
+            .update(syncLocks)
+            .set({
+              expiresAt: sql`greatest(${syncLocks.expiresAt}, ${until})`,
+            })
+            .where(and(eq(syncLocks.name, "riot"), eq(syncLocks.owner, owner)));
+          return until.toISOString();
+        },
+        (until) => {
+          const run = context.envelope?.latest;
+          const history =
+            run?.phase === "history"
+              ? run.players.find((p) => p.playerId === run.currentPlayerId)?.history?.history
+              : null;
+          // The existing forced history flush refreshes persisted counters in this transaction.
+          return history && run?.currentPlayerId
+            ? [
+                { type: "riot_wait", until },
+                { type: "history", playerId: run.currentPlayerId, history },
+              ]
+            : { type: "riot_wait", until };
+        },
+      );
+    },
+  });
   bindLease(client, context);
   if (context.runId)
     identities.set(client, { runId: context.runId, requestId: meta?.requestId ?? null });
@@ -119,6 +157,8 @@ export async function withSyncLease<T>(
       }
       const now = await databaseNow(tx);
       const envelope = context.envelope ? structuredClone(context.envelope) : null;
+      const riotRetryAt = envelope?.latest.riotRetryAt;
+      if (riotRetryAt) cooldown = Math.max(cooldown, Date.parse(riotRetryAt) - now.getTime());
       if (context.runId && envelope) {
         const saved = parseEnvelope(row.runProgress)?.latest;
         if (

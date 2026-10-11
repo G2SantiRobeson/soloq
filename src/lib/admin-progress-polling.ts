@@ -37,6 +37,7 @@ export function watchAdminProgress(options: {
   request?: typeof readAdminProgress;
   onStatus: (dto: ProgressDto) => void;
   onProblem: (message: string) => void;
+  onUnavailable?: () => void;
   onFinished?: (dto: ProgressDto) => void;
   onManualRead?: (result: ManualProgressRead | null) => void;
   visible?: () => boolean;
@@ -135,12 +136,13 @@ export function watchAdminProgress(options: {
     } catch (error) {
       if (disposed || request.signal.aborted) return;
       if (manual) options.onManualRead?.({ state: "error", lastSuccessfulAt });
-      const denied = error instanceof ProgressReadError && [401, 503].includes(error.status);
+      const denied = error instanceof ProgressReadError && [401, 403, 503].includes(error.status);
       options.onProblem(
         error instanceof ProgressReadError && error.status === 401
           ? "La sesión expiró. Inicia sesión para consultar el progreso."
           : "No se pudo obtener el progreso. Se conserva el último checkpoint; esto no confirma que la ejecución haya fallado.",
       );
+      if (denied) options.onUnavailable?.();
       if (!denied)
         next = Math.max(
           Math.min(60_000, 15_000 * 2 ** failures++),

@@ -31,11 +31,13 @@ export async function requestAdmin(
   method: string,
   data?: unknown,
   requestId?: string,
+  signal?: AbortSignal,
 ): Promise<AdminResponse> {
   let response: Response;
   try {
     response = await fetch(path, {
       method,
+      ...(signal ? { signal } : {}),
       headers: {
         "Content-Type": "application/json",
         ...(requestId ? { "X-SoloQ-Sync-Request-Id": requestId } : {}),

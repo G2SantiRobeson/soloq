@@ -192,6 +192,43 @@ describe("Riot retry and routing", () => {
     expect(retryAfterMs("Mon, 05 Oct 2026 12:00:05 GMT", Date.parse("2026-10-05T12:00:00Z"))).toBe(
       5000,
     ));
+  it.each([null, "", "invalid", "-2", "0", "Infinity"])(
+    "uses conservative fallback for invalid Retry-After %s",
+    (value) => {
+      expect(retryAfterMs(value)).toBe(60000);
+    },
+  );
+  it("persists 429 before retries and refuses further dispatch if the shared wait cannot be saved", async () => {
+    vi.stubEnv("RIOT_API_KEY", "test-only-not-a-real-key");
+    const fetcher = vi.fn<typeof fetch>(
+      async () => new Response("", { status: 429, headers: { "Retry-After": "3" } }),
+    );
+    const onRateLimit = vi.fn(async () => {
+      throw new Error("wait persistence failed");
+    });
+    const client = new RiotClient(120000, { fetcher, now: () => 0, onRateLimit });
+    await expect(client.request("la2", "/test", z.unknown())).rejects.toThrow(
+      "wait persistence failed",
+    );
+    expect(onRateLimit).toHaveBeenCalledWith(3000);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it("adds bounded jitter to network/5xx backoff without changing pacing", async () => {
+    vi.stubEnv("RIOT_API_KEY", "test-only-not-a-real-key");
+    let now = 0;
+    const sleep = vi.fn(async (ms: number) => {
+      now += ms;
+    });
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(new Error("network"))
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockResolvedValueOnce(Response.json([]));
+    const client = new RiotClient(120000, { fetcher, sleep, now: () => now, random: () => 0.8 });
+    await client.matchIds("LA2", "p", 1, 2, 0);
+    expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([1400, 2400]);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
   it("routes SEA accounts through ASIA while retaining SEA for MATCH-V5", async () => {
     const { client, fetcher } = setup([
       Response.json({ puuid: "p", gameName: "SEA Player", tagLine: "OCE" }),

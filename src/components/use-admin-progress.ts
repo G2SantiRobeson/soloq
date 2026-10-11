@@ -17,7 +17,12 @@ export function restoreAdminObservation(storage: Pick<Storage, "getItem">) {
     return null;
   }
 }
-export function useAdminProgress(initial: ProgressDto | undefined, onFinished: () => void) {
+export function useAdminProgress(
+  initial: ProgressDto | undefined,
+  onFinished: () => void,
+  onObservation?: (dto: ProgressDto) => void,
+  onUnavailable?: () => void,
+) {
   // Do not show a previous SSR run before checking the browser's saved correlation.
   const [observation, setObservation] = useState<ProgressDto | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -27,9 +32,13 @@ export function useAdminProgress(initial: ProgressDto | undefined, onFinished: (
   const watcher = useRef<ReturnType<typeof watchAdminProgress> | null>(null);
   const finished = useRef<string | null>(null);
   const notify = useRef(onFinished);
+  const observed = useRef(onObservation);
+  const unavailable = useRef(onUnavailable);
   useEffect(() => {
     notify.current = onFinished;
-  }, [onFinished]);
+    observed.current = onObservation;
+    unavailable.current = onUnavailable;
+  }, [onFinished, onObservation, onUnavailable]);
   const observe = useCallback((requestId?: string, startedAt?: number) => {
     watcher.current?.stop();
     watcher.current = watchAdminProgress({
@@ -39,6 +48,7 @@ export function useAdminProgress(initial: ProgressDto | undefined, onFinished: (
       onStatus(dto) {
         setCorrelated(!!requestId);
         setObservation(dto);
+        observed.current?.(dto);
         setProblem(null);
         if (!requestId) setAwaiting(false);
         else if (!dto.run) setAwaiting(Date.now() - (startedAt ?? Date.now()) < 330_000);
@@ -47,6 +57,7 @@ export function useAdminProgress(initial: ProgressDto | undefined, onFinished: (
         setProblem(message);
         if (message.startsWith("Sin ejecución")) setAwaiting(false);
       },
+      onUnavailable: () => unavailable.current?.(),
       onFinished(dto) {
         setAwaiting(false);
         if (dto.run && finished.current !== dto.run.runId) {

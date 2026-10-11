@@ -49,6 +49,7 @@ import {
 } from "@/server/sync/progress";
 import { GET as progressRoute } from "@/app/api/admin/sync/progress/route";
 import { runIdentity } from "@/server/sync/lease";
+import { z } from "zod";
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
 const cookieJar = vi.hoisted(() => new Map<string, string>());
@@ -1116,6 +1117,90 @@ describe("administrative phase diagnostics and individual synchronization", () =
     await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
     expect((await deletePlayer(mutation("DELETE", { confirm: true }))).status).toBe(200);
     expect(await row(p.id)).toBeUndefined();
+  });
+
+  function automaticRequest(id: string, season = CURRENT_SEASON.id) {
+    return new Request(`http://localhost/api/admin/players/${id}/backfill`, {
+      method: "POST",
+      headers: { origin: "http://localhost", "content-type": "application/json" },
+      body: JSON.stringify({ historyOnly: true, season }),
+    });
+  }
+  it("continues only historical batches, retains the cursor and publishes confirmed IDs", async () => {
+    const p = await addPlayer();
+    const ids = Array.from({ length: 26 }, (_, i) => `LA2_${i + 1}`);
+    vi.mocked(RiotClient.prototype.matchIds).mockResolvedValue(ids);
+    expect((await manualBackfill(automaticRequest(p.id))).status).toBe(200);
+    expect(await row(p.id)).toMatchObject({
+      backfillProcessed: 25,
+      backfillDiscovered: 26,
+      scanPending: ["LA2_26"],
+      rankCheckedAt: null,
+      lastSyncedAt: null,
+    });
+    const first = await readSyncProgress();
+    expect(first.run?.players[0].history).toMatchObject({
+      lastConfirmedMatchId: "LA2_25",
+      history: { processed: 25, discovered: 26 },
+    });
+    expect(RiotClient.prototype.identity).not.toHaveBeenCalled();
+    expect(RiotClient.prototype.leagues).not.toHaveBeenCalled();
+    await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
+    expect((await manualBackfill(automaticRequest(p.id))).status).toBe(200);
+    expect(await row(p.id)).toMatchObject({ backfillProcessed: 26, backfillStatus: "completed" });
+    expect(await database.select().from(schema.playerMatches)).toHaveLength(26);
+    expect(RiotClient.prototype.matchIds).toHaveBeenCalledTimes(1);
+    expect((await readSyncProgress()).run?.players[0].history).toMatchObject({
+      lastConfirmedMatchId: "LA2_26",
+      history: { processed: 26 },
+    });
+  });
+  it("does not restart a completed season or repair incrementally in automatic mode", async () => {
+    const p = await addPlayer();
+    await update(p.id, {
+      backfillStatus: "completed",
+      backfillSeason: CURRENT_SEASON.id,
+      scanOffset: 7,
+      scanPending: ["LA2_9"],
+    });
+    expect((await manualBackfill(automaticRequest(p.id))).status).toBe(200);
+    expect(await row(p.id)).toMatchObject({
+      backfillStatus: "completed",
+      scanOffset: 7,
+      scanPending: ["LA2_9"],
+    });
+    expect(RiotClient.prototype.matchIds).not.toHaveBeenCalled();
+    expect(RiotClient.prototype.match).not.toHaveBeenCalled();
+    expect((await readSyncProgress()).run?.state).toBe("completed");
+  });
+  it("rejects a different season and a paused player without dispatching Riot", async () => {
+    const p = await addPlayer();
+    expect((await manualBackfill(automaticRequest(p.id, "1900"))).status).toBe(400);
+    expect(await database.select().from(schema.syncLocks)).toHaveLength(0);
+    await update(p.id, { enabled: false });
+    expect((await manualBackfill(automaticRequest(p.id))).status).toBe(409);
+    expect(RiotClient.prototype.matchIds).not.toHaveBeenCalled();
+  });
+  it("two tabs cannot execute the same player's historical continuation together", async () => {
+    const p = await addPlayer();
+    let started!: () => void, finish!: () => void;
+    const entered = new Promise<void>((r) => {
+      started = r;
+    });
+    const blocked = new Promise<void>((r) => {
+      finish = r;
+    });
+    vi.mocked(RiotClient.prototype.matchIds).mockImplementationOnce(async () => {
+      started();
+      await blocked;
+      return [];
+    });
+    const first = manualBackfill(automaticRequest(p.id));
+    await entered;
+    expect((await manualBackfill(automaticRequest(p.id))).status).toBe(409);
+    finish();
+    expect((await first).status).toBe(200);
+    expect(RiotClient.prototype.matchIds).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -2556,6 +2641,49 @@ describe("durable execution progress and fencing (local PostgreSQL)", () => {
       withSyncLease(async () => true, 230000, undefined, { action: "global" }),
     ).rejects.toBeInstanceOf(SyncBusy);
     expect((await database.select().from(schema.syncLocks))[0].runProgress).toEqual(saved);
+  });
+  it("persists a shared long 429 wait before returning from the Riot request", async () => {
+    const p = await addPlayer();
+    vi.stubEnv("RIOT_API_KEY", "test-only-not-a-real-key");
+    const fetcher = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("", { status: 429, headers: { "Retry-After": "600" } }));
+    await expect(
+      withSyncLease(
+        async (c) => {
+          await checkpoint(c, { type: "phase", phase: "history", playerId: p.id });
+          await checkpoint(c, { type: "history", playerId: p.id, history: {
+            season: CURRENT_SEASON.id, mode: "season_backfill", processed: 0,
+            discovered: 100, unavailable: 0, cursorPending: 100, scanExhausted: true,
+            scanThrough: new Date().toISOString(),
+          } });
+          await syncWrite(c, async (tx) => {
+            await tx.update(schema.players).set({ backfillStatus: "running", backfillProcessed: 25,
+              backfillDiscovered: 100, scanExhausted: true,
+            }).where(eq(schema.players.id, p.id));
+          }, { type: "import", pass: "history", playerId: p.id, imported: 0, confirmedMatchId: "LA2_25" });
+          await expect(c.request("la2", "/mock", z.unknown())).rejects.toMatchObject({
+            status: 429,
+          });
+          const observed = await read();
+          expect(observed.run?.riotRetryAt).toBeTruthy();
+          expect(observed.run?.players[0].history).toMatchObject({
+            lastConfirmedMatchId: "LA2_25", history: { processed: 25, discovered: 100 },
+          });
+          expect(
+            Date.parse(observed.control.until!) - Date.parse(observed.serverNow),
+          ).toBeGreaterThan(599000);
+          expect(observed.run?.state).toBe("running");
+          await expect(withSyncLease(async () => true)).rejects.toBeInstanceOf(SyncBusy);
+          throw new RiotError(429, 600000);
+        },
+        230000,
+        undefined,
+        { action: "player_history", playerId: p.id },
+      ),
+    ).rejects.toMatchObject({ status: 429 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect((await read()).control).toMatchObject({ state: "cooldown", reason: "riot_retry_after" });
   });
   it("correlates individual POST with durable GET, enforces auth and keeps GET read-only/no-store", async () => {
     const p = await addPlayer();

@@ -4377,3 +4377,35 @@ dialog.confirm-dialog::backdrop {
 .match-panel {
   --fs-1: 12px;
 }
+/* Administrative progress describes discovered IDs, never total season coverage. */
+.admin-backfill-progress {
+  margin-block: var(--space-2);
+  padding: var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.admin-backfill-progress progress {
+  display: block;
+  width: 100%;
+  height: var(--space-2);
+  accent-color: var(--accent);
+}
+.admin-backfill-progress p {
+  margin-block: var(--space-1);
+}
+.backfill-match-id {
+  overflow-wrap: anywhere;
+}
+.admin-backfill-progress button {
+  min-height: 44px;
+  white-space: normal;
+}
+.admin-actions .auto-history-action {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 550px) {
+  .admin-actions .auto-history-action {
+    grid-column: 1 / -1;
+  }
+}

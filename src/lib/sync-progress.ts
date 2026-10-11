@@ -38,6 +38,10 @@ const workSchema = z.object({
   imported: count,
   coveredThrough: nullableTime,
   history: historySchema.nullable(),
+  lastConfirmedMatchId: z
+    .string()
+    .regex(/^[A-Z0-9]{2,8}_\d+$/)
+    .optional(),
 });
 const playerSchema = z.object({
   playerId: z.uuid(),
@@ -73,6 +77,7 @@ export const persistedRunSchema = z.object({
   finishedAt: nullableTime,
   interruptionObservedAt: nullableTime,
   cooldownReason: z.enum(["pacing", "riot_retry_after"]).nullable(),
+  riotRetryAt: nullableTime.optional(),
   revision: count,
   recentOutcome: z.enum(["success", "partial", "failed"]).nullable(),
   recent: passSchema.nullable(),
@@ -120,6 +125,7 @@ export type RunMeta = {
 export type ProgressSelector = { requestId?: string; runId?: string };
 type Pass = "recent" | "history";
 export type ProgressEvent =
+  | { type: "riot_wait"; until: string }
   | { type: "select"; pass: Pass; ids: string[] }
   | { type: "phase"; phase: "identity" | "rank" | "recent" | "history"; playerId: string }
   | { type: "rank"; playerId: string; checkedAt: string }
@@ -128,6 +134,7 @@ export type ProgressEvent =
       pass: Pass;
       playerId: string;
       imported: number;
+      confirmedMatchId?: string;
       history?: z.infer<typeof historySchema>;
     }
   | {
@@ -211,7 +218,10 @@ export function summarizeRun(run: PersistedRun) {
         : "partial";
 }
 export function applyProgressEvent(run: PersistedRun, event: ProgressEvent, now: string) {
-  if (event.type === "select") {
+  if (event.type === "riot_wait") {
+    run.riotRetryAt = event.until;
+    run.cooldownReason = "riot_retry_after";
+  } else if (event.type === "select") {
     for (const id of event.ids) player(run, id)[event.pass] ??= emptyWork();
     run[event.pass] ??= {
       eligible: 0,
@@ -244,6 +254,8 @@ export function applyProgressEvent(run: PersistedRun, event: ProgressEvent, now:
       const phase = (p[event.pass] ??= emptyWork());
       if (event.type === "import") {
         phase.imported += event.imported;
+        if (event.pass === "history" && /^[A-Z0-9]{2,8}_\d+$/.test(event.confirmedMatchId ?? ""))
+          phase.lastConfirmedMatchId = event.confirmedMatchId;
         if (event.history) phase.history = event.history;
       } else {
         phase.status = event.result.status;

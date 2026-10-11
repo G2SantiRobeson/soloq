@@ -8,6 +8,9 @@ import type { AdminPlayer, AdminSyncContext } from "@/lib/admin-sync";
 import { AdminPlayerDiagnostics } from "./admin-player-diagnostics";
 import { AdminOperationFeedback, type AdminWork } from "./admin-operation-feedback";
 import { useAdminProgress } from "./use-admin-progress";
+import { AdminBackfillProgress } from "./admin-backfill-progress";
+import { createAutoBackfill, type AutoBackfillState } from "@/lib/auto-backfill";
+import { AdminRequestError } from "@/lib/admin-errors";
 import {
   actionTitle,
   createAdminActionRunner,
@@ -113,8 +116,76 @@ export function AdminPanel({
   const gameNameInput = useRef<HTMLInputElement>(null);
   const deleted = useRef(false);
   const runAction = useRef(createAdminActionRunner());
-  const progress = useAdminProgress(context.progress, () => router.refresh());
-  const pending = pendingAction !== null || progress.blocked;
+  const automatic = useRef<ReturnType<typeof createAutoBackfill> | null>(null);
+  const [autoState, setAutoState] = useState<AutoBackfillState | null>(null);
+  const progress = useAdminProgress(
+    context.progress,
+    () => router.refresh(),
+    (dto) => automatic.current?.observe(dto),
+    () =>
+      automatic.current?.stop(
+        "No se puede consultar el progreso. Revisa la sesión y el acceso antes de continuar.",
+        "error",
+      ),
+  );
+  const automaticIO = useRef({
+    begin: progress.begin,
+    refresh: progress.refresh,
+    rejected: progress.rejected,
+  });
+  useEffect(() => {
+    automaticIO.current = {
+      begin: progress.begin,
+      refresh: progress.refresh,
+      rejected: progress.rejected,
+    };
+  });
+  useEffect(() => {
+    let mounted = true;
+    const controller = createAutoBackfill({
+      begin: () => automaticIO.current.begin("player_history"),
+      refresh: () => automaticIO.current.refresh(),
+      onState: setAutoState,
+      async send(playerId, season, requestId) {
+        try {
+          const result = await runAction.current(
+            () => undefined,
+            () =>
+              request(
+                `/api/admin/players/${playerId}/backfill`,
+                "POST",
+                { historyOnly: true, season },
+                requestId,
+                AbortSignal.timeout(310_000),
+              ),
+            () => undefined,
+          );
+          if (!result) throw new AdminRequestError(409, "Otra acción está en curso.");
+          return result;
+        } catch (error) {
+          if (mounted && rejectedBeforeRun(error)) automaticIO.current.rejected();
+          throw error;
+        } finally {
+          if (mounted) router.refresh();
+        }
+      },
+    });
+    automatic.current = controller;
+    return () => {
+      mounted = false;
+      controller.dispose();
+      automatic.current = null;
+    };
+  }, [router]);
+  const pending = pendingAction !== null || progress.blocked || !!autoState?.active;
+  const backfillDto = autoState?.active
+    ? autoState.progress
+    : progress.observation?.run?.action === "player_history"
+      ? progress.observation
+      : (autoState?.progress ?? null);
+  const backfillPlayerId = autoState?.active
+    ? autoState.playerId
+    : (backfillDto?.run?.playerId ?? autoState?.playerId);
   const fullRiotId = splitRiotId(gameName);
   useEffect(() => {
     if (!deleting) return;
@@ -137,6 +208,10 @@ export function AdminPanel({
     data?: unknown,
     success = "Cambios guardados.",
   ) {
+    if (automatic.current?.isActive()) {
+      if (action !== "logout") return false;
+      automatic.current.stop("Sesión cerrándose; no se enviarán nuevas continuaciones.");
+    }
     if (progress.blocked && action !== "logout") return false;
     let requestId: string | undefined;
     return (
@@ -285,6 +360,19 @@ export function AdminPanel({
         refresh={progress.refreshManual}
         manualRead={progress.manualRead}
       />
+      {backfillPlayerId && (
+        <AdminBackfillProgress
+          dto={backfillDto}
+          playerId={backfillPlayerId}
+          name={players.find((p) => p.id === backfillPlayerId)?.gameName ?? "Jugador seleccionado"}
+          automatic={
+            autoState?.active || autoState?.requestId === backfillDto?.run?.requestId
+              ? autoState
+              : null
+          }
+          stop={() => automatic.current?.stop()}
+        />
+      )}
       {!context.progress &&
         context.leaseUntil &&
         Date.parse(context.leaseUntil) > Date.parse(context.serverNow) && (
@@ -450,6 +538,19 @@ export function AdminPanel({
                           ? "Reintentar historial"
                           : "Continuar historial",
                       )}
+                    </button>
+                  )}
+                  {(p.backfillStatus !== "completed" || p.backfillSeason !== CURRENT_SEASON.id) && (
+                    <button
+                      type="button"
+                      className="button history-action auto-history-action"
+                      disabled={!p.enabled || pending}
+                      aria-describedby={nameId}
+                      onClick={() => {
+                        if (!pending) automatic.current?.start(p.id, CURRENT_SEASON.id);
+                      }}
+                    >
+                      Continuar historial automáticamente
                     </button>
                   )}
                   <button
