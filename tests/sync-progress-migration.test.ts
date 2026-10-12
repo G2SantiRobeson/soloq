@@ -61,9 +61,19 @@ it("preserves all applied migration metadata and appends 0006", () => {
   );
   expect(before0007.entries).toHaveLength(7);
   expect(journal.entries.slice(0, 7)).toEqual(before0007.entries);
-  expect(journal.entries).toHaveLength(8);
+  const before0008 = JSON.parse(
+    execFileSync(
+      "git",
+      ["show", "81d617c93e23d8dffe1681a6f0c90e24d03946ab:drizzle/meta/_journal.json"],
+      { encoding: "utf8", windowsHide: true },
+    ),
+  );
+  expect(before0008.entries).toHaveLength(8);
+  expect(journal.entries.slice(0, 8)).toEqual(before0008.entries);
+  expect(journal.entries).toHaveLength(9);
   expect(journal.entries[6]).toMatchObject({ idx: 6, tag: "0006_sync_run_progress" });
   expect(journal.entries[7]).toMatchObject({ idx: 7, tag: "0007_local_evidence_persistence" });
+  expect(journal.entries[8]).toMatchObject({ idx: 8, tag: "0008_operational_capture_support" });
   const snapshot = JSON.parse(readFileSync("drizzle/meta/0006_snapshot.json", "utf8"));
   const previous = JSON.parse(readFileSync("drizzle/meta/0005_snapshot.json", "utf8"));
   expect(snapshot.prevId).toBe(previous.id);

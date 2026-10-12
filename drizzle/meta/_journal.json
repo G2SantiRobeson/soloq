@@ -57,6 +57,13 @@
       "when": 1791761901726,
       "tag": "0007_local_evidence_persistence",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791812222387,
+      "tag": "0008_operational_capture_support",
+      "breakpoints": true
     }
   ]
 }

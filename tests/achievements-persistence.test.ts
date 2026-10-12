@@ -191,9 +191,10 @@ async function fixtureSeal() {
 const migrationFiles = readdirSync("drizzle")
   .filter((f) => f.endsWith(".sql"))
   .sort();
+const evidenceMigration = "0007_local_evidence_persistence.sql";
 let legacyPreserved = false;
 beforeAll(async () => {
-  for (const file of migrationFiles.slice(0, -1))
+  for (const file of migrationFiles.filter((file) => file < evidenceMigration))
     await pg.exec(readFileSync(`drizzle/${file}`, "utf8"));
   await pg.exec(
     `INSERT INTO players (id,game_name,tag_line,puuid,platform,scan_start) VALUES ('${identity.playerId}','Legacy','TEST','fictitious-legacy','LA2','2026-01-01T00:00:00Z');`,
@@ -205,7 +206,7 @@ beforeAll(async () => {
   const prior = await Promise.all(
     tables.map((t) => pg.query(`SELECT to_jsonb(t) AS row FROM ${t} t ORDER BY to_jsonb(t)::text`)),
   );
-  await pg.exec(readFileSync(`drizzle/${migrationFiles.at(-1)}`, "utf8"));
+  await pg.exec(readFileSync(`drizzle/${evidenceMigration}`, "utf8"));
   const after = await Promise.all(
     tables.map((t) =>
       pg.query(
@@ -217,6 +218,9 @@ beforeAll(async () => {
     JSON.stringify(prior.map((r) => r.rows)) === JSON.stringify(after.map((r) => r.rows));
   expect(await revision()).toBe("0");
   expect(await repo.list(identity)).toEqual([]);
+  // Preserve the incremental 0007 assertion while exercising D on the latest constraints.
+  for (const file of migrationFiles.filter((file) => file > evidenceMigration))
+    await pg.exec(readFileSync(`drizzle/${file}`, "utf8"));
 });
 beforeEach(async () => {
   await db.delete(schema.players);
@@ -233,8 +237,8 @@ describe("B.2.D migration and boundaries", () => {
     expect(legacyPreserved).toBe(true);
   });
   it("only adds two tables, one source column and additive constraints", () => {
-    expect(migrationFiles).toHaveLength(8);
-    const migration = readFileSync(`drizzle/${migrationFiles.at(-1)}`, "utf8");
+    expect(migrationFiles.filter((file) => file <= evidenceMigration)).toHaveLength(8);
+    const migration = readFileSync(`drizzle/${evidenceMigration}`, "utf8");
     expect(migration.match(/CREATE TABLE /g)).toHaveLength(2);
     expect(migration.match(/ADD COLUMN /g)).toHaveLength(1);
     expect(migration).not.toMatch(/(?:^|\n)\s*(DROP|UPDATE|DELETE|TRUNCATE|INSERT)\b/i);

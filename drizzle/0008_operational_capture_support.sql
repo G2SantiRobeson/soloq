@@ -1,0 +1,4 @@
+ALTER TABLE "achievement_evidence_headers" DROP CONSTRAINT "evidence_header_kind";--> statement-breakpoint
+ALTER TABLE "achievement_evidence_headers" DROP CONSTRAINT "evidence_header_source";--> statement-breakpoint
+ALTER TABLE "achievement_evidence_headers" ADD CONSTRAINT "evidence_header_kind" CHECK ("achievement_evidence_headers"."kind" IN ('rank_capture', 'match_scan', 'structural_receipt', 'identity_capture'));--> statement-breakpoint
+ALTER TABLE "achievement_evidence_headers" ADD CONSTRAINT "evidence_header_source" CHECK ("achievement_evidence_headers"."source" IN ('unknown', 'synthetic', 'server_riot_received'));

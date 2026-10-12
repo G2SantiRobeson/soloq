@@ -152,9 +152,11 @@ export const achievementEvidenceHeaders = pgTable(
     platform: text("platform").$type<Platform>().notNull(),
     queue: text("queue").$type<RankedQueue>().notNull(),
     season: text("season").notNull(),
-    kind: text("kind").$type<"rank_capture" | "match_scan" | "structural_receipt">().notNull(),
+    kind: text("kind")
+      .$type<"rank_capture" | "match_scan" | "structural_receipt" | "identity_capture">()
+      .notNull(),
     status: text("status").$type<"collecting" | "sealed">().notNull(),
-    source: text("source").$type<"unknown" | "synthetic">().notNull(),
+    source: text("source").$type<"unknown" | "synthetic" | "server_riot_received">().notNull(),
     version: text("version").notNull(),
     operationKey: text("operation_key").notNull(),
     parentId: uuid("parent_id"),
@@ -183,9 +185,12 @@ export const achievementEvidenceHeaders = pgTable(
     }).onDelete("cascade"),
     check(
       "evidence_header_kind",
-      sql`${t.kind} IN ('rank_capture', 'match_scan', 'structural_receipt')`,
+      sql`${t.kind} IN ('rank_capture', 'match_scan', 'structural_receipt', 'identity_capture')`,
     ),
-    check("evidence_header_source", sql`${t.source} IN ('unknown', 'synthetic')`),
+    check(
+      "evidence_header_source",
+      sql`${t.source} IN ('unknown', 'synthetic', 'server_riot_received')`,
+    ),
     check("evidence_header_queue", sql`${t.queue} IN ('RANKED_SOLO_5x5', 'RANKED_FLEX_SR')`),
     check(
       "evidence_header_keys",
