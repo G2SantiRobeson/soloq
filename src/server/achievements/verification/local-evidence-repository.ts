@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import * as schema from "@/db/schema";
+import { assertEvidenceCapacityInTx } from "./evidence-in-tx";
 import {
   achievementEvidenceHeaders as headers,
   achievementEvidenceUnits as units,
@@ -121,40 +122,8 @@ export function localEvidenceRepository(database: LocalDatabase) {
     addUnits: number,
     addBytes: number,
   ) {
-    const [hc] = await tx
-      .select({
-        count: sql<string>`count(*)::text`,
-        bytes: sql<string>`coalesce(sum(octet_length(${headers.data}::text)), 0)::text`,
-      })
-      .from(headers)
-      .where(eq(headers.playerId, identity.playerId));
-    const [uc] = await tx
-      .select({
-        count: sql<string>`count(*)::text`,
-        bytes: sql<string>`coalesce(sum(octet_length(${units.data}::text)), 0)::text`,
-      })
-      .from(units)
-      .where(eq(units.playerId, identity.playerId));
-    if (
-      Number(hc.count) + addHeaders > LOCAL_LIMITS.headersPerPlayer ||
-      Number(hc.bytes) + Number(uc.bytes) + addBytes > LOCAL_LIMITS.bytesPerPlayer
-    )
-      throw new LocalEvidenceError("limit");
-    if (headerId !== null) {
-      const [c] = await tx
-        .select({
-          count: sql<string>`count(*)::text`,
-          bytes: sql<string>`coalesce(sum(octet_length(${units.data}::text)), 0)::text`,
-        })
-        .from(units)
-        .where(eq(units.headerId, headerId));
-      const h = await header(tx, identity, headerId);
-      if (
-        Number(c.count) + addUnits > LOCAL_LIMITS.unitsPerHeader ||
-        Number(c.bytes) + bytes(h.data) + addBytes > LOCAL_LIMITS.bytesPerHeader
-      )
-        throw new LocalEvidenceError("limit");
-    }
+    if (headerId !== null) await header(tx, identity, headerId);
+    await assertEvidenceCapacityInTx(tx, identity.playerId, headerId, addHeaders, addUnits, addBytes);
   }
   function unitData(input: LocalUnitInput) {
     return { version: LOCAL_EVIDENCE_VERSION, ...input };

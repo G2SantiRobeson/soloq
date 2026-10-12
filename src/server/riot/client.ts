@@ -1,8 +1,21 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { accountRouting, platformRouting, regionalRouting, type Platform } from "@/lib/routing";
 import { accountSchema, leagueSchema, matchSchema, summonerSchema } from "./schemas";
 import { isDemo } from "../env";
+import {
+  MATCH_CAPTURE_VERSION,
+  MatchCaptureError,
+  minimalMatchDetail,
+  validMatchId,
+  validStoredMatchKey,
+  type MatchCaptureBinding,
+  type MatchCaptureHandle,
+  type MatchCaptureRecord,
+  type MatchQuery,
+  type MatchReception,
+} from "./match-capture";
 export class RiotError extends Error {
   constructor(
     public status: number,
@@ -47,6 +60,12 @@ type Dependencies = {
 };
 // Only instantiated inside the database-backed global sync lease. One request at a time.
 export class RiotClient {
+  #captures = new WeakMap<
+    MatchCaptureHandle,
+    { binding: MatchCaptureBinding; record: MatchCaptureRecord }
+  >();
+  #observation: { host: string; path: string; receptions: MatchReception[] } | null = null;
+  private simulatedTransport: boolean;
   private nextRequestAt = 0;
   private slot: { deadline: number; remaining: number } | null = null;
   private fetcher: typeof fetch;
@@ -59,6 +78,7 @@ export class RiotClient {
     private deadline = Date.now() + 230_000,
     deps: Dependencies = {},
   ) {
+    this.simulatedTransport = Object.keys(deps).some((key) => key !== "onRateLimit");
     this.fetcher = deps.fetcher ?? fetch;
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.now = deps.now ?? Date.now;
@@ -118,22 +138,45 @@ export class RiotClient {
           cache: "no-store",
           signal: AbortSignal.timeout(10_000),
         });
-      } catch {
+      } catch (error) {
+        this.recordReception(
+          host,
+          path,
+          attempt,
+          null,
+          error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+            ? "timeout"
+            : "network",
+        );
         retryError = new RiotError(503);
         if (attempt === 2) throw retryError;
         this.nextRequestAt = Math.max(this.nextRequestAt, this.now() + this.backoff(attempt));
         continue;
       }
       if (response.ok) {
-        const parsed = schema.safeParse(await response.json());
-        if (!parsed.success) throw new RiotError(502);
+        const reception = this.recordReception(host, path, attempt, response.status, "success");
+        let json: unknown;
+        try {
+          json = await response.json();
+        } catch (error) {
+          if (reception) reception.outcome = "invalid_json";
+          throw error;
+        }
+        const parsed = schema.safeParse(json);
+        if (!parsed.success) {
+          if (reception) reception.outcome = "invalid_schema";
+          throw new RiotError(502);
+        }
+        if (reception) reception.validatedAt = new Date().toISOString();
         return parsed.data;
       }
+      const reception = this.recordReception(host, path, attempt, response.status, "http_error");
       if (response.status !== 429 && response.status < 500) throw new RiotError(response.status);
       const delay =
         response.status === 429
           ? retryAfterMs(response.headers.get("retry-after"), this.now())
           : this.backoff(attempt);
+      if (reception && response.status === 429) reception.retryAfterMs = delay;
       retryError = new RiotError(response.status, delay);
       this.nextRequestAt = Math.max(this.nextRequestAt, this.now() + delay);
       // Persist before retrying: a terminated worker must not forget a shared quota wait.
@@ -144,6 +187,161 @@ export class RiotClient {
   }
   private backoff(attempt: number) {
     return 1000 * 2 ** attempt + Math.floor(this.random() * 500);
+  }
+  private recordReception(
+    host: string,
+    path: string,
+    attempt: number,
+    status: number | null,
+    outcome: MatchReception["outcome"],
+  ) {
+    if (!this.#observation || this.#observation.host !== host || this.#observation.path !== path)
+      return null;
+    const event: MatchReception = {
+      captureId: randomUUID(),
+      receptionId: status === null ? null : randomUUID(),
+      attempt: attempt + 1,
+      receivedAt: status === null ? null : new Date().toISOString(),
+      validatedAt: null,
+      failedAt: status === null ? new Date().toISOString() : null,
+      status,
+      retryAfterMs: null,
+      outcome,
+    };
+    this.#observation.receptions.push(event);
+    return event;
+  }
+  /** Internal server boundary. Calls the existing methods; no extra dispatch/retry. */
+  private async observeMatch<T>(
+    binding: MatchCaptureBinding,
+    query: MatchQuery | string,
+    work: () => Promise<T>,
+  ) {
+    if (isDemo()) throw new MatchCaptureError("scope");
+    if (this.#observation) throw new MatchCaptureError("conflict");
+    const ids = typeof query !== "string";
+    const path = ids
+      ? `/lol/match/v5/matches/by-puuid/${encodeURIComponent(binding.puuid)}/ids?startTime=${query.startTime}&endTime=${query.endTime}&start=${query.start}&count=100`
+      : `/lol/match/v5/matches/${encodeURIComponent(query)}`;
+    const observation = {
+      host: regionalRouting(binding.platform),
+      path,
+      receptions: [] as MatchReception[],
+    };
+    this.#observation = observation;
+    let value: T | undefined;
+    let error: unknown;
+    try {
+      value = await work();
+    } catch (caught) {
+      error = caught;
+    } finally {
+      this.#observation = null;
+    }
+    // Method substitutes do not demonstrate an HTTP response. Keep them explicitly unattested.
+    if (!observation.receptions.length)
+      observation.receptions.push({
+        captureId: randomUUID(),
+        receptionId: null,
+        attempt: 1,
+        receivedAt: null,
+        validatedAt: null,
+        failedAt: null,
+        status: null,
+        retryAfterMs: null,
+        outcome: "unobserved",
+      });
+    let originalIds: string[] | null = null;
+    let detail: MatchCaptureRecord["detail"] = null;
+    try {
+      if (value !== undefined) {
+        if (ids) {
+          const checked = z.array(z.string()).max(100).safeParse(value);
+          if (
+            !checked.success ||
+            checked.data.some(
+              (id) =>
+                !(observation.receptions.every((r) => r.outcome === "unobserved")
+                  ? validStoredMatchKey(id)
+                  : validMatchId(id, binding.platform)),
+            )
+          )
+            throw new MatchCaptureError("invalid");
+          originalIds = [...checked.data];
+        } else {
+          const checked = matchSchema.safeParse(value);
+          if (
+            !checked.success ||
+            !(observation.receptions.every((r) => r.outcome === "unobserved")
+              ? validStoredMatchKey(checked.data.metadata.matchId)
+              : validMatchId(checked.data.metadata.matchId, binding.platform))
+          )
+            throw new MatchCaptureError("invalid");
+          detail = minimalMatchDetail(checked.data, binding.puuid);
+        }
+      }
+    } catch (caught) {
+      // Keep the real reception even when the bounded projection cannot be confirmed.
+      // No source or cursor may advance from a failed normalization.
+      error = caught;
+      value = undefined;
+      const last = observation.receptions.at(-1);
+      if (last?.outcome === "success") last.outcome = "invalid_normalization";
+    }
+    const capture = Object.freeze({ key: randomUUID() });
+    this.#captures.set(capture, {
+      binding: { ...binding },
+      record: {
+        version: MATCH_CAPTURE_VERSION,
+        normalizationVersion: "minimal-match-v1",
+        requestId: capture.key,
+        endpoint: ids ? "MATCH-V5-IDS" : "MATCH-V5-DETAIL",
+        source: observation.receptions.every((r) => r.outcome === "unobserved")
+          ? "unknown"
+          : this.simulatedTransport
+            ? "synthetic"
+            : observation.receptions.some((r) => r.receptionId !== null)
+              ? "server_riot_received"
+              : "unknown",
+        query: ids ? query : null,
+        requestedMatchId: ids ? null : query,
+        receptions: observation.receptions,
+        ids: originalIds,
+        detail,
+        certification: "not_established",
+        grantAuthorized: false,
+      },
+    });
+    return { value, error, capture };
+  }
+  observeMatchIds(binding: MatchCaptureBinding, query: MatchQuery) {
+    const owner = { ...binding };
+    const effective = { ...query };
+    return this.observeMatch(owner, effective, () =>
+      this.matchIds(
+        owner.platform,
+        owner.puuid,
+        effective.startTime,
+        effective.endTime,
+        effective.start,
+      ),
+    );
+  }
+  observeMatchDetail(binding: MatchCaptureBinding, id: string) {
+    const owner = { ...binding };
+    return this.observeMatch(owner, id, () => this.match(owner.platform, id));
+  }
+  /** A copied object/UUID or a handle from another client cannot retrieve a receipt. */
+  confirmedMatchInput(capture: MatchCaptureHandle, binding: MatchCaptureBinding) {
+    const stored = this.#captures.get(capture);
+    if (
+      !stored ||
+      stored.binding.playerId !== binding.playerId ||
+      stored.binding.platform !== binding.platform ||
+      stored.binding.puuid !== binding.puuid
+    )
+      throw new MatchCaptureError("scope");
+    return structuredClone(stored.record);
   }
   account(platform: Platform, gameName: string, tagLine: string) {
     return this.request(

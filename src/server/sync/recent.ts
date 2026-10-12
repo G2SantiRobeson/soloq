@@ -11,6 +11,14 @@ import type { PlayerSyncAttempt } from "@/lib/player-sync-state";
 import { finishPlayerSyncPhase } from "./player-state";
 import { syncWrite } from "./progress";
 import { insertMatchParticipation, updateSourcePlayer } from "./source-revision";
+import {
+  openMatchScansInTx,
+  capturePageInTx,
+  captureDispositionInTx,
+  captureReusedInTx,
+  finishMatchScansInTx,
+  type MatchScan,
+} from "./match-evidence";
 
 export const RECENT_BATCH_SIZE = 5;
 export const RECENT_OVERLAP_MS = 86400_000;
@@ -45,23 +53,29 @@ export async function importRecent(
       imported,
       reason: "window_not_ready" as const,
     };
+  let scan: MatchScan | undefined;
+  const binding = { playerId: player.id, platform: player.platform, puuid: player.puuid };
   for (;;) {
     client.assertBudget();
-    const ids = await client.matchIds(
-      player.platform,
-      player.puuid,
-      Math.floor(start.getTime() / 1000),
-      end.getTime() / 1000,
-      offset,
-    );
+    const observed = await client.observeMatchIds(binding, {
+      startTime: Math.floor(start.getTime() / 1000),
+      endTime: end.getTime() / 1000,
+      start: offset,
+      count: 100,
+    });
     // This remains a successful IDs response marker, separate from scheduling opportunities.
-    if (!offset)
-      await syncWrite(client, async (tx) => {
+    scan = await syncWrite(client, async (tx) => {
+      const current = scan ?? (await openMatchScansInTx(tx, client, player, "recent", start, end));
+      await capturePageInTx(tx, client, current, player, observed.capture);
+      if (!offset && observed.error === undefined)
         await tx
           .update(players)
           .set({ lastAttemptAt: new Date() })
           .where(eq(players.id, player.id));
-      });
+      return current;
+    });
+    if (observed.error !== undefined) throw observed.error;
+    const ids = observed.value!;
     const unique = [...new Set(ids)];
     const existing = unique.length
       ? await db()
@@ -70,6 +84,11 @@ export async function importRecent(
           .where(and(eq(playerMatches.playerId, player.id), inArray(playerMatches.matchId, unique)))
       : [];
     const saved = new Set(existing.map((row) => row.id));
+    // One fenced write for reused IDs from this page, no fabricated HTTP timestamps.
+    if (saved.size)
+      await syncWrite(client, (tx) =>
+        captureReusedInTx(tx, client, scan!, [...saved], observed.capture.key),
+      );
     for (const id of unique) {
       if (saved.has(id)) continue;
       client.assertBudget();
@@ -80,27 +99,94 @@ export async function importRecent(
           imported,
           reason: "batch_limit" as const,
         };
-      let match;
-      try {
-        match = await client.match(player.platform, id);
-      } catch (error) {
+      const detail = await client.observeMatchDetail(binding, id);
+      if (detail.error !== undefined) {
+        const error = detail.error;
+        await syncWrite(client, (tx) =>
+          captureDispositionInTx(
+            tx,
+            client,
+            scan!,
+            player,
+            id,
+            error instanceof RiotError && error.status === 404 ? "unavailable_404" : "unknown",
+            detail.capture,
+            detail.capture.key,
+          ),
+        );
         // Same recorded-gap policy as historical import; never fabricate missing details.
         if (error instanceof RiotError && error.status === 404) continue;
         throw error;
       }
-      if (match.metadata.matchId !== id) throw new RiotError(502);
-      if (!isStandardMatch(match.info.queueId, match.info.mapId, match.info.gameMode)) continue;
+      const match = detail.value!;
+      if (match.metadata.matchId !== id) {
+        await syncWrite(client, (tx) =>
+          captureDispositionInTx(
+            tx,
+            client,
+            scan!,
+            player,
+            id,
+            "unknown",
+            detail.capture,
+            detail.capture.key,
+          ),
+        );
+        throw new RiotError(502);
+      }
+      if (!isStandardMatch(match.info.queueId, match.info.mapId, match.info.gameMode)) {
+        await syncWrite(client, (tx) =>
+          captureDispositionInTx(
+            tx,
+            client,
+            scan!,
+            player,
+            id,
+            "excluded_with_basis",
+            detail.capture,
+            detail.capture.key,
+          ),
+        );
+        continue;
+      }
       if (
         match.info.gameStartTimestamp < start.getTime() ||
         match.info.gameStartTimestamp >= end.getTime()
-      )
+      ) {
+        await syncWrite(client, (tx) =>
+          captureDispositionInTx(
+            tx,
+            client,
+            scan!,
+            player,
+            id,
+            "unknown",
+            detail.capture,
+            detail.capture.key,
+          ),
+        );
         throw new RiotError(502);
+      }
       const stats = normalizeParticipant(match, player.puuid);
-      if (!stats) throw new RiotError(502);
+      if (!stats) {
+        await syncWrite(client, (tx) =>
+          captureDispositionInTx(
+            tx,
+            client,
+            scan!,
+            player,
+            id,
+            "unknown",
+            detail.capture,
+            detail.capture.key,
+          ),
+        );
+        throw new RiotError(502);
+      }
       imported += await syncWrite(
         client,
         async (tx) => {
-          return insertMatchParticipation(
+          const added = await insertMatchParticipation(
             tx,
             {
               id,
@@ -112,6 +198,17 @@ export async function importRecent(
             },
             { playerId: player.id, matchId: id, ...stats },
           );
+          await captureDispositionInTx(
+            tx,
+            client,
+            scan!,
+            player,
+            id,
+            "resolved",
+            detail.capture,
+            detail.capture.key,
+          );
+          return added;
         },
         (added) => ({ type: "import", pass: "recent", playerId: player.id, imported: added }),
       );
@@ -127,6 +224,7 @@ export async function importRecent(
           updatedAt: new Date(),
           ...finishPlayerSyncPhase(attempt, "success"),
         });
+        await finishMatchScansInTx(tx, client, scan!);
       },
       {
         type: "result",

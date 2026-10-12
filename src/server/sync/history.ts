@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { playerMatches, players } from "@/db/schema";
@@ -11,6 +12,14 @@ import type { PlayerSyncAttempt } from "@/lib/player-sync-state";
 import { finishPlayerSyncPhase } from "./player-state";
 import { syncWrite } from "./progress";
 import { insertMatchParticipation, updateSourcePlayer } from "./source-revision";
+import {
+  openMatchScansInTx,
+  capturePageInTx,
+  captureDispositionInTx,
+  captureReusedInTx,
+  finishMatchScansInTx,
+} from "./match-evidence";
+import type { MatchCaptureHandle } from "../riot/match-capture";
 
 export const MATCH_PAGE_SIZE = 100;
 export const HISTORY_BATCH_SIZE = 25;
@@ -58,7 +67,7 @@ export async function importHistory(
   let offset = player.scanOffset;
   let imported = 0;
   let processed = 0;
-  await syncWrite(
+  const scan = await syncWrite(
     client,
     async (tx) => {
       await updateSourcePlayer(tx, playerId, {
@@ -71,6 +80,17 @@ export async function importHistory(
             }
           : {}),
       });
+      return openMatchScansInTx(
+        tx,
+        client,
+        player,
+        backfill ? "season_backfill" : "incremental_repair",
+        player.scanStart,
+        end,
+        offset,
+        pending,
+        exhausted,
+      );
     },
     {
       type: "history",
@@ -109,6 +129,7 @@ export async function importHistory(
                 }
               : {}),
           });
+          await finishMatchScansInTx(tx, client, scan);
         },
         { type: "result", pass: "history", result: { playerId, status: "complete" } },
       );
@@ -118,19 +139,29 @@ export async function importHistory(
     if (processed >= budget)
       return { playerId, status: "partial" as const, imported, reason: "batch_limit" as const };
     if (!pending.length) {
-      const ids = await client.matchIds(
-        player.platform,
-        player.puuid,
-        Math.floor(player.scanStart.getTime() / 1000),
-        Math.floor(end.getTime() / 1000),
-        offset,
+      const observed = await client.observeMatchIds(
+        { playerId, platform: player.platform, puuid: player.puuid },
+        {
+          startTime: Math.floor(player.scanStart.getTime() / 1000),
+          endTime: Math.floor(end.getTime() / 1000),
+          start: offset,
+          count: 100,
+        },
       );
+      if (observed.error !== undefined) {
+        await syncWrite(client, (tx) =>
+          capturePageInTx(tx, client, scan, player, observed.capture),
+        );
+        throw observed.error;
+      }
+      const ids = observed.value!;
       pending = [...new Set(ids)];
       exhausted = ids.length < MATCH_PAGE_SIZE;
       offset += ids.length;
       await syncWrite(
         client,
         async (tx) => {
+          await capturePageInTx(tx, client, scan, player, observed.capture);
           await updateSourcePlayer(tx, playerId, {
             scanPending: pending,
             scanOffset: offset,
@@ -154,13 +185,21 @@ export async function importHistory(
       .where(and(eq(playerMatches.playerId, playerId), eq(playerMatches.matchId, matchId)))
       .limit(1);
     let unavailable = false;
+    let capture: MatchCaptureHandle | null = null;
+    const reuseKey = randomUUID();
     let normalized: {
       match: Awaited<ReturnType<RiotClient["match"]>>;
       stats: NonNullable<ReturnType<typeof normalizeParticipant>>;
     } | null = null;
     if (!existing) {
       try {
-        const match = await client.match(player.platform, matchId);
+        const observed = await client.observeMatchDetail(
+          { playerId, platform: player.platform, puuid: player.puuid },
+          matchId,
+        );
+        capture = observed.capture;
+        if (observed.error !== undefined) throw observed.error;
+        const match = observed.value!;
         if (match.metadata.matchId !== matchId) throw new RiotError(502);
         if (
           isStandardMatch(match.info.queueId, match.info.mapId, match.info.gameMode) &&
@@ -173,7 +212,22 @@ export async function importHistory(
         }
       } catch (error) {
         // Missing Riot details are a recorded gap, not a fabricated match or a blocked season.
-        if (!(error instanceof RiotError) || error.status !== 404) throw error;
+        if (!(error instanceof RiotError) || error.status !== 404) {
+          if (capture)
+            await syncWrite(client, (tx) =>
+              captureDispositionInTx(
+                tx,
+                client,
+                scan,
+                player,
+                matchId,
+                "unknown",
+                capture,
+                capture!.key,
+              ),
+            );
+          throw error;
+        }
         unavailable = true;
       }
     }
@@ -198,6 +252,18 @@ export async function importHistory(
             { playerId, matchId, ...stats },
           );
         }
+        if (existing) await captureReusedInTx(tx, client, scan, [matchId], reuseKey);
+        else
+          await captureDispositionInTx(
+            tx,
+            client,
+            scan,
+            player,
+            matchId,
+            normalized ? "resolved" : unavailable ? "unavailable_404" : "excluded_with_basis",
+            capture,
+            capture!.key,
+          );
         await updateSourcePlayer(tx, playerId, {
           scanPending: next,
           ...(backfill

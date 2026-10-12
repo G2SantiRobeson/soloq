@@ -158,10 +158,10 @@ describe("recent-first synchronization", () => {
       const url = String(input);
       if (url.includes("/ids?"))
         return Response.json(
-          url.includes(a.puuid) ? Array.from({ length: 40 }, (_, i) => `excluded_${i}`) : [],
+          url.includes(a.puuid) ? Array.from({ length: 40 }, (_, i) => `LA2_${90000 + i}`) : [],
         );
-      if (url.endsWith("_0")) {
-        const excluded = freshMatch("excluded_0", a.puuid);
+      if (url.endsWith("LA2_90000")) {
+        const excluded = freshMatch("LA2_90000", a.puuid);
         excluded.info.queueId = 450;
         return Response.json(excluded);
       }
@@ -198,7 +198,7 @@ describe("recent-first synchronization", () => {
       // Recent and historical slots are independent; each cap includes IDs and excluded details.
       expect(run.recent.errors).toBe(0);
       expect(
-        fetcher.mock.calls.filter(([url]) => String(url).includes("/matches/excluded_")),
+        fetcher.mock.calls.filter(([url]) => String(url).includes("/matches/LA2_900")),
       ).toHaveLength(16);
     } finally {
       vi.unstubAllGlobals();

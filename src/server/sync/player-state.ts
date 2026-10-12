@@ -11,6 +11,8 @@ import type {
 } from "@/lib/player-sync-state";
 import { RiotClient, RiotError, SyncDeadline } from "../riot/client";
 import { syncWrite } from "./progress";
+import { MatchCaptureError } from "../riot/match-capture";
+import { LocalEvidenceError } from "../achievements/verification/persistence-contracts";
 import type { PendingReason } from "@/lib/sync-scheduling";
 
 const errorColumns = {
@@ -51,7 +53,10 @@ export function playerSyncError(error: unknown, step: PlayerSyncStep): PlayerSyn
           : "internal",
     step,
     message:
-      error instanceof RiotError || error instanceof SyncDeadline
+      error instanceof RiotError ||
+      error instanceof SyncDeadline ||
+      error instanceof MatchCaptureError ||
+      error instanceof LocalEvidenceError
         ? error.message
         : "Error de sincronización; consulta el registro del servidor.",
   };

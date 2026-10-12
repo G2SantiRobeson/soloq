@@ -362,7 +362,7 @@ describe("source revision writers (ephemeral SQL, not independent PostgreSQL con
     expect((await row(p.id)).sourceRevision).toBe(0n);
     expect((await row(p.id)).backfillProcessed).toBe(0);
   });
-  it("recent retry skips persisted participants without another source increment", async () => {
+  it("recent retry skips persisted participants while revising the new scan evidence", async () => {
     const p = await player();
     const c = client();
     const m = fixture();
@@ -371,11 +371,11 @@ describe("source revision writers (ephemeral SQL, not independent PostgreSQL con
     const attempt = await beginPlayerSyncPhase(p.id, "recent", c);
     await importRecent(p, c, 5, attempt);
     const after = await row(p.id);
-    expect(after.sourceRevision).toBe(2n); // participation + complete coverage.
+    expect(after.sourceRevision).toBe(3n); // page/root + participation/capture + complete coverage.
     // Freeze the effective end at its stored second; repeated coverage is identical.
     vi.spyOn(Date, "now").mockReturnValue(after.lastSyncedAt!.getTime() + 120000);
     await importRecent(after, c, 5, attempt);
-    expect((await row(p.id)).sourceRevision).toBe(after.sourceRevision);
+    expect((await row(p.id)).sourceRevision).toBe(after.sourceRevision + 3n); // new page, reuse disposition, lifecycle; unchanged coverage.
     expect(c.match).toHaveBeenCalledTimes(1);
   });
   it("continues a partial historical cursor, counting participation and disposition only once per transaction", async () => {
@@ -417,7 +417,10 @@ describe("source revision writers (ephemeral SQL, not independent PostgreSQL con
     expect(current.sourceRevision).toBe(3n); // reset + open, plus earlier participation.
     expect(current.backfillProcessed).toBe(0);
     expect(await database.select().from(schema.playerMatches)).toHaveLength(1);
-    expect(await database.select().from(schema.achievementEvidenceHeaders)).toHaveLength(0);
+    const roots = await database.select().from(schema.achievementEvidenceHeaders);
+    expect(roots).toHaveLength(2);
+    expect(roots.every((h) => h.source === "unknown" && h.data.lifecycle === "active")).toBe(true);
+    expect(await database.select().from(schema.achievementEvidenceUnits)).toHaveLength(0); // No response invented at opening.
   });
   it("records historical 404 context, not manufactured match evidence", async () => {
     const p = await player();
@@ -440,7 +443,7 @@ describe("source revision writers (ephemeral SQL, not independent PostgreSQL con
     await expect(syncBackfillPlayer(p.id, c)).rejects.toThrow();
     const failed = await row(p.id);
     expect(failed.backfillStatus).toBe("failed");
-    expect(failed.sourceRevision).toBe(2n); // open + fail.
+    expect(failed.sourceRevision).toBe(3n); // open + unresolved request event + fail.
     await syncWrite(c, (tx) =>
       updateSourcePlayer(tx, p.id, { backfillStatus: "failed", backfillUpdatedAt: new Date() }),
     );
