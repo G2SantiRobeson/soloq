@@ -166,7 +166,6 @@ export async function syncPlayer(
       },
     );
     console.warn(error instanceof SyncBudget ? "player_sync_pending" : "player_sync_failed", {
-      playerId,
       phase: "rank",
       code: error instanceof SyncBudget ? error.reason : failure.code,
     });
@@ -218,7 +217,6 @@ export async function syncPlayer(
       },
     );
     console.warn(error instanceof SyncBudget ? "player_sync_pending" : "player_sync_failed", {
-      playerId,
       phase: "recent",
       code: error instanceof SyncBudget ? error.reason : failure.code,
     });
@@ -333,9 +331,7 @@ export async function syncAllPlayers(meta: RunMeta = { action: "global", source:
               complete: results.filter((r) => r.status === "complete").length,
               pending: pending.length - results.filter((r) => r.status === "complete").length,
               code: error.status,
-              pendingPlayers: pending
-                .filter((p) => !results.some((r) => r.playerId === p.id))
-                .map((p) => ({ playerId: p.id, reason: "riot_backoff" })),
+              unvisited: pending.filter((p) => !results.some((r) => r.playerId === p.id)).length,
             });
             throw error;
           }
@@ -453,10 +449,8 @@ export async function syncAllPlayers(meta: RunMeta = { action: "global", source:
       console.info("sync_batch_finished", {
         recent,
         backfill: { ...backfill, results: undefined },
-        pendingPlayers: results
-          .filter((r) => r.status !== "complete")
-          .map(({ playerId, status, reason }) => ({ playerId, status, reason })),
-        historyPending: backfillResults.filter((r) => r.status !== "complete"),
+        pending: results.filter((r) => r.status !== "complete").length,
+        historyPending: backfillResults.filter((r) => r.status !== "complete").length,
       });
       return {
         ...runIdentity(client),

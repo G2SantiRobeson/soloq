@@ -257,6 +257,7 @@ export function AdminPanel({
             if (action === "delete") {
               deleted.current = true;
               const removedId = key.split(":")[1];
+              progress.forgetDeletedPlayer(removedId);
               setRemovedPlayerIds((ids) => [...ids, removedId]);
             }
             setDeleting(null);

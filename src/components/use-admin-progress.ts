@@ -31,6 +31,21 @@ export function clearFinishedAdminObservation(
     /* Keep the visibility policy even when browser storage is unavailable. */
   }
 }
+export function clearDeletedAdminObservation(
+  storage: Pick<Storage, "getItem" | "removeItem">,
+  dto: ProgressDto | null,
+  playerId: string,
+) {
+  const run = dto?.run;
+  if (!run || run.action === "global" || run.playerId !== playerId) return false;
+  try {
+    if (run.requestId && restoreAdminObservation(storage)?.requestId === run.requestId)
+      storage.removeItem(storageKey);
+  } catch {
+    /* This browser's storage may be unavailable; no remote cleanup is implied. */
+  }
+  return true;
+}
 export function useAdminProgress(
   initial: ProgressDto | undefined,
   onFinished: () => void,
@@ -130,6 +145,25 @@ export function useAdminProgress(
     begin,
     cancel,
     rejected,
+    forgetDeletedPlayer: (playerId: string) => {
+      // Called only after the server confirms DELETE. Other players and global
+      // observations keep their correlation, even if their state is uncertain.
+      const run = observation?.run;
+      if (run && run.action !== "global" && run.playerId === playerId) {
+        try {
+          clearDeletedAdminObservation(sessionStorage, observation, playerId);
+        } catch {
+          /* Accessing the sessionStorage property itself can be disallowed. */
+        }
+        watcher.current?.stop();
+        setObservation(null);
+        setProblem(null);
+        setManualRead(null);
+        setAwaiting(false);
+        setCorrelated(false);
+        observe();
+      }
+    },
     refresh: () => watcher.current?.refresh(),
     refreshManual: () => {
       visibility.current.reveal();

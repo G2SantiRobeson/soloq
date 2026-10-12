@@ -6,6 +6,7 @@ import {
 } from "@/lib/admin-progress-visibility";
 import {
   clearFinishedAdminObservation,
+  clearDeletedAdminObservation,
   restoreAdminObservation,
 } from "@/components/use-admin-progress";
 import { AdminPanel } from "@/components/admin-panel";
@@ -121,6 +122,7 @@ function panel(dto: ProgressDto | null, roster = [player]) {
     begin: vi.fn(),
     cancel: vi.fn(),
     rejected: vi.fn(),
+    forgetDeletedPlayer: vi.fn(),
     refresh: vi.fn(),
     refreshManual: vi.fn(),
     manualRead: null,
@@ -136,6 +138,51 @@ afterEach(() => {
 });
 
 describe("administrative progress visibility lifecycle", () => {
+  it("clears only this browser's matching individual correlation after confirmed deletion", () => {
+    const saved = storage();
+    expect(clearDeletedAdminObservation(saved, fixture("running"), player.id)).toBe(true);
+    expect(restoreAdminObservation(saved)).toBeNull();
+    expect(saved.removeItem).toHaveBeenCalledOnce();
+  });
+  it("preserves other players, global work, unknown work and newer browser correlations", () => {
+    for (const dto of [fixture("running"), fixture("running", true), null]) {
+      const saved = storage();
+      expect(clearDeletedAdminObservation(saved, dto, other.id)).toBe(false);
+      expect(saved.removeItem).not.toHaveBeenCalled();
+    }
+    const global = storage();
+    expect(clearDeletedAdminObservation(global, fixture("running", true), player.id)).toBe(false);
+    expect(global.removeItem).not.toHaveBeenCalled();
+    const newer = storage(owner);
+    clearDeletedAdminObservation(newer, fixture(), player.id);
+    expect(restoreAdminObservation(newer)?.requestId).toBe(owner);
+  });
+  it("can forget an individual uncertain observation only on the confirmed deletion event", () => {
+    const saved = storage();
+    const dto = fixture("running");
+    dto.run!.state = "possibly_interrupted";
+    clearFinishedAdminObservation(saved, dto);
+    expect(saved.removeItem).not.toHaveBeenCalled();
+    clearDeletedAdminObservation(saved, dto, player.id);
+    expect(saved.removeItem).toHaveBeenCalledOnce();
+    expect(dto.run!.state).toBe("possibly_interrupted");
+  });
+  it("failed browser storage cleanup never pretends to delete server checkpoints", () => {
+    const dto = fixture();
+    expect(
+      clearDeletedAdminObservation(
+        {
+          getItem: () => {
+            throw new Error("disabled");
+          },
+          removeItem: vi.fn(),
+        },
+        dto,
+        player.id,
+      ),
+    ).toBe(true);
+    expect(dto.run!.history!.imported).toBe(7);
+  });
   it("shows active backfill and its checkpoints after a reload", () => {
     const view = createAdminProgressVisibility().observe(fixture("running"));
     expect(view.terminal).toBe(false);
