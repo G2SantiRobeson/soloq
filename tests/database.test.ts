@@ -1630,14 +1630,59 @@ describe("PostgreSQL migrations and data integrity", () => {
     const result = await pg.query<{ tablename: string; rowsecurity: boolean }>(
       "select tablename, rowsecurity from pg_tables where schemaname='public'",
     );
-    expect(result.rows).toHaveLength(7);
+    const expectedTables = [
+      "achievement_evidence_headers",
+      "achievement_evidence_units",
+      "admin_sessions",
+      "login_attempts",
+      "matches",
+      "player_matches",
+      "players",
+      "ranked_snapshots",
+      "sync_locks",
+    ];
+    expect(result.rows.map((row) => row.tablename).sort()).toEqual(expectedTables);
     expect(result.rows.every((row) => row.rowsecurity)).toBe(true);
-    await addPlayer();
+    expect((await pg.query("select * from pg_policies where schemaname='public'")).rows).toEqual(
+      [],
+    );
+    const player = await addPlayer();
+    const [header] = await database
+      .insert(schema.achievementEvidenceHeaders)
+      .values({
+        playerId: player.id,
+        platform: "LA2",
+        queue: "RANKED_SOLO_5x5",
+        season: "2026",
+        kind: "rank_capture",
+        status: "collecting",
+        source: "unknown",
+        version: "rls-synthetic-fixture-v1",
+        operationKey: "rls:fixture",
+        data: {},
+      })
+      .returning({ id: schema.achievementEvidenceHeaders.id });
+    await database.insert(schema.achievementEvidenceUnits).values({
+      playerId: player.id,
+      headerId: header.id,
+      platform: "LA2",
+      queue: "RANKED_SOLO_5x5",
+      season: "2026",
+      kind: "snapshot",
+      unitKey: "rls:unit",
+      ordinal: 0,
+      revision: 0n,
+      fingerprint: "0".repeat(64),
+      data: {},
+    });
+    for (const table of ["achievement_evidence_headers", "achievement_evidence_units"])
+      expect((await pg.query(`select * from ${table}`)).rows).toHaveLength(1);
     await pg.exec(
       "CREATE ROLE test_reader; GRANT USAGE ON SCHEMA public TO test_reader; GRANT SELECT ON ALL TABLES IN SCHEMA public TO test_reader; SET ROLE test_reader",
     );
     try {
-      expect((await pg.query("select * from players")).rows).toEqual([]);
+      for (const table of expectedTables)
+        expect((await pg.query(`select * from ${table}`)).rows).toEqual([]);
     } finally {
       await pg.exec("RESET ROLE; DROP OWNED BY test_reader; DROP ROLE test_reader");
     }

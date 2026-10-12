@@ -50,6 +50,13 @@
       "when": 1791587693380,
       "tag": "0006_sync_run_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791761901726,
+      "tag": "0007_local_evidence_persistence",
+      "breakpoints": true
     }
   ]
 }
