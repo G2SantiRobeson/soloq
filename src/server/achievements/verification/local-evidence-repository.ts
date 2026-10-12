@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash } from "node:crypto";
 import { and, asc, eq, gt, inArray, lte, or, sql } from "drizzle-orm";
-import type { PgliteDatabase } from "drizzle-orm/pglite";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "@/db/schema";
 import { assertEvidenceCapacityInTx } from "./evidence-in-tx";
 import {
@@ -32,7 +32,7 @@ import {
   type EffectiveEvidence,
 } from "./persistence-contracts";
 
-type LocalDatabase = PgliteDatabase<typeof schema>;
+type LocalDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type LocalTransaction = Pick<LocalDatabase, "select" | "insert" | "update" | "delete">;
 type Header = typeof headers.$inferSelect;
 type Unit = typeof units.$inferSelect;
@@ -71,7 +71,9 @@ const dto = (h: Header) => ({
 });
 
 /** Local test injection only. No operational db(), URL, connection factory, routes or callers. */
-export function localEvidenceRepository(database: LocalDatabase) {
+export function localEvidenceRepository<T extends PgQueryResultHKT>(
+  database: PgDatabase<T, typeof schema>,
+) {
   // A preparation is a private capability in this repository instance, not a client-provided receipt.
   const prepared = new WeakMap<Prepared, StoredPreparation>();
 

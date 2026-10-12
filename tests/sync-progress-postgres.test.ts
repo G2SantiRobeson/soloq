@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "@/db/schema";
@@ -29,10 +30,7 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 describe.skipIf(!enabled)("real PostgreSQL concurrent lease fencing (loopback only)", () => {
   beforeAll(async () => {
     vi.stubEnv("DEMO_MODE", "false");
-    for (const f of readdirSync("drizzle")
-      .filter((f) => f.endsWith(".sql"))
-      .sort())
-      await pool.unsafe(readFileSync(`drizzle/${f}`, "utf8")).simple();
+    await migrate(database, { migrationsFolder: "drizzle" });
   });
   beforeEach(async () => {
     await pool`TRUNCATE players, sync_locks CASCADE`;

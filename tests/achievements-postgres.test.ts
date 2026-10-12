@@ -1,10 +1,10 @@
 /** Opt-in independent sessions on an explicitly disposable LOCAL PostgreSQL.
  * Never reads .env files or DATABASE_URL. No remote hosts or credentials accepted.
  */
-import { readFileSync, readdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "@/db/schema";
@@ -56,10 +56,7 @@ describe.skipIf(!localUrl)("independent PostgreSQL sessions (opt-in local dispos
     database = drizzle(readConnection, { schema });
     writer = drizzle(writeConnection, { schema });
     reader = consistentAchievementReader(database);
-    for (const file of readdirSync("drizzle")
-      .filter((f) => f.endsWith(".sql"))
-      .sort())
-      await writeConnection.unsafe(readFileSync(`drizzle/${file}`, "utf8"));
+    await migrate(writer, { migrationsFolder: "drizzle" });
   });
   beforeEach(async () => {
     await writer.delete(schema.players);
