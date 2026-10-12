@@ -413,7 +413,11 @@ function captureInput(
     platform: scan.platform,
     puuid: player.puuid,
   });
-  if (record.source === "server_riot_received" && !leaseContext(client))
+  if (
+    (record.source === "server_riot_received" ||
+      (record.source === "unknown" && record.receptions.some((r) => r.outcome !== "unobserved"))) &&
+    !leaseContext(client)
+  )
     throw new MatchCaptureError("unleased");
   return record;
 }

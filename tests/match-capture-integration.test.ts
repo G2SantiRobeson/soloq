@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import * as schema from "@/db/schema";
 import { RiotClient, RiotError } from "@/server/riot/client";
 import { MatchCaptureError } from "@/server/riot/match-capture";
-import { bindLease, syncWrite } from "@/server/sync/progress";
+import { bindLease, syncWrite, LeaseLost } from "@/server/sync/progress";
 import { insertMatchParticipation, updateSourcePlayer } from "@/server/sync/source-revision";
 import {
   captureDispositionInTx,
@@ -660,7 +660,7 @@ describe("MATCH InTx, persistence, recovery and policy A (PGlite, not multi-sess
         .every((u) => u.data.state === "unknown"),
     ).toBe(true);
   });
-  it("requires a bound lease before persisting received-mode evidence (global fetch mocked, no authenticated Riot used)", async () => {
+  it("classifies global fetch mocks as synthetic and fences their bound lease (not authenticated Riot)", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => Response.json([])),
@@ -669,9 +669,12 @@ describe("MATCH InTx, persistence, recovery and policy A (PGlite, not multi-sess
     const p = await row();
     const s = await scan(c);
     const observed = await c.observeMatchIds(binding, query);
+    expect(c.confirmedMatchInput(observed.capture, binding).source).toBe("synthetic");
+    await lease(c);
+    await database.update(schema.syncLocks).set({ expiresAt: new Date(0) });
     await expect(
       syncWrite(c, (tx) => capturePageInTx(tx, c, s, p, observed.capture)),
-    ).rejects.toMatchObject({ code: "unleased" });
+    ).rejects.toThrow(LeaseLost);
     expect(await units()).toHaveLength(0);
   });
   it("method substitution has no HTTP receipt and cannot masquerade as a real server source", async () => {
@@ -687,6 +690,19 @@ describe("MATCH InTx, persistence, recovery and policy A (PGlite, not multi-sess
       status: null,
       outcome: "unobserved",
     });
+  });
+  it("an unattributed runtime wrapper remains unknown and cannot bypass the producer lease", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubGlobal("fetch", async () => Response.json([]));
+    const c = new RiotClient();
+    const p = await row();
+    const s = await scan(c);
+    const observed = await c.observeMatchIds(binding, query);
+    expect(c.confirmedMatchInput(observed.capture, binding).source).toBe("unknown");
+    await expect(
+      syncWrite(c, (tx) => capturePageInTx(tx, c, s, p, observed.capture)),
+    ).rejects.toMatchObject({ code: "unleased" });
+    expect(await units()).toHaveLength(0);
   });
   it("blocks tampered predecessor fingerprints instead of appending a successful event", async () => {
     const p = await row();

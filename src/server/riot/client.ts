@@ -4,6 +4,15 @@ import { z } from "zod";
 import { accountRouting, platformRouting, regionalRouting, type Platform } from "@/lib/routing";
 import { accountSchema, leagueSchema, matchSchema, summonerSchema } from "./schemas";
 import { isDemo } from "../env";
+import { RANKED_QUEUES } from "@/lib/queues";
+import {
+  RANKED_CAPTURE_VERSION,
+  type RankedBinding,
+  type RankedCaptureHandle,
+  type RankedRecord,
+} from "./ranked-capture";
+// Compare against the transport present at module initialization; substituted globals are not evidence.
+const initialFetch = globalThis.fetch;
 import {
   MATCH_CAPTURE_VERSION,
   MatchCaptureError,
@@ -60,12 +69,18 @@ type Dependencies = {
 };
 // Only instantiated inside the database-backed global sync lease. One request at a time.
 export class RiotClient {
+  #ranked = new WeakMap<
+    RankedCaptureHandle,
+    { binding: RankedBinding; puuid: string | null; record: RankedRecord }
+  >();
+  #sharedRemakes = new WeakMap<MatchCaptureHandle, Platform>();
   #captures = new WeakMap<
     MatchCaptureHandle,
     { binding: MatchCaptureBinding; record: MatchCaptureRecord }
   >();
   #observation: { host: string; path: string; receptions: MatchReception[] } | null = null;
   private simulatedTransport: boolean;
+  private unattributedTransport: boolean;
   private nextRequestAt = 0;
   private slot: { deadline: number; remaining: number } | null = null;
   private fetcher: typeof fetch;
@@ -78,7 +93,10 @@ export class RiotClient {
     private deadline = Date.now() + 230_000,
     deps: Dependencies = {},
   ) {
-    this.simulatedTransport = Object.keys(deps).some((key) => key !== "onRateLimit");
+    this.simulatedTransport =
+      process.env.NODE_ENV === "test" || Object.keys(deps).some((key) => key !== "onRateLimit");
+    // Framework wrapping is not a synthetic dataset, but its origin is not established here.
+    this.unattributedTransport = !deps.fetcher && globalThis.fetch !== initialFetch;
     this.fetcher = deps.fetcher ?? fetch;
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.now = deps.now ?? Date.now;
@@ -212,22 +230,10 @@ export class RiotClient {
     return event;
   }
   /** Internal server boundary. Calls the existing methods; no extra dispatch/retry. */
-  private async observeMatch<T>(
-    binding: MatchCaptureBinding,
-    query: MatchQuery | string,
-    work: () => Promise<T>,
-  ) {
+  private async observeRequest<T>(host: string, path: string, work: () => Promise<T>) {
     if (isDemo()) throw new MatchCaptureError("scope");
     if (this.#observation) throw new MatchCaptureError("conflict");
-    const ids = typeof query !== "string";
-    const path = ids
-      ? `/lol/match/v5/matches/by-puuid/${encodeURIComponent(binding.puuid)}/ids?startTime=${query.startTime}&endTime=${query.endTime}&start=${query.start}&count=100`
-      : `/lol/match/v5/matches/${encodeURIComponent(query)}`;
-    const observation = {
-      host: regionalRouting(binding.platform),
-      path,
-      receptions: [] as MatchReception[],
-    };
+    const observation = { host, path, receptions: [] as MatchReception[] };
     this.#observation = observation;
     let value: T | undefined;
     let error: unknown;
@@ -238,7 +244,6 @@ export class RiotClient {
     } finally {
       this.#observation = null;
     }
-    // Method substitutes do not demonstrate an HTTP response. Keep them explicitly unattested.
     if (!observation.receptions.length)
       observation.receptions.push({
         captureId: randomUUID(),
@@ -251,6 +256,30 @@ export class RiotClient {
         retryAfterMs: null,
         outcome: "unobserved",
       });
+    return { value, error, receptions: observation.receptions };
+  }
+  private receptionSource(receptions: MatchReception[]): MatchCaptureRecord["source"] {
+    return receptions.every((r) => r.outcome === "unobserved")
+      ? "unknown"
+      : this.simulatedTransport
+        ? "synthetic"
+        : this.unattributedTransport
+          ? "unknown"
+          : receptions.some((r) => r.receptionId !== null)
+            ? "server_riot_received"
+            : "unknown";
+  }
+  private async observeMatch<T>(
+    binding: MatchCaptureBinding,
+    query: MatchQuery | string,
+    work: () => Promise<T>,
+  ) {
+    const ids = typeof query !== "string";
+    const path = ids
+      ? `/lol/match/v5/matches/by-puuid/${encodeURIComponent(binding.puuid)}/ids?startTime=${query.startTime}&endTime=${query.endTime}&start=${query.start}&count=100`
+      : `/lol/match/v5/matches/${encodeURIComponent(query)}`;
+    const observation = await this.observeRequest(regionalRouting(binding.platform), path, work);
+    let { value, error } = observation;
     let originalIds: string[] | null = null;
     let detail: MatchCaptureRecord["detail"] = null;
     try {
@@ -296,13 +325,7 @@ export class RiotClient {
         normalizationVersion: "minimal-match-v1",
         requestId: capture.key,
         endpoint: ids ? "MATCH-V5-IDS" : "MATCH-V5-DETAIL",
-        source: observation.receptions.every((r) => r.outcome === "unobserved")
-          ? "unknown"
-          : this.simulatedTransport
-            ? "synthetic"
-            : observation.receptions.some((r) => r.receptionId !== null)
-              ? "server_riot_received"
-              : "unknown",
+        source: this.receptionSource(observation.receptions),
         query: ids ? query : null,
         requestedMatchId: ids ? null : query,
         receptions: observation.receptions,
@@ -341,6 +364,141 @@ export class RiotClient {
       stored.binding.puuid !== binding.puuid
     )
       throw new MatchCaptureError("scope");
+    return structuredClone(stored.record);
+  }
+  private async observeRanked<T>(
+    binding: RankedBinding,
+    endpoint: RankedRecord["endpoint"],
+    path: string,
+    host: string,
+    work: () => Promise<T>,
+  ) {
+    const observation = await this.observeRequest(host, path, work);
+    let { value, error } = observation;
+    let receivedPuuid: string | null = null;
+    let entries: RankedRecord["entries"] = null;
+    let ignoredEntries: number | null = null;
+    try {
+      if (value !== undefined && endpoint !== "LEAGUE-V4") {
+        const parsed = accountSchema.safeParse(value);
+        if (!parsed.success) throw new MatchCaptureError("invalid");
+        receivedPuuid = parsed.data.puuid;
+      } else if (value !== undefined) {
+        const parsed = leagueSchema.max(32).safeParse(value);
+        if (!parsed.success) throw new MatchCaptureError("invalid");
+        entries = [];
+        ignoredEntries = 0;
+        for (const entry of parsed.data) {
+          const queue = RANKED_QUEUES.find((q) => q === entry.queueType);
+          if (!queue) {
+            ignoredEntries++;
+            continue;
+          }
+          if (
+            !/^[A-Z_]{1,32}$/.test(entry.tier) ||
+            !/^[IV]{1,4}$/.test(entry.rank) ||
+            [entry.leaguePoints, entry.wins, entry.losses].some(
+              (n) => !Number.isSafeInteger(n) || n < 0,
+            )
+          )
+            throw new MatchCaptureError("invalid");
+          entries.push({
+            queue,
+            tier: entry.tier,
+            division: entry.rank,
+            leaguePoints: entry.leaguePoints,
+            wins: entry.wins,
+            losses: entry.losses,
+          });
+        }
+      }
+    } catch (caught) {
+      value = undefined;
+      error = caught;
+      entries = null;
+      ignoredEntries = null;
+      receivedPuuid = null;
+      const last = observation.receptions.at(-1);
+      if (last?.outcome === "success") last.outcome = "invalid_normalization";
+    }
+    const capture = Object.freeze({ key: randomUUID() });
+    this.#ranked.set(capture, {
+      binding: { ...binding },
+      puuid: receivedPuuid,
+      record: {
+        version: RANKED_CAPTURE_VERSION,
+        normalizationVersion: "minimal-ranked-identity-v1",
+        requestId: capture.key,
+        endpoint,
+        source: this.receptionSource(observation.receptions),
+        receptions: observation.receptions,
+        entries,
+        ignoredEntries,
+        certification: "not_established",
+        grantAuthorized: false,
+      },
+    });
+    return { value, error, capture };
+  }
+  observeAccount(binding: RankedBinding, gameName: string, tagLine: string) {
+    const owner = { ...binding };
+    return this.observeRanked(
+      owner,
+      "ACCOUNT-V1",
+      `/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
+      accountRouting(owner.platform),
+      () => this.account(owner.platform, gameName, tagLine),
+    );
+  }
+  observeIdentity(binding: RankedBinding) {
+    const owner = { ...binding };
+    if (!owner.puuid) throw new MatchCaptureError("scope");
+    return this.observeRanked(
+      owner,
+      "IDENTITY-V1",
+      `/riot/account/v1/accounts/by-puuid/${encodeURIComponent(owner.puuid)}`,
+      accountRouting(owner.platform),
+      () => this.identity(owner.platform, owner.puuid!),
+    );
+  }
+  observeLeagues(binding: RankedBinding) {
+    const owner = { ...binding };
+    if (!owner.puuid) throw new MatchCaptureError("scope");
+    return this.observeRanked(
+      owner,
+      "LEAGUE-V4",
+      `/lol/league/v4/entries/by-puuid/${encodeURIComponent(owner.puuid)}`,
+      platformRouting(owner.platform),
+      () => this.leagues(owner.platform, owner.puuid!),
+    );
+  }
+  confirmedRankedInput(capture: RankedCaptureHandle, binding: MatchCaptureBinding) {
+    const stored = this.#ranked.get(capture);
+    if (
+      !stored ||
+      stored.binding.playerId !== binding.playerId ||
+      stored.binding.platform !== binding.platform ||
+      (stored.binding.puuid !== null && stored.binding.puuid !== binding.puuid)
+    )
+      throw new MatchCaptureError("scope");
+    return {
+      record: structuredClone(stored.record),
+      identityMatch: stored.puuid === null ? null : stored.puuid === binding.puuid,
+    };
+  }
+  async observeRemakeDetail(platform: Platform, id: string) {
+    const observed = await this.observeMatch(
+      { playerId: randomUUID(), platform, puuid: "" },
+      id,
+      () => this.match(platform, id),
+    );
+    this.#sharedRemakes.set(observed.capture, platform);
+    return observed;
+  }
+  confirmedRemakeInput(capture: MatchCaptureHandle, platform: Platform) {
+    if (this.#sharedRemakes.get(capture) !== platform) throw new MatchCaptureError("scope");
+    const stored = this.#captures.get(capture);
+    if (!stored) throw new MatchCaptureError("scope");
     return structuredClone(stored.record);
   }
   account(platform: Platform, gameName: string, tagLine: string) {

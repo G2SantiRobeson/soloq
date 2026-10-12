@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { players } from "@/db/schema";
 import { PLATFORMS } from "@/lib/routing";
 import { body, endpoint, HttpError, json, requireAdmin, verifyOrigin } from "@/server/http";
@@ -9,6 +10,8 @@ import { CURRENT_SEASON, seasonStart } from "@/lib/season";
 import { RiotError } from "@/server/riot/client";
 import { getAdminPlayers } from "@/server/admin-queries";
 import { markSourceChanged } from "@/server/sync/source-revision";
+import { captureIdentityInTx } from "@/server/sync/ranked-evidence";
+import { MatchCaptureError } from "@/server/riot/match-capture";
 export const maxDuration = 300;
 export const GET = endpoint(async () => {
   await requireAdmin();
@@ -36,12 +39,21 @@ export const POST = endpoint(async (request) => {
   const requestId = requestCorrelation(request);
   return withSyncLease(
     async (client) => {
-      const account = await client.account(values.platform, values.gameName, values.tagLine);
+      const playerId = randomUUID();
+      const accountObservation = await client.observeAccount(
+        { playerId, platform: values.platform, puuid: null },
+        values.gameName,
+        values.tagLine,
+      );
+      if (accountObservation.error || !accountObservation.value)
+        throw accountObservation.error ?? new MatchCaptureError("invalid");
+      const account = accountObservation.value;
       const summoner = await client.summoner(values.platform, account.puuid);
       const [player] = await syncWrite(client, async (tx) => {
         const inserted = await tx
           .insert(players)
           .values({
+            id: playerId,
             gameName: account.gameName,
             tagLine: account.tagLine,
             puuid: account.puuid,
@@ -51,8 +63,12 @@ export const POST = endpoint(async (request) => {
             backfillSeason: CURRENT_SEASON.id,
           })
           .onConflictDoNothing({ target: players.puuid })
-          .returning({ id: players.id });
-        for (const row of inserted) markSourceChanged(tx, row.id);
+          .returning();
+        for (const row of inserted) {
+          markSourceChanged(tx, row.id);
+          const captured = await captureIdentityInTx(tx, client, row, accountObservation.capture);
+          if (captured.identityMatch !== true) throw new MatchCaptureError("scope");
+        }
         return inserted;
       });
       if (!player) throw new HttpError(409, "Esta cuenta ya está registrada (PUUID duplicado).");

@@ -1,6 +1,7 @@
 import "server-only";
 import type { Platform } from "@/lib/routing";
 import type { RiotMatch } from "./schemas";
+import { REMAKE_CLASSIFIER_VERSION } from "./ranked-capture";
 
 export const MATCH_CAPTURE_VERSION = "1.2.B.2.E.2.2-match-capture-v1";
 export type MatchCaptureHandle = Readonly<{ key: string }>;
@@ -43,6 +44,9 @@ export type MinimalMatchDetail = {
     falsePresent: number;
     absent: number;
     observationalIsRemake: boolean;
+    classifierVersion: typeof REMAKE_CLASSIFIER_VERSION;
+    basis: "true_marker_present" | "all_markers_false" | "unknown";
+    contradictoryMarkers: boolean;
     evidentiarySufficiency: "unknown";
   };
 };
@@ -64,7 +68,7 @@ export class MatchCaptureError extends Error {
   constructor(
     public readonly code: "invalid" | "scope" | "conflict" | "limit" | "lifecycle" | "unleased",
   ) {
-    super(`No se pudo confirmar la evidencia MATCH: ${code}.`);
+    super(`No se pudo confirmar la evidencia de sincronización: ${code}.`);
   }
 }
 export function validMatchId(id: string, platform: Platform) {
@@ -106,6 +110,14 @@ export function minimalMatchDetail(match: RiotMatch, puuid: string): MinimalMatc
       falsePresent,
       absent: match.info.participants.length - truePresent - falsePresent,
       observationalIsRemake: truePresent > 0,
+      classifierVersion: REMAKE_CLASSIFIER_VERSION,
+      basis:
+        truePresent > 0
+          ? "true_marker_present"
+          : falsePresent > 0 && falsePresent === match.info.participants.length
+            ? "all_markers_false"
+            : "unknown",
+      contradictoryMarkers: truePresent > 0 && falsePresent > 0,
       evidentiarySufficiency: "unknown",
     },
   };

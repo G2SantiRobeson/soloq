@@ -612,7 +612,7 @@ describe("source revision writers (ephemeral SQL, not independent PostgreSQL con
     expect(await database.select().from(schema.matches)).toHaveLength(1);
     expect(await database.select().from(schema.playerMatches)).toHaveLength(1);
   });
-  it("new administrative registration initializes revision once and duplicate does not revise", async () => {
+  it("registration and failed identity capture each revise once; duplicate does not revise", async () => {
     await createSession();
     vi.spyOn(RiotClient.prototype, "account").mockResolvedValue({
       puuid: "synthetic-source-owner",
@@ -629,16 +629,18 @@ describe("source revision writers (ephemeral SQL, not independent PostgreSQL con
       });
     expect((await POST(req())).status).toBe(201);
     const p = (await database.select().from(schema.players))[0];
-    expect(p.sourceRevision).toBe(1n);
+    expect(p.sourceRevision).toBe(2n); // alta + the separate failed identity capture.
     await release();
     expect((await POST(req())).status).toBe(409);
-    expect((await row(p.id)).sourceRevision).toBe(1n);
+    expect((await row(p.id)).sourceRevision).toBe(2n);
   });
   it("reading and rendering existing profile sources never increments", async () => {
     const p = await player();
     const c = client();
     await syncPlayer(p.id, c, { rankOnly: true });
     const before = (await row(p.id)).sourceRevision;
+    const evidenceBefore = await database.select().from(schema.achievementEvidenceUnits);
+    expect(evidenceBefore).toHaveLength(4); // identity + ranked projections written by sync.
     const { achievementReader } = await import("@/server/achievements/queries");
     const context = await achievementReader(database).player(p.id);
     expect(context?.id).toBe(p.id);
@@ -649,7 +651,7 @@ describe("source revision writers (ephemeral SQL, not independent PostgreSQL con
     );
     await getProfile(p.id, "soloq");
     expect((await row(p.id)).sourceRevision).toBe(before);
-    expect(await database.select().from(schema.achievementEvidenceUnits)).toHaveLength(0);
+    expect(await database.select().from(schema.achievementEvidenceUnits)).toEqual(evidenceBefore);
   });
   it("does not introduce grants, capture writers, or changes to R1/I1/OTP", async () => {
     const { rows } = await pg.query<{ name: string }>(

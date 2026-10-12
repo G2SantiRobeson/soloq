@@ -2,7 +2,9 @@ import "server-only";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { players, rankedSnapshots } from "@/db/schema";
-import { RANKED_QUEUES } from "@/lib/queues";
+import { RANKED_QUEUES, type RankedQueue } from "@/lib/queues";
+import { MatchCaptureError } from "../riot/match-capture";
+import { captureIdentityInTx, captureLeagueInTx, type SnapshotLink } from "./ranked-evidence";
 import { RiotClient, RiotError, SyncBudget, SyncDeadline } from "../riot/client";
 import { importHistory } from "./history";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
@@ -33,16 +35,56 @@ export async function syncPlayer(
   const rankAttempt = await beginPlayerSyncPhase(playerId, "rank", client);
   let step: PlayerSyncStep = "identity";
   try {
-    const identity = await client.identity(player.platform, player.puuid);
+    const binding = { playerId, platform: player.platform, puuid: player.puuid };
+    const identityObservation = await client.observeIdentity(binding);
+    if (
+      identityObservation.error ||
+      !identityObservation.value ||
+      client.confirmedRankedInput(identityObservation.capture, binding).identityMatch !== true
+    ) {
+      await syncWrite(client, (tx) =>
+        captureIdentityInTx(tx, client, player, identityObservation.capture),
+      );
+      throw identityObservation.error ?? new MatchCaptureError("scope");
+    }
+    const identity = identityObservation.value;
     step = "summoner";
-    const summoner = await client.summoner(player.platform, player.puuid);
+    const summoner = await client
+      .summoner(player.platform, player.puuid)
+      .catch(async (error: unknown) => {
+        await syncWrite(client, (tx) =>
+          captureIdentityInTx(tx, client, player, identityObservation.capture),
+        );
+        throw error;
+      });
     step = "league";
-    const leagues = await client.leagues(player.platform, player.puuid);
+    const leagueObservation = await client.observeLeagues(binding);
+    if (leagueObservation.error || !leagueObservation.value) {
+      await syncWrite(client, async (tx) => {
+        const capturedIdentity = await captureIdentityInTx(
+          tx,
+          client,
+          player,
+          identityObservation.capture,
+        );
+        await captureLeagueInTx(tx, client, player, leagueObservation.capture, capturedIdentity);
+      });
+      throw leagueObservation.error ?? new MatchCaptureError("invalid");
+    }
+    const leagues = leagueObservation.value;
     const checkedAt = new Date();
     step = "snapshots";
     await syncWrite(
       client,
       async (tx) => {
+        const capturedIdentity = await captureIdentityInTx(
+          tx,
+          client,
+          player,
+          identityObservation.capture,
+        );
+        if (capturedIdentity.identityMatch !== true) throw new MatchCaptureError("scope");
+        const snapshots = new Map<RankedQueue, SnapshotLink>();
         await updateSourcePlayer(tx, playerId, {
           gameName: identity.gameName,
           tagLine: identity.tagLine,
@@ -75,10 +117,22 @@ export async function syncPlayer(
             state.wins !== last.wins ||
             state.losses !== last.losses
           ) {
-            await tx.insert(rankedSnapshots).values({ playerId, queue, ...state });
+            const [snapshot] = await tx
+              .insert(rankedSnapshots)
+              .values({ playerId, queue, ...state })
+              .returning();
+            snapshots.set(queue, { snapshot, inserted: true });
             markSourceChanged(tx, playerId);
-          }
+          } else snapshots.set(queue, { snapshot: last, inserted: false });
         }
+        await captureLeagueInTx(
+          tx,
+          client,
+          player,
+          leagueObservation.capture,
+          capturedIdentity,
+          snapshots,
+        );
       },
       { type: "rank", playerId, checkedAt: checkedAt.toISOString() },
     );
