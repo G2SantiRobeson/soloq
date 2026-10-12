@@ -24,7 +24,12 @@ import {
   capturePageInTx,
   openMatchScansInTx,
 } from "@/server/sync/match-evidence";
-import { captureRemakeInTx } from "@/server/sync/ranked-evidence";
+import {
+  captureIdentityInTx,
+  captureLeagueInTx,
+  captureRemakeInTx,
+} from "@/server/sync/ranked-evidence";
+import { projectRankedEvents } from "@/server/sync/ranked-event-store";
 import { RiotClient } from "@/server/riot/client";
 import { newRun, applyProgressEvent, type ProgressEnvelope } from "@/lib/sync-progress";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
@@ -245,6 +250,114 @@ describe.skipIf(!enabled)("D/E real PostgreSQL concurrency (exclusive Docker opt
     await Promise.all([a.end(), b.end(), observer.end()]);
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+  });
+  async function rankedPair() {
+    const [p] = await database
+      .select()
+      .from(schema.players)
+      .where(eq(schema.players.id, identity.playerId));
+    const payloads = [
+      { puuid: p.puuid, gameName: "Synthetic", tagLine: "F" },
+      [
+        {
+          queueType: "RANKED_SOLO_5x5",
+          tier: "DIAMOND",
+          rank: "I",
+          leaguePoints: 49,
+          wins: 20,
+          losses: 10,
+        },
+      ],
+    ];
+    let now = Date.now();
+    const c = new RiotClient(now + 230000, {
+      fetcher: async () => Response.json(payloads.shift()),
+      now: () => now,
+      sleep: async (ms) => {
+        now += ms;
+      },
+      random: () => 0,
+    });
+    const bind = { playerId: p.id, platform: p.platform, puuid: p.puuid };
+    const i = await c.observeIdentity(bind),
+      r = await c.observeLeagues(bind);
+    return { p, c, i, r };
+  }
+  const persistRanked = async (
+    pair: Awaited<ReturnType<typeof rankedPair>>,
+    tx: Parameters<Parameters<typeof database.transaction>[0]>[0],
+  ) => {
+    const identity = await captureIdentityInTx(tx, pair.c, pair.p, pair.i.capture);
+    await captureLeagueInTx(tx, pair.c, pair.p, pair.r.capture, identity);
+  };
+  it.each(["retry", "new_reception"])(
+    "G1: concurrent %s under the shared lease conserves events, ordinals and R",
+    async (mode) => {
+      const firstPair = await rankedPair(),
+        secondPair = mode === "retry" ? firstPair : await rankedPair();
+      await binding(firstPair.c);
+      if (secondPair.c !== firstPair.c) bindLease(secondPair.c, leaseContext(firstPair.c)!);
+      const ready = gate(),
+        release = gate();
+      const first = syncWrite(firstPair.c, async (tx) => {
+        await persistRanked(firstPair, tx);
+        ready.resolve();
+        await release.promise;
+      });
+      await ready.promise;
+      selected = peer;
+      const second = syncWrite(secondPair.c, (tx) => persistRanked(secondPair, tx));
+      selected = database;
+      try {
+        await blocked(pids[1], pids[0]);
+      } finally {
+        release.resolve();
+      }
+      await Promise.all([first, second]);
+      const hs = await database.select().from(schema.achievementEvidenceHeaders),
+        us = await database.select().from(schema.achievementEvidenceUnits);
+      expect(hs).toHaveLength(4);
+      expect(us).toHaveLength(mode === "retry" ? 6 : 12);
+      expect(projectRankedEvents(hs, us)).toHaveLength(mode === "retry" ? 4 : 8);
+      expect((await row()).source_revision).toBe(mode === "retry" ? "1" : "2");
+      await syncWrite(firstPair.c, (tx) => persistRanked(firstPair, tx));
+      expect(await database.select().from(schema.achievementEvidenceUnits)).toEqual(us);
+    },
+  );
+  it("G1: final fencing rolls back new units on reused headers, source and R", async () => {
+    const initial = await rankedPair();
+    await binding(initial.c);
+    await syncWrite(initial.c, (tx) => persistRanked(initial, tx));
+    const before = await state(),
+      next = await rankedPair();
+    bindLease(next.c, leaseContext(initial.c)!);
+    await observer`create function g1_expire() returns trigger language plpgsql as $$ begin if NEW.kind='reference' then update sync_locks set expires_at='1970-01-01'; end if; return NEW; end $$`;
+    await observer`create trigger g1_expire after insert on achievement_evidence_units for each row execute function g1_expire()`;
+    try {
+      await expect(
+        syncWrite(next.c, async (tx) => {
+          await updateSourcePlayer(tx, identity.playerId, { scanOffset: 99 });
+          await persistRanked(next, tx);
+        }),
+      ).rejects.toThrow(LeaseLost);
+      expect(await state()).toEqual(before);
+    } finally {
+      await observer`drop trigger g1_expire on achievement_evidence_units`;
+      await observer`drop function g1_expire()`;
+    }
+  });
+  it("G1: DELETE cascades optimized streams while a previously received capture cannot recreate them", async () => {
+    const initial = await rankedPair();
+    await binding(initial.c);
+    await syncWrite(initial.c, (tx) => persistRanked(initial, tx));
+    const next = await rankedPair();
+    bindLease(next.c, leaseContext(initial.c)!);
+    await database.delete(schema.players).where(eq(schema.players.id, identity.playerId));
+    await expect(syncWrite(next.c, (tx) => persistRanked(next, tx))).rejects.toMatchObject({
+      code: "scope",
+    });
+    expect((await state()).headers).toBeNull();
+    expect((await state()).units).toBeNull();
   });
 
   it("validates all nine migrated hashes, bigint, RLS, cascades and 0008 checks", async () => {

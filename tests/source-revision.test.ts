@@ -22,6 +22,7 @@ import { PATCH, DELETE } from "@/app/api/admin/players/[id]/route";
 import { POST } from "@/app/api/admin/players/route";
 import { createSession } from "@/server/auth";
 import { getProfile } from "@/server/queries";
+import { projectRankedEvents } from "@/server/sync/ranked-event-store";
 
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
@@ -640,7 +641,10 @@ describe("source revision writers (ephemeral SQL, not independent PostgreSQL con
     await syncPlayer(p.id, c, { rankOnly: true });
     const before = (await row(p.id)).sourceRevision;
     const evidenceBefore = await database.select().from(schema.achievementEvidenceUnits);
-    expect(evidenceBefore).toHaveLength(4); // identity + ranked projections written by sync.
+    const headersBefore = await database.select().from(schema.achievementEvidenceHeaders);
+    expect(evidenceBefore).toHaveLength(6); // four events + two exact identity references.
+    expect(projectRankedEvents(headersBefore, evidenceBefore)).toHaveLength(4);
+    expect(evidenceBefore.filter((u) => u.kind === "reference")).toHaveLength(2);
     const { achievementReader } = await import("@/server/achievements/queries");
     const context = await achievementReader(database).player(p.id);
     expect(context?.id).toBe(p.id);
@@ -652,6 +656,7 @@ describe("source revision writers (ephemeral SQL, not independent PostgreSQL con
     await getProfile(p.id, "soloq");
     expect((await row(p.id)).sourceRevision).toBe(before);
     expect(await database.select().from(schema.achievementEvidenceUnits)).toEqual(evidenceBefore);
+    expect(await database.select().from(schema.achievementEvidenceHeaders)).toEqual(headersBefore);
   });
   it("does not introduce grants, capture writers, or changes to R1/I1/OTP", async () => {
     const { rows } = await pg.query<{ name: string }>(

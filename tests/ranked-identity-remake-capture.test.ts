@@ -26,6 +26,7 @@ import { LocalEvidenceError } from "@/server/achievements/verification/persisten
 import { POST } from "@/app/api/admin/players/route";
 import { createSession } from "@/server/auth";
 import { playerSyncError } from "@/server/sync/player-state";
+import { projectRankedEvents } from "@/server/sync/ranked-event-store";
 
 const pg = new PGlite();
 const queries: string[] = [];
@@ -56,8 +57,18 @@ const solo = {
   losses: 10,
 };
 const flex = { ...solo, queueType: "RANKED_FLEX_SR", tier: "GOLD", rank: "IV", leaguePoints: 28 };
-const headers = () => database.select().from(schema.achievementEvidenceHeaders);
+const storedHeaders = () => database.select().from(schema.achievementEvidenceHeaders);
 const units = () => database.select().from(schema.achievementEvidenceUnits);
+// Assertions about receptions keep counting events, not their new storage containers.
+const headers = async () => {
+  const hs = await storedHeaders();
+  const events = projectRankedEvents(hs, await units()).map(({ header, unit }) => ({
+    ...header,
+    version: String(unit.data.version),
+    data: unit.data,
+  }));
+  return [...events, ...hs.filter((h) => h.kind === "match_scan")];
+};
 const row = async (id: string) =>
   (await database.select().from(schema.players).where(eq(schema.players.id, id)))[0];
 async function player(identity = puuid) {
@@ -241,7 +252,7 @@ describe("ranked/identity capture (PGlite SQL and simulated transport, not authe
       await syncPlayer(p.id, c, { rankOnly: true });
       const hs = await headers();
       expect(hs).toHaveLength(4);
-      expect(await units()).toHaveLength(4);
+      expect(await units()).toHaveLength(6); // four receptions + two identity FK references
       expect((await row(p.id)).sourceRevision).toBe(1n);
       expect(fetcher).toHaveBeenCalledTimes(3);
       for (const h of hs.filter((h) => h.kind === "rank_capture")) {
@@ -529,6 +540,8 @@ describe("ranked/identity capture (PGlite SQL and simulated transport, not authe
     });
     expect((await row(p.id)).sourceRevision).toBe(2n);
     expect(await headers()).toHaveLength(8);
+    expect(await storedHeaders()).toHaveLength(4);
+    expect(await units()).toHaveLength(12);
   });
   it("immutable event conflict cannot overwrite stored source", async () => {
     const p = await player();
@@ -536,7 +549,7 @@ describe("ranked/identity capture (PGlite SQL and simulated transport, not authe
     await lease(c);
     const i = await c.observeIdentity(binding(p));
     await syncWrite(c, (tx) => captureIdentityInTx(tx, c, p, i.capture));
-    const h = (await headers())[0];
+    const h = (await storedHeaders())[0];
     await database
       .update(schema.achievementEvidenceHeaders)
       .set({ data: { ...h.data, identityMatch: false } })
@@ -545,7 +558,8 @@ describe("ranked/identity capture (PGlite SQL and simulated transport, not authe
       syncWrite(c, (tx) => captureIdentityInTx(tx, c, p, i.capture)),
     ).rejects.toMatchObject({ code: "conflict" });
     expect((await row(p.id)).sourceRevision).toBe(1n);
-    expect((await headers()).find((x) => x.id === h.id)?.data.identityMatch).toBe(false);
+    expect((await storedHeaders()).find((x) => x.id === h.id)?.data.identityMatch).toBe(false);
+    expect(() => projectRankedEvents([h], [])).toThrow(MatchCaptureError);
   });
   it("snapshot-bearing persistence retry keeps the immutable original link and revision", async () => {
     const p = await player();

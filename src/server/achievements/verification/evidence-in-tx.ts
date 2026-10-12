@@ -53,13 +53,13 @@ export async function assertEvidenceCapacityInTx(
       .from(units)
       .where(eq(units.headerId, headerId));
     const [h] = await tx
-      .select({ data: headers.data })
+      .select({ bytes: sql<string>`octet_length(${headers.data}::text)::text` })
       .from(headers)
       .where(eq(headers.id, headerId));
     if (!h) throw new LocalEvidenceError("missing");
     if (
       Number(c.count) + addUnits > LOCAL_LIMITS.unitsPerHeader ||
-      Number(c.bytes) + evidenceBytes(h.data) + addBytes > LOCAL_LIMITS.bytesPerHeader
+      Number(c.bytes) + Number(h.bytes) + addBytes > LOCAL_LIMITS.bytesPerHeader
     )
       throw new LocalEvidenceError("limit");
   }

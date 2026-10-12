@@ -32,6 +32,7 @@ import {
   conservativeEvidenceBytes,
 } from "../achievements/verification/evidence-in-tx";
 import { LOCAL_LIMITS, localCanonical } from "../achievements/verification/persistence-contracts";
+import { appendRankedEventInTx, findRankedEventInTx } from "./ranked-event-store";
 
 type Player = typeof players.$inferSelect;
 type Snapshot = typeof rankedSnapshots.$inferSelect;
@@ -71,9 +72,27 @@ async function eventInTx(
   data: Record<string, unknown>,
   snapshot = false,
   parentId: string | null = null,
+  identityUnitId: string | null = null,
 ) {
-  key = `${key}:${queue}`;
   const content = { version: RANKED_CAPTURE_VERSION, ...data, ...restrictions };
+  if (kind !== "match_scan") {
+    if ((parentId === null) !== (identityUnitId === null)) throw new MatchCaptureError("scope");
+    const event = await appendRankedEventInTx(
+      tx,
+      {
+        playerId: player.id,
+        platform: player.platform,
+        queue,
+        season: CURRENT_SEASON.id,
+      },
+      kind,
+      content,
+      parentId && identityUnitId ? { headerId: parentId, unitId: identityUnitId } : null,
+    );
+    if (event.inserted) markSourceChanged(tx, player.id);
+    return event.headerId;
+  }
+  key = `${key}:${queue}`;
   if (conservativeEvidenceBytes(content) > LOCAL_LIMITS.unitBytes)
     throw new MatchCaptureError("limit");
   const [existing] = await tx
@@ -229,29 +248,29 @@ export async function captureLeagueInTx(
     throw new MatchCaptureError("scope");
   for (const queue of RANKED_QUEUES) {
     const parentId = identity?.ids.get(queue) ?? null;
+    let identityUnitId: string | null = null;
     if (identity) {
-      const [parent] = parentId
-        ? await tx
-            .select()
-            .from(headers)
-            .where(
-              and(
-                eq(headers.id, parentId),
-                eq(headers.playerId, stored.id),
-                eq(headers.platform, stored.platform),
-                eq(headers.queue, queue),
-                eq(headers.season, CURRENT_SEASON.id),
-                eq(headers.kind, "identity_capture"),
-              ),
-            )
-        : [];
+      const parent = parentId
+        ? await findRankedEventInTx(
+            tx,
+            {
+              playerId: stored.id,
+              platform: stored.platform,
+              queue,
+              season: CURRENT_SEASON.id,
+            },
+            "identity_capture",
+            identityInput!.record.requestId,
+          )
+        : null;
       if (
         !parent ||
-        parent.version !== RANKED_CAPTURE_VERSION ||
-        parent.operationKey !== `identity:${identityInput!.record.requestId}:${queue}` ||
-        parent.data.identityMatch !== identity.identityMatch
+        parent.header.id !== parentId ||
+        parent.unit.data.identityMatch !== identity.identityMatch ||
+        localCanonical(parent.unit.data.record) !== localCanonical(identityInput!.record)
       )
         throw new MatchCaptureError("scope");
+      identityUnitId = parent.unit.id;
     }
     const entries = record.entries?.filter((e) => e.queue === queue) ?? null;
     const link = snapshots.get(queue);
@@ -324,6 +343,7 @@ export async function captureLeagueInTx(
       },
       link?.inserted ?? false,
       parentId,
+      identityUnitId,
     );
   }
 }
