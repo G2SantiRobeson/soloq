@@ -15,6 +15,7 @@ import { RiotClient } from "../riot/client";
 import { HttpError } from "../http";
 import { z } from "zod";
 import { isDemo } from "../env";
+import { flushSourceRevisions } from "./source-revision";
 
 export type SyncTransaction = Parameters<Parameters<ReturnType<typeof db>["transaction"]>[0]>[0];
 export class LeaseLost extends Error {
@@ -83,6 +84,7 @@ export async function syncWrite<T>(
   const value = await db().transaction(async (tx) => {
     if (context) await assertLease(tx, context, true);
     const value = await work(tx);
+    await flushSourceRevisions(tx);
     const changes = events ? (typeof events === "function" ? events(value) : events) : [];
     const list = Array.isArray(changes) ? changes : [changes];
     if (context?.runId && committed && list.length) {

@@ -22,6 +22,7 @@ import {
   type SyncPlayerResult,
 } from "@/lib/sync-scheduling";
 import { compareHistory, compareRecent } from "./scheduling";
+import { markSourceChanged, updateSourcePlayer } from "./source-revision";
 export async function syncPlayer(
   playerId: string,
   client: RiotClient,
@@ -42,17 +43,14 @@ export async function syncPlayer(
     await syncWrite(
       client,
       async (tx) => {
-        await tx
-          .update(players)
-          .set({
-            gameName: identity.gameName,
-            tagLine: identity.tagLine,
-            profileIconId: summoner.profileIconId,
-            updatedAt: new Date(),
-            rankCheckedAt: checkedAt,
-            ...finishPlayerSyncPhase(rankAttempt, "success"),
-          })
-          .where(eq(players.id, playerId));
+        await updateSourcePlayer(tx, playerId, {
+          gameName: identity.gameName,
+          tagLine: identity.tagLine,
+          profileIconId: summoner.profileIconId,
+          updatedAt: new Date(),
+          rankCheckedAt: checkedAt,
+          ...finishPlayerSyncPhase(rankAttempt, "success"),
+        });
         for (const queue of RANKED_QUEUES) {
           const league = leagues.find((l) => l.queueType === queue);
           const state = {
@@ -76,8 +74,10 @@ export async function syncPlayer(
             state.leaguePoints !== last.leaguePoints ||
             state.wins !== last.wins ||
             state.losses !== last.losses
-          )
+          ) {
             await tx.insert(rankedSnapshots).values({ playerId, queue, ...state });
+            markSourceChanged(tx, playerId);
+          }
         }
       },
       { type: "rank", playerId, checkedAt: checkedAt.toISOString() },
@@ -202,19 +202,16 @@ export async function syncBackfillPlayer(playerId: string, client: RiotClient, b
     await syncWrite(
       client,
       async (tx) => {
-        await tx
-          .update(players)
-          .set({
-            ...finishPlayerSyncPhase(
-              attempt,
-              error instanceof SyncDeadline ? "partial" : "failed",
-              error instanceof SyncBudget ? undefined : playerSyncError(error, "history"),
-              error instanceof SyncBudget ? error.reason : undefined,
-            ),
-            backfillStatus: sql`case when ${players.backfillStatus} = 'completed' then 'completed' else ${error instanceof SyncDeadline ? "running" : "failed"} end`,
-            backfillUpdatedAt: new Date(),
-          })
-          .where(eq(players.id, playerId));
+        await updateSourcePlayer(tx, playerId, {
+          ...finishPlayerSyncPhase(
+            attempt,
+            error instanceof SyncDeadline ? "partial" : "failed",
+            error instanceof SyncBudget ? undefined : playerSyncError(error, "history"),
+            error instanceof SyncBudget ? error.reason : undefined,
+          ),
+          backfillStatus: sql`case when ${players.backfillStatus} = 'completed' then 'completed' else ${error instanceof SyncDeadline ? "running" : "failed"} end`,
+          backfillUpdatedAt: new Date(),
+        });
       },
       {
         type: "result",

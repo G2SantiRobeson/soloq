@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { matches, playerMatches, players } from "@/db/schema";
+import { playerMatches, players } from "@/db/schema";
 import { isStandardMatch } from "@/lib/queues";
 import { seasonStart, seasonEnd } from "@/lib/season";
 import { isRemake } from "@/lib/match-outcome";
@@ -10,6 +10,7 @@ import { normalizeParticipant } from "../riot/normalize";
 import type { PlayerSyncAttempt } from "@/lib/player-sync-state";
 import { finishPlayerSyncPhase } from "./player-state";
 import { syncWrite } from "./progress";
+import { insertMatchParticipation, updateSourcePlayer } from "./source-revision";
 
 export const RECENT_BATCH_SIZE = 5;
 export const RECENT_OVERLAP_MS = 86400_000;
@@ -99,23 +100,18 @@ export async function importRecent(
       imported += await syncWrite(
         client,
         async (tx) => {
-          await tx
-            .insert(matches)
-            .values({
+          return insertMatchParticipation(
+            tx,
+            {
               id,
               queueId: match.info.queueId,
               mapId: match.info.mapId,
               timestamp: new Date(match.info.gameStartTimestamp),
               duration: match.info.gameDuration,
               isRemake: isRemake(match),
-            })
-            .onConflictDoNothing();
-          const inserted = await tx
-            .insert(playerMatches)
-            .values({ playerId: player.id, matchId: id, ...stats })
-            .onConflictDoNothing()
-            .returning({ id: playerMatches.matchId });
-          return inserted.length;
+            },
+            { playerId: player.id, matchId: id, ...stats },
+          );
         },
         (added) => ({ type: "import", pass: "recent", playerId: player.id, imported: added }),
       );
@@ -126,14 +122,11 @@ export async function importRecent(
     await syncWrite(
       client,
       async (tx) => {
-        await tx
-          .update(players)
-          .set({
-            lastSyncedAt: end,
-            updatedAt: new Date(),
-            ...finishPlayerSyncPhase(attempt, "success"),
-          })
-          .where(eq(players.id, player.id));
+        await updateSourcePlayer(tx, player.id, {
+          lastSyncedAt: end,
+          updatedAt: new Date(),
+          ...finishPlayerSyncPhase(attempt, "success"),
+        });
       },
       {
         type: "result",

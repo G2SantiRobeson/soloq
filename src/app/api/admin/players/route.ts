@@ -8,6 +8,7 @@ import { syncPlayer, syncBackfillPlayer } from "@/server/sync/service";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
 import { RiotError } from "@/server/riot/client";
 import { getAdminPlayers } from "@/server/admin-queries";
+import { markSourceChanged } from "@/server/sync/source-revision";
 export const maxDuration = 300;
 export const GET = endpoint(async () => {
   await requireAdmin();
@@ -37,8 +38,8 @@ export const POST = endpoint(async (request) => {
     async (client) => {
       const account = await client.account(values.platform, values.gameName, values.tagLine);
       const summoner = await client.summoner(values.platform, account.puuid);
-      const [player] = await syncWrite(client, async (tx) =>
-        tx
+      const [player] = await syncWrite(client, async (tx) => {
+        const inserted = await tx
           .insert(players)
           .values({
             gameName: account.gameName,
@@ -50,8 +51,10 @@ export const POST = endpoint(async (request) => {
             backfillSeason: CURRENT_SEASON.id,
           })
           .onConflictDoNothing({ target: players.puuid })
-          .returning({ id: players.id }),
-      );
+          .returning({ id: players.id });
+        for (const row of inserted) markSourceChanged(tx, row.id);
+        return inserted;
+      });
       if (!player) throw new HttpError(409, "Esta cuenta ya está registrada (PUUID duplicado).");
       try {
         const result = await syncPlayer(player.id, client, { budget: 5 });

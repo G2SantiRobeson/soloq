@@ -4,6 +4,7 @@ import { players } from "@/db/schema";
 import { body, endpoint, HttpError, json, requireAdmin, verifyOrigin } from "@/server/http";
 import { withSyncLease } from "@/server/sync/lease";
 import { syncWrite } from "@/server/sync/progress";
+import { updateSourcePlayer } from "@/server/sync/source-revision";
 function playerId(request: Request) {
   const id = new URL(request.url).pathname.split("/").pop();
   const parsed = z.uuid().safeParse(id);
@@ -17,11 +18,7 @@ export const PATCH = endpoint(async (request) => {
   const { enabled } = await body(request, z.object({ enabled: z.boolean() }));
   return withSyncLease(async (client) => {
     const result = await syncWrite(client, async (tx) =>
-      tx
-        .update(players)
-        .set({ enabled, updatedAt: new Date() })
-        .where(eq(players.id, id))
-        .returning({ id: players.id }),
+      updateSourcePlayer(tx, id, { enabled, updatedAt: new Date() }),
     );
     if (!result.length) throw new HttpError(404, "Jugador no encontrado.");
     return json({ ok: true });

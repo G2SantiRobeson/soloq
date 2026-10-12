@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { matches, playerMatches, players } from "@/db/schema";
+import { playerMatches, players } from "@/db/schema";
 import { CURRENT_SEASON, seasonStart, seasonEnd } from "@/lib/season";
 import { isStandardMatch } from "@/lib/queues";
 import { isRemake } from "@/lib/match-outcome";
@@ -10,6 +10,7 @@ import { normalizeParticipant } from "../riot/normalize";
 import type { PlayerSyncAttempt } from "@/lib/player-sync-state";
 import { finishPlayerSyncPhase } from "./player-state";
 import { syncWrite } from "./progress";
+import { insertMatchParticipation, updateSourcePlayer } from "./source-revision";
 
 export const MATCH_PAGE_SIZE = 100;
 export const HISTORY_BATCH_SIZE = 25;
@@ -24,23 +25,20 @@ export async function importHistory(
   const start = seasonStart(original.platform);
   if (original.backfillSeason !== CURRENT_SEASON.id) {
     await syncWrite(client, async (tx) => {
-      await tx
-        .update(players)
-        .set({
-          backfillSeason: CURRENT_SEASON.id,
-          backfillStatus: "not_started",
-          backfillStartedAt: null,
-          lastBackfillAt: null,
-          backfillDiscovered: 0,
-          backfillProcessed: 0,
-          backfillUnavailable: 0,
-          scanStart: start,
-          scanEnd: null,
-          scanOffset: 0,
-          scanPending: [],
-          scanExhausted: false,
-        })
-        .where(eq(players.id, playerId));
+      await updateSourcePlayer(tx, playerId, {
+        backfillSeason: CURRENT_SEASON.id,
+        backfillStatus: "not_started",
+        backfillStartedAt: null,
+        lastBackfillAt: null,
+        backfillDiscovered: 0,
+        backfillProcessed: 0,
+        backfillUnavailable: 0,
+        scanStart: start,
+        scanEnd: null,
+        scanOffset: 0,
+        scanPending: [],
+        scanExhausted: false,
+      });
     });
   }
   const [player] = await db().select().from(players).where(eq(players.id, playerId));
@@ -63,19 +61,16 @@ export async function importHistory(
   await syncWrite(
     client,
     async (tx) => {
-      await tx
-        .update(players)
-        .set({
-          scanEnd: end,
-          ...(backfill
-            ? {
-                backfillStatus: "running" as const,
-                backfillStartedAt: player.backfillStartedAt ?? new Date(),
-                backfillUpdatedAt: new Date(),
-              }
-            : {}),
-        })
-        .where(eq(players.id, playerId));
+      await updateSourcePlayer(tx, playerId, {
+        scanEnd: end,
+        ...(backfill
+          ? {
+              backfillStatus: "running" as const,
+              backfillStartedAt: player.backfillStartedAt ?? new Date(),
+              backfillUpdatedAt: new Date(),
+            }
+          : {}),
+      });
     },
     {
       type: "history",
@@ -97,26 +92,23 @@ export async function importHistory(
       await syncWrite(
         client,
         async (tx) => {
-          await tx
-            .update(players)
-            .set({
-              // One-day overlap covers late indexing; constraints prevent duplicate participants.
-              scanStart: new Date(Math.max(start.getTime(), end.getTime() - 86400_000)),
-              scanEnd: null,
-              scanOffset: 0,
-              scanPending: [],
-              scanExhausted: false,
-              ...finishPlayerSyncPhase(attempt, "success"),
-              updatedAt: new Date(),
-              ...(backfill
-                ? {
-                    backfillStatus: "completed" as const,
-                    lastBackfillAt: new Date(),
-                    backfillUpdatedAt: new Date(),
-                  }
-                : {}),
-            })
-            .where(eq(players.id, playerId));
+          await updateSourcePlayer(tx, playerId, {
+            // One-day overlap covers late indexing; constraints prevent duplicate participants.
+            scanStart: new Date(Math.max(start.getTime(), end.getTime() - 86400_000)),
+            scanEnd: null,
+            scanOffset: 0,
+            scanPending: [],
+            scanExhausted: false,
+            ...finishPlayerSyncPhase(attempt, "success"),
+            updatedAt: new Date(),
+            ...(backfill
+              ? {
+                  backfillStatus: "completed" as const,
+                  lastBackfillAt: new Date(),
+                  backfillUpdatedAt: new Date(),
+                }
+              : {}),
+          });
         },
         { type: "result", pass: "history", result: { playerId, status: "complete" } },
       );
@@ -139,20 +131,17 @@ export async function importHistory(
       await syncWrite(
         client,
         async (tx) => {
-          await tx
-            .update(players)
-            .set({
-              scanPending: pending,
-              scanOffset: offset,
-              scanExhausted: exhausted,
-              ...(backfill
-                ? {
-                    backfillDiscovered: sql`${players.backfillDiscovered} + ${pending.length}`,
-                    backfillUpdatedAt: new Date(),
-                  }
-                : {}),
-            })
-            .where(eq(players.id, playerId));
+          await updateSourcePlayer(tx, playerId, {
+            scanPending: pending,
+            scanOffset: offset,
+            scanExhausted: exhausted,
+            ...(backfill
+              ? {
+                  backfillDiscovered: sql`${players.backfillDiscovered} + ${pending.length}`,
+                  backfillUpdatedAt: new Date(),
+                }
+              : {}),
+          });
         },
         { type: "import", pass: "history", playerId, imported: 0 },
       );
@@ -196,37 +185,29 @@ export async function importHistory(
         let added = 0;
         if (normalized) {
           const { match, stats } = normalized;
-          await tx
-            .insert(matches)
-            .values({
+          added = await insertMatchParticipation(
+            tx,
+            {
               id: matchId,
               queueId: match.info.queueId,
               mapId: match.info.mapId,
               timestamp: new Date(match.info.gameStartTimestamp),
               duration: match.info.gameDuration,
               isRemake: isRemake(match),
-            })
-            .onConflictDoNothing();
-          const inserted = await tx
-            .insert(playerMatches)
-            .values({ playerId, matchId, ...stats })
-            .onConflictDoNothing()
-            .returning({ id: playerMatches.matchId });
-          added = inserted.length;
+            },
+            { playerId, matchId, ...stats },
+          );
         }
-        await tx
-          .update(players)
-          .set({
-            scanPending: next,
-            ...(backfill
-              ? {
-                  backfillProcessed: sql`${players.backfillProcessed} + 1`,
-                  backfillUnavailable: sql`${players.backfillUnavailable} + ${unavailable ? 1 : 0}`,
-                  backfillUpdatedAt: new Date(),
-                }
-              : {}),
-          })
-          .where(eq(players.id, playerId));
+        await updateSourcePlayer(tx, playerId, {
+          scanPending: next,
+          ...(backfill
+            ? {
+                backfillProcessed: sql`${players.backfillProcessed} + 1`,
+                backfillUnavailable: sql`${players.backfillUnavailable} + ${unavailable ? 1 : 0}`,
+                backfillUpdatedAt: new Date(),
+              }
+            : {}),
+        });
         return added;
       },
       (added) => ({
