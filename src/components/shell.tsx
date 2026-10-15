@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { isDemo } from "@/server/env";
+import { Suspense } from "react";
 import { HeaderNav } from "./header-nav";
 export function Header() {
   return (
@@ -11,7 +12,23 @@ export function Header() {
             /
           </span>
         </Link>
-        <HeaderNav />
+        <Suspense
+          fallback={
+            <nav className="header-nav" aria-label="Principal">
+              <Link href="/" className="nav-link">
+                Clasificación
+              </Link>
+              <Link href="/metrics" className="nav-link">
+                Métricas
+              </Link>
+              <Link href="/rivalidades" className="nav-link">
+                Rivalidades
+              </Link>
+            </nav>
+          }
+        >
+          <HeaderNav />
+        </Suspense>
         <span className="header-caption header-end">LEAGUE OF LEGENDS · COMUNIDAD</span>
       </div>
     </header>

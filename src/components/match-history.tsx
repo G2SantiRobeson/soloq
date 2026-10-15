@@ -1,7 +1,9 @@
 "use client";
 
 import { useId, useRef, useState, type ReactNode } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { matchPage, MATCH_SUMMARY_SIZE } from "@/lib/match-pagination";
+import { countLabel } from "@/lib/format";
 
 /** Keep the existing server-rendered match rows; only their visible window changes. */
 export function MatchHistory({ rows, demo = false }: { rows: ReactNode[]; demo?: boolean }) {
@@ -25,10 +27,15 @@ export function MatchHistory({ rows, demo = false }: { rows: ReactNode[]; demo?:
         <h2 ref={heading} tabIndex={-1}>
           {expanded ? "Historial de partidas" : "Últimas partidas"}
         </h2>
-        <span>{rows.length} RESULTADOS DISPONIBLES</span>
+        <span>
+          {countLabel(rows.length, "PARTIDA RECIENTE CARGADA", "PARTIDAS RECIENTES CARGADAS")}
+          {demo && " · DEMO"}
+        </span>
       </div>
       <p className="metric-note">
-        Los remakes se conservan en el historial y se excluyen de las estadísticas
+        Ventana de hasta 40 partidas recientes {demo ? "ficticias" : "importadas"}; no es todo el
+        historial de temporada. Los remakes se conservan en el historial y se excluyen de las
+        estadísticas
         {demo
           ? " de demostración. Los contadores ranked son ficticios."
           : " importadas. Los contadores ranked son los oficiales de Riot."}
@@ -45,25 +52,40 @@ export function MatchHistory({ rows, demo = false }: { rows: ReactNode[]; demo?:
               <nav aria-label="Páginas del historial">
                 <button
                   type="button"
+                  className="button secondary"
                   disabled={current.page === 0}
                   onClick={() => navigate(current.page - 1)}
                   aria-controls={id}
                 >
+                  <ChevronLeft size={16} aria-hidden="true" />
                   Anterior
                 </button>
                 <button
                   type="button"
+                  className="button secondary"
                   disabled={current.page === current.pages - 1}
                   onClick={() => navigate(current.page + 1)}
                   aria-controls={id}
                 >
                   Siguiente
+                  <ChevronRight size={16} aria-hidden="true" />
                 </button>
               </nav>
             )}
             {rows.length > MATCH_SUMMARY_SIZE && (
-              <button type="button" onClick={toggle} aria-expanded={expanded} aria-controls={id}>
+              <button
+                type="button"
+                className="button secondary match-history-toggle"
+                onClick={toggle}
+                aria-expanded={expanded}
+                aria-controls={id}
+              >
                 {expanded ? "Volver al resumen" : "Ver más partidas"}
+                {expanded ? (
+                  <ChevronUp size={16} aria-hidden="true" />
+                ) : (
+                  <ChevronDown size={16} aria-hidden="true" />
+                )}
               </button>
             )}
           </div>

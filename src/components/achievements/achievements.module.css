@@ -1,0 +1,316 @@
+.panel {
+  color: var(--text, #eef2ff);
+  background: var(--surface, #0e1528);
+  border-block: 1px solid var(--line, #253457);
+  padding: 16px;
+  font:
+    15px/1.5 Arial,
+    sans-serif;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* Profile entry: summary, chevron and states come from the global .disclosure-block. */
+.profile {
+  overflow-wrap: anywhere;
+  color: var(--muted, #a3b0cf);
+  font-size: 14px;
+}
+.profile > .panel {
+  padding-inline: 0;
+  border-block: 0;
+  background: transparent;
+}
+.profile > p {
+  padding-block: 12px;
+}
+.details > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  list-style: none;
+}
+.details > summary::-webkit-details-marker {
+  display: none;
+}
+.details > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-left: auto;
+  border-right: 2px solid var(--control-icon, #2fe2ff);
+  border-bottom: 2px solid var(--control-icon, #2fe2ff);
+  transform: rotate(45deg);
+}
+.details[open] > summary::after {
+  transform: rotate(225deg);
+}
+.details > summary:hover {
+  border-color: var(--control-border-hover, #2fe2ff);
+  background: var(--control-bg-hover, #1c2848);
+}
+.panel h2,
+.panel h3,
+.panel p {
+  margin: 0;
+}
+.panel h2 {
+  font-size: 20px;
+}
+.panel h3 {
+  font-size: 17px;
+}
+.heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line, #253457);
+}
+.notice {
+  border: 1px solid var(--line, #253457);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+.unavailable {
+  padding: 12px;
+  border-left: 2px solid var(--muted, #a3b0cf);
+}
+.heading span,
+.description,
+.context,
+.details,
+.title p,
+.title span {
+  color: var(--muted, #a3b0cf);
+}
+.panel .context,
+.panel .demo {
+  margin-block: 8px;
+}
+.demo {
+  color: var(--warm, #ffab3d);
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.item,
+.future {
+  border: 1px solid var(--line, #253457);
+  border-radius: 4px;
+  padding: 14px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.identity {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.identity > div {
+  min-width: 0;
+}
+.badge {
+  font-size: 22px;
+  flex-shrink: 0;
+  color: var(--muted, #a3b0cf);
+}
+.item[data-status="observed"] .badge,
+.item[data-status="observed"] .state {
+  color: var(--win, #2df0b0);
+}
+.item[data-status="insufficient_evidence"] .state,
+.item[data-status="invalid_input"] .state {
+  color: var(--warning, #ffab3d);
+}
+.panel .state {
+  margin-block: 8px;
+  font-weight: 600;
+  display: inline-block;
+  padding: 4px 8px;
+  background: var(--bg, #070b18);
+  border-left: 2px solid currentColor;
+  font-size: 14px;
+}
+.measurement {
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text, #eef2ff);
+  font-weight: 600;
+  margin-block: 8px;
+}
+.measurement > p {
+  min-width: 0;
+}
+.details {
+  margin-top: 8px;
+  font-size: 14px;
+}
+.details summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--text, #eef2ff);
+  font-weight: 600;
+  background: var(--control-bg, #141d36);
+  border: 1px solid var(--control-border, #62759f);
+  border-radius: 4px;
+}
+.details[open] > summary {
+  border-color: var(--control-border-hover, #2fe2ff);
+}
+.details[open] {
+  background: var(--bg, #070b18);
+  border-radius: 4px;
+}
+.details[open] > :not(summary) {
+  margin-inline: 12px;
+}
+.details[open] > :last-child {
+  padding-bottom: 12px;
+}
+.details summary:focus-visible {
+  outline: 2px solid var(--accent, #2fe2ff);
+  outline-offset: 3px;
+}
+.details p {
+  margin-block: 8px;
+}
+.details dl {
+  margin-block: 12px;
+}
+.details dl > div {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 2fr);
+  gap: 8px;
+  margin-block: 8px;
+}
+.details dt {
+  font-weight: 600;
+}
+.details dd {
+  margin: 0;
+}
+.details ul {
+  padding-left: 20px;
+}
+.details li {
+  margin-block: 4px;
+}
+.future {
+  color: var(--muted, #a3b0cf);
+}
+.title {
+  color: var(--text, #eef2ff);
+  border-left: 2px solid var(--accent, #2fe2ff);
+  padding: 8px 12px;
+  font:
+    15px/1.5 Arial,
+    sans-serif;
+  overflow-wrap: anywhere;
+}
+.title strong {
+  display: block;
+  font-size: 18px;
+}
+.title p {
+  margin: 4px 0 0;
+}
+@media (max-width: 600px) {
+  .panel {
+    padding: 12px;
+  }
+  .details dl > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+/* OTP badge in the champion pool: identity first, provenance always visible. */
+.otp {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "avatar title" "avatar figures" "avatar meter" "avatar note";
+  align-items: center;
+  gap: 4px 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line, #253457);
+  border-left: 3px solid var(--warm, #ffab3d);
+  border-radius: var(--radius, 2px);
+  background: var(--surface-2, #141d36);
+  overflow-wrap: anywhere;
+}
+.otp > :first-child {
+  grid-area: avatar;
+}
+.otpTitle {
+  grid-area: title;
+}
+.otpFigures {
+  grid-area: figures;
+}
+.otpMeter {
+  grid-area: meter;
+}
+.otpNote {
+  grid-area: note;
+}
+@media (max-width: 480px) {
+  .otp {
+    grid-template-areas: "avatar title" "figures figures" "meter meter" "note note";
+  }
+}
+.otp p {
+  margin: 0;
+}
+.otpTitle {
+  color: var(--text, #eef2ff);
+  font:
+    600 var(--fs-4, 20px) / 1.2 var(--font-display),
+    sans-serif;
+}
+.otpBadge {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 6px;
+  border-radius: var(--radius, 2px);
+  background: var(--warm, #ffab3d);
+  color: var(--accent-ink, #04101c);
+  font:
+    600 var(--fs-2, 14px) / 1.5 var(--font-body),
+    sans-serif;
+  letter-spacing: 1px;
+  vertical-align: 2px;
+}
+.otpFigures {
+  color: var(--muted, #a3b0cf);
+  font-size: var(--fs-2, 14px);
+  font-variant-numeric: tabular-nums;
+}
+.otpFigures strong {
+  color: var(--text, #eef2ff);
+}
+.otpMeter {
+  display: block;
+  height: 4px;
+  max-width: 320px;
+  border-radius: 2px;
+  background: var(--line, #253457);
+  overflow: hidden;
+}
+.otpMeter > span {
+  display: block;
+  height: 100%;
+  background: var(--warm, #ffab3d);
+}
+.otpNote {
+  color: var(--muted, #a3b0cf);
+  font-size: var(--fs-1, 12px);
+}

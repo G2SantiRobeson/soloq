@@ -1,22 +1,23 @@
+import { HallLegacyShowcase } from "@/components/hall-of-fame/hall-of-fame";
+import { AchievementShowcase } from "@/components/achievements/achievement-showcase";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Crosshair, TrendingUp } from "lucide-react";
+import { ArrowLeftRight, FingerprintPattern, TrendingUp } from "lucide-react";
+import { getProfileRival } from "@/server/profile-rival";
+import { ManualRival } from "@/components/manual-rival";
+import { getLocalRivalOptions } from "@/server/local-rival-options";
+import { ProfileRival } from "@/components/profile-rival";
 import { getProfile } from "@/server/queries";
 import { getAssets, profileIconUrl } from "@/server/riot/assets";
 import { parseView, STANDARD_QUEUES } from "@/lib/queues";
 import { PLATFORM_LABELS } from "@/lib/routing";
-import { kda, winrate } from "@/lib/stats";
+import { winrate } from "@/lib/stats";
 import { matchOutcome } from "@/lib/match-outcome";
 import { RankAvatar } from "@/components/rank-avatar";
-import { RankDisplay } from "@/components/rank-display";
-import { RankEmblem } from "@/components/rank-emblem";
-import { LPDisplay } from "@/components/lp-display";
-import { RecentChampionForm } from "@/components/recent-champion-form";
 import { LpDeltaSummary } from "@/components/lp-delta-summary";
-import { PlayerMomentum } from "@/components/player-momentum";
 import { championAsset } from "@/lib/champion-assets";
 import { ChampionIdentity } from "@/components/champion-identity";
-import { Freshness } from "@/components/freshness";
+import { ProfileFreshness } from "@/components/profile-freshness";
 import { QueueTabs } from "@/components/queue-tabs";
 import { BackToLadder } from "@/components/back-link";
 import { MatchHistory } from "@/components/match-history";
@@ -24,7 +25,14 @@ import { RankChart } from "@/components/rank-chart";
 import { PerformanceChart } from "@/components/performance-chart";
 import { HistoryStatusLabel } from "@/components/history-status";
 import { CURRENT_SEASON, seasonStart } from "@/lib/season";
-import { HIGHLIGHT_MIN_GAMES } from "@/lib/global-metrics";
+import { DisclosureLabel } from "@/components/disclosure";
+import {
+  ChampionPoolBlock,
+  CombatBlock,
+  FormBlock,
+  RankBlock,
+  RecordBlock,
+} from "@/components/profile-overview";
 import { Suspense } from "react";
 import {
   PlayerSignatureSection,
@@ -32,6 +40,12 @@ import {
 } from "@/components/player-signature-section";
 import { toSignaturePlayer } from "@/lib/signature";
 import { isDemo } from "@/server/env";
+import {
+  ProfileAchievements,
+  ProfileOtpHighlight,
+} from "@/components/achievements/profile-achievements";
+import { profileAchievementLoader } from "@/server/achievements/profile";
+import { countLabel } from "@/lib/format";
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ queue?: string }> };
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
@@ -49,32 +63,17 @@ export default async function PlayerPage({ params, searchParams }: Props) {
   const view = parseView((await searchParams).queue);
   const [player, assets] = await Promise.all([getProfile(id, view), getAssets()]);
   if (!player) notFound();
+  const rivalResult =
+    view !== "5v5" ? await getProfileRival(player, view) : { status: "none" as const };
+  const manualContext = await getLocalRivalOptions(player, view);
   const signatureInput = toSignaturePlayer(
     player,
     view,
     (championId, fallback) => championAsset(championId, fallback, assets.champions).name,
   );
-  const record = view !== "5v5" && player.rank ? player.rank : player.stats;
-  const rate = winrate(record.wins, record.losses);
-  const championRows = player.champions.map((c) => (
-    <div className="champion-row" key={c.championId}>
-      <ChampionIdentity {...championAsset(c.championId, c.champion, assets.champions)}>
-        {c.games} partidas · {kda(c.kills, c.deaths, c.assists).toFixed(2)} KDA
-      </ChampionIdentity>
-      <div className="champion-rate">
-        <strong
-          className={
-            c.games >= HIGHLIGHT_MIN_GAMES && winrate(c.wins, c.losses) >= 50 ? "positive" : ""
-          }
-        >
-          {c.games >= HIGHLIGHT_MIN_GAMES ? `${winrate(c.wins, c.losses).toFixed(0)}%` : "— WR"}
-        </strong>
-        <span>
-          {c.wins} V / {c.losses} D
-        </span>
-      </div>
-    </div>
-  ));
+  const source = { player, demo };
+  // Lazy: nothing runs unless the flag allows a consumer to render; both consumers share it.
+  const achievements = profileAchievementLoader(id, view, player.observedAt, assets.champions);
   return (
     <>
       <BackToLadder view={view} />
@@ -85,119 +84,83 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           src={profileIconUrl(assets.version, player.profileIconId)}
           size={132}
         />
-        <div>
+        <div className="profile-heading-identity">
           <div className="eyebrow">PERFIL DE JUGADOR · {PLATFORM_LABELS[player.platform]}</div>
           <h1>
             {player.gameName}
             <span>#{player.tagLine}</span>
           </h1>
-          <Freshness timestamp={player.lastSyncedAt} observedAt={player.observedAt} />
+          <ProfileFreshness
+            rankCheckedAt={player.rankCheckedAt ?? null}
+            lastSyncedAt={player.lastSyncedAt}
+            observedAt={player.observedAt}
+            view={view}
+            demo={demo}
+          />
+          <span className="profile-since">
+            En seguimiento desde
+            <br />
+            <b>{new Date(player.createdAt).toLocaleDateString("es-CL", { timeZone: "UTC" })}</b>
+          </span>
         </div>
-        <span className="profile-since">
-          En seguimiento desde
-          <br />
-          <b>{new Date(player.createdAt).toLocaleDateString("es-CL", { timeZone: "UTC" })}</b>
-        </span>
+        {view !== "5v5" && (
+          <div className="profile-header-rivals">
+            <ProfileRival result={rivalResult} view={view} version={assets.version} demo={demo} />
+            <ManualRival
+              key={id + "-" + player.platform + "-" + view}
+              player={{
+                id: player.id,
+                gameName: player.gameName,
+                tagLine: player.tagLine,
+                platform: player.platform,
+                profileIconId: player.profileIconId,
+                rank: player.rank,
+                observedAt: player.observedAt,
+              }}
+              view={view}
+              initial={manualContext}
+              version={assets.version}
+            />
+          </div>
+        )}
       </section>
       <div className="tabs-line">
         <QueueTabs view={view} base={`/player/${id}`} />
       </div>
-      <div className="profile-grid">
-        <section className="panel rank-panel">
-          <div className="card-label">
-            <Crosshair size={15} /> {view === "5v5" ? "REGISTRO 5V5" : "RANGO ACTUAL"}
-          </div>
-          <div className="profile-rank-heading">
-            {view !== "5v5" && <RankEmblem tier={player.rank?.tier} size={112} decorative />}
-            <RankDisplay rank={player.rank} noRank={view === "5v5"} emblem={false} />
-          </div>
-          <div className="profile-lp">
-            <LPDisplay rank={player.rank} noRank={view === "5v5"} />
-            {view !== "5v5" && <PlayerMomentum metrics={player.momentum} detailed />}
-          </div>
-          <div className="profile-record">
-            <strong className="positive">{record.wins} V</strong>
-            <span>{record.losses} D</span>
-            <b>{record.wins + record.losses ? `${rate.toFixed(1)}% WR` : "— WR"}</b>
-          </div>
-          <div className={`winrate-track ${record.wins + record.losses ? "" : "no-games"}`}>
-            <span style={{ width: `${rate}%` }} />
-          </div>
-          <p className="muted">
-            {record.wins + record.losses} partidas{" "}
-            {view === "5v5" || !player.rank ? "importadas" : "en el estado ranked actual"}
-          </p>
-          <div className="profile-form">
-            <span>FORMA RECIENTE</span>
-            <RecentChampionForm matches={player.recent} champions={assets.champions} />
-          </div>
-        </section>
-        <div className="competitive-overview">
-          <section className="stat-strip" aria-label="Estadísticas del historial importado">
-            <div>
-              <span>KDA</span>
-              <strong>
-                {player.stats.games
-                  ? kda(player.stats.kills, player.stats.deaths, player.stats.assists).toFixed(2)
-                  : "—"}
-              </strong>
-            </div>
-            <div>
-              <span>CS / MIN</span>
-              <strong>
-                {player.stats.duration
-                  ? (player.stats.cs / (player.stats.duration / 60)).toFixed(1)
-                  : "—"}
-              </strong>
-            </div>
-            <div>
-              <span>DAÑO / PARTIDA</span>
-              <strong>
-                {player.stats.games
-                  ? Math.round(player.stats.damage / player.stats.games).toLocaleString("es-CL")
-                  : "—"}
-              </strong>
-            </div>
-            <div>
-              <span>PARTIDAS IMPORTADAS</span>
-              <strong>{player.stats.games}</strong>
-            </div>
-          </section>
-          <section className="panel champion-panel">
-            <div className="panel-title">
-              <h2>Pool de campeones</h2>
-              <span>HISTORIAL IMPORTADO</span>
-            </div>
-            {player.champions.length ? (
-              <>
-                {championRows.slice(0, 3)}
-                {championRows.length > 3 && (
-                  <details className="profile-extra">
-                    <summary>Ver pool completo ({championRows.length} campeones)</summary>
-                    {championRows.slice(3)}
-                  </details>
-                )}
-              </>
-            ) : (
-              <p className="empty-copy">Aún no hay partidas importadas en esta cola.</p>
-            )}
-            <p className="metric-note">
-              Winrate por campeón desde {HIGHLIGHT_MIN_GAMES} partidas; muestras menores muestran
-              V/D.
-            </p>
-          </section>
-          <details className="profile-extra">
-            <summary>Firma competitiva del jugador</summary>
-            <Suspense fallback={<PlayerSignatureSkeleton name={player.gameName} />}>
-              <PlayerSignatureSection
-                input={signatureInput}
-                view={view}
-                name={player.gameName}
-                tier={view === "5v5" ? null : (player.rank?.tier ?? null)}
-              />
-            </Suspense>
-          </details>
-        </div>
+      <AchievementShowcase playerId={id} view={view} load={achievements} />
+      {/* Bento order is also the mobile reading order: rank/record, form, stats, pool, extras. */}
+      <div className={`profile-bento${view === "5v5" ? " is-5v5" : ""}`}>
+        {view !== "5v5" && <RankBlock {...source} view={view} />}
+        <RecordBlock {...source} view={view} />
+        <FormBlock {...source} champions={assets.champions} />
+        <CombatBlock {...source} />
+        <ChampionPoolBlock {...source} champions={assets.champions}>
+          <ProfileOtpHighlight view={view} load={achievements} champions={assets.champions} />
+        </ChampionPoolBlock>
+        <details className="disclosure disclosure-block profile-disclosure">
+          <summary>
+            <DisclosureLabel
+              icon={<FingerprintPattern size={18} />}
+              title="Firma competitiva"
+              hint="Lecturas estadísticas del jugador frente a referencias de la comunidad o del sistema"
+            />
+          </summary>
+          <Suspense fallback={<PlayerSignatureSkeleton name={player.gameName} />}>
+            <PlayerSignatureSection
+              input={signatureInput}
+              view={view}
+              name={player.gameName}
+              tier={view === "5v5" ? null : (player.rank?.tier ?? null)}
+            />
+          </Suspense>
+        </details>
+        <ProfileAchievements
+          playerId={id}
+          view={view}
+          asOf={player.observedAt}
+          champions={assets.champions}
+          load={achievements}
+        />
       </div>
       <div className="profile-progression-grid">
         <section className="panel evolution-panel">
@@ -235,7 +198,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           </p>
           <HistoryStatusLabel history={player.seasonHistory} demo={demo} />
           <div className="season-record">
-            <strong>{player.stats.games} partidas</strong>
+            <strong>{countLabel(player.stats.games, "partida", "partidas")}</strong>
             <span>
               {player.stats.wins} V / {player.stats.losses} D
             </span>
@@ -245,15 +208,22 @@ export default async function PlayerPage({ params, searchParams }: Props) {
                 : "— WR"}
             </strong>
           </div>
-          <PerformanceChart points={player.performance} />
+          <PerformanceChart points={player.performance} demo={demo} />
         </section>
       </div>
       {view !== "5v5" && (
-        <details className="profile-extra lp-history-details">
-          <summary>Cambios de LP entre registros {demo ? "ficticios" : "oficiales"}</summary>
+        <details className="disclosure disclosure-block lp-history-details">
+          <summary>
+            <DisclosureLabel
+              icon={<ArrowLeftRight size={18} />}
+              title={`Cambios de LP entre registros ${demo ? "ficticios" : "oficiales"}`}
+              hint="Intervalos observados y su nivel de confianza; Riot no informa LP por partida"
+            />
+          </summary>
           <LpDeltaSummary observations={player.lpObservations} demo={demo} />
         </details>
       )}
+      <HallLegacyShowcase playerId={id} view={view} />
       <MatchHistory
         demo={demo}
         key={`${id}-${view}`}

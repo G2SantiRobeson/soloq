@@ -1,3 +1,4 @@
+import { parseSharedRivalry } from "@/lib/shared-rivalry";
 import { parseView } from "@/lib/queues";
 import { parseLadderFilters, type LadderSearchParams } from "@/lib/ladder-filters";
 import Link from "next/link";
@@ -8,6 +9,7 @@ import { QueueTabs } from "@/components/queue-tabs";
 import { Leaderboard } from "@/components/leaderboard";
 import { getSyncStatus } from "@/server/sync/status";
 import { isDemo } from "@/server/env";
+import { weekStart } from "@/lib/time";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
@@ -17,6 +19,7 @@ export default async function Home({
   const params = await searchParams;
   const view = parseView(params.queue);
   const demo = isDemo();
+  const weekStartedAt = weekStart().toISOString();
   const [players, assets, sync] = await Promise.all([
     getLeaderboard(view),
     getAssets(),
@@ -61,12 +64,14 @@ export default async function Home({
       </div>
       <Leaderboard
         demo={demo}
+        weekStartedAt={weekStartedAt}
         players={players}
         view={view}
         version={assets.version}
         champions={assets.champions}
         sync={sync}
         initialFilters={parseLadderFilters(view, params)}
+        initialSharedRivalry={parseSharedRivalry(params, view)}
         key={view}
       />
       <aside className="data-note">
@@ -78,7 +83,7 @@ export default async function Home({
               ? "5v5 reúne partidas PvP estándar de Summoner’s Rift, incluidas SoloQ, Flex y Clash. Sin rango combinado. El orden inicial es por winrate del historial importado."
               : "Orden inicial por tier, división y LP oficiales. V/D y winrate ranked corresponden a la temporada; KDA y forma reciente, al historial importado. Los jugadores sin rango muestran su registro importado."}{" "}
           {view !== "5v5" &&
-            "Δ semana es el cambio neto de rango desde el lunes 00:00 (hora de Santiago), no la suma de LP por partida; «LP recientes» compara los últimos registros del mismo tier y división. "}
+            "Bajo los LP: variación neta verificable de las cinco partidas visibles. Δ semana y V/D usan el mismo intervalo entre observaciones, con referencia al lunes 00:00 de Santiago o un inicio parcial indicado. Una referencia anterior al lunes puede incluir actividad previa. Los valores no verificables no se estiman. "}
           La partida más reciente aparece a la izquierda. Los remakes se muestran con una flecha
           circular y se excluyen de las estadísticas{" "}
           {demo ? "de demostración" : "del historial importado"}.

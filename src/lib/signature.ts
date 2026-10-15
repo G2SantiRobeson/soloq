@@ -4,7 +4,8 @@ import type { View } from "./queues";
 import { kda } from "./stats";
 
 export type SignaturePlayer = SignatureMetrics.Player;
-export type SignatureMetric = SignatureMetrics.Metric;
+export type SignatureReference = "community" | "default";
+export type SignatureMetric = SignatureMetrics.Metric & { referenceSource: SignatureReference };
 export type SignatureBaseline = SignatureMetrics.Baseline;
 
 /** Engine baselines need a real sample; below this many players the engine defaults are used. */
@@ -58,7 +59,18 @@ export function toSignaturePlayer(
 }
 
 export function computeSignature(player: SignaturePlayer, baseline?: SignatureBaseline | null) {
-  return SignatureMetrics.compute(player, baseline ?? undefined);
+  const result = SignatureMetrics.compute(player, baseline ?? undefined);
+  // Mirror the engine's per-metric fallback without touching its numbers or ordering.
+  const all: SignatureMetric[] = result.all.map((metric) => ({
+    ...metric,
+    referenceSource: baseline?.[metric.id] ? "community" : "default",
+  }));
+  const byId = new Map(all.map((metric) => [metric.id, metric]));
+  return {
+    all,
+    featured: result.featured.map((metric) => byId.get(metric.id)!),
+    others: result.others.map((metric) => byId.get(metric.id)!),
+  };
 }
 
 export function signatureBaseline(players: SignaturePlayer[]): SignatureBaseline | null {

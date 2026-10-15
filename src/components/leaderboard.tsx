@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpRight, Search, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowDown, ArrowUp, ArrowUpRight, Search, Swords, X } from "lucide-react";
 import type { PublicPlayer } from "@/lib/types";
 import type { View } from "@/lib/queues";
 import { PLATFORM_LABELS, type Platform } from "@/lib/routing";
@@ -13,18 +14,26 @@ import {
   type LadderSort,
 } from "@/lib/ladder-filters";
 import { rankSortValue } from "@/lib/ranking";
+import {
+  resolveSharedRivalry,
+  visibleSharedRivalries,
+  sharedRivalryQuery,
+  sharedRivalryPath,
+  type SharedRivalryRequest,
+} from "@/lib/shared-rivalry";
+import { selectRivalries } from "@/lib/rivalries";
 import { kda, winrate } from "@/lib/stats";
 import { PlayerIdentity } from "./player-identity";
 import { RankDisplay } from "./rank-display";
 import { LPDisplay } from "./lp-display";
 import { RecentChampionForm } from "./recent-champion-form";
-import { PlayerMomentum } from "./player-momentum";
+import { LastFiveMomentum, WeeklyMomentum } from "./player-momentum";
 import type { ChampionCatalog } from "@/lib/champion-assets";
 import type { SyncStatus } from "@/lib/sync-status";
 import { SyncCountdown } from "./sync-countdown";
-import { signedLp } from "@/lib/lp-metrics";
 import { rememberLadderUrl } from "@/lib/ladder-memory";
 import { InfoTip } from "./info-tip";
+import { watchWeekChange } from "@/lib/weekly-refresh";
 export function Leaderboard({
   players,
   view,
@@ -32,7 +41,9 @@ export function Leaderboard({
   champions,
   sync,
   demo = false,
+  weekStartedAt,
   initialFilters = parseLadderFilters(view, {}),
+  initialSharedRivalry = { status: "none" },
 }: {
   players: PublicPlayer[];
   view: View;
@@ -40,20 +51,52 @@ export function Leaderboard({
   champions: ChampionCatalog;
   sync?: SyncStatus;
   demo?: boolean;
+  weekStartedAt?: string;
   initialFilters?: LadderFilters;
+  initialSharedRivalry?: SharedRivalryRequest;
 }) {
   const ids = useId();
+  const router = useRouter();
+  const [observedWeek, setObservedWeek] = useState(weekStartedAt);
+  const weeklyExpired = !!weekStartedAt && observedWeek !== weekStartedAt;
+  useEffect(() => {
+    if (view === "5v5" || !weekStartedAt) return;
+    const watcher = watchWeekChange({
+      weekStartedAt,
+      visible: () => document.visibilityState !== "hidden",
+      onChange: (current) => {
+        // Hide the old delta even if the refresh fails; retry at the next visible tick.
+        setObservedWeek(current);
+        router.refresh();
+      },
+    });
+    document.addEventListener("visibilitychange", watcher.check);
+    window.addEventListener("focus", watcher.check);
+    return () => {
+      watcher.stop();
+      document.removeEventListener("visibilitychange", watcher.check);
+      window.removeEventListener("focus", watcher.check);
+    };
+  }, [demo, view, weekStartedAt, router]);
   const [search, setSearch] = useState(initialFilters.search);
   const [region, setRegion] = useState<LadderFilters["region"]>(initialFilters.region);
   const [sort, setSort] = useState<LadderSort>(initialFilters.sort);
   const [ascending, setAscending] = useState(initialFilters.ascending);
   useEffect(() => {
     // Keep filters shareable and restorable without a server round trip.
-    const query = ladderQuery(view, { search, region, sort, ascending });
+    const filters = { search, region, sort, ascending };
+    const query =
+      initialSharedRivalry.status === "requested"
+        ? sharedRivalryQuery(view, filters, initialSharedRivalry.ids)
+        : ladderQuery(view, filters);
     if (window.location.search !== query)
-      window.history.replaceState(null, "", `${window.location.pathname}${query}`);
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${query}${window.location.hash}`,
+      );
     if (window.location.pathname === "/") rememberLadderUrl(`/${query}`);
-  }, [view, search, region, sort, ascending]);
+  }, [view, search, region, sort, ascending, initialSharedRivalry]);
   const records = useMemo(() => {
     const list = players.map((p) => {
       const wins = view !== "5v5" && p.rank ? p.rank.wins : p.stats.wins;
@@ -87,6 +130,8 @@ export function Leaderboard({
         (sort === "rank" ? b.rankValue - a.rankValue : b[sort] - a[sort]) * (ascending ? -1 : 1);
       return value || a.gameName.localeCompare(b.gameName);
     });
+  const shared = resolveSharedRivalry(rows, view, initialSharedRivalry);
+  const rivalries = visibleSharedRivalries(selectRivalries(rows, view), shared);
   function sortBy(next: LadderSort) {
     if (sort === next) setAscending(!ascending);
     else {
@@ -117,11 +162,19 @@ export function Leaderboard({
     <section className="leaderboard-section" aria-label="Clasificación de jugadores">
       <div className="table-toolbar">
         <div className="table-title">
-          <h2>
+          <h2 id="clasificacion" tabIndex={-1}>
             {view === "5v5" ? "Registro 5v5" : "Ranking"}
             <span className="count-tag">{players.length}</span>
           </h2>
           <span>{view === "5v5" ? "RENDIMIENTO IMPORTADO" : "TIER / DIVISIÓN / LP"}</span>
+          {rivalries.length > 0 && (
+            <Link
+              className="rivalries-jump"
+              href={"/rivalidades" + ladderQuery(view, { search, region, sort, ascending })}
+            >
+              <Swords size={16} aria-hidden="true" /> Ver rivalidades
+            </Link>
+          )}
         </div>
         <div className="table-filters">
           <div className="filter-field search-field">
@@ -234,17 +287,18 @@ export function Leaderboard({
                 "LP"
               ) : (
                 <InfoTip term="LP">
-                  {demo ? "LP ficticios de demo" : "LP oficiales actuales"}. Debajo: cambio neto
-                  entre los últimos registros comparables del mismo tier y división.
+                  {demo ? "LP ficticios de demo" : "LP oficiales actuales"}. Debajo: variación neta
+                  observada solo si los snapshots oficiales aíslan las cinco partidas visibles.
                 </InfoTip>
               )}
             </th>
             {view !== "5v5" && (
               <th scope="col" role="columnheader" className="weekly-column">
                 <InfoTip term="Δ SEMANA">
-                  Cambio neto de rango desde el lunes 00:00 (hora de Santiago). Es la diferencia de
-                  posición, no la suma de los LP de cada partida. «—»: todavía no hay un registro
-                  válido anterior al lunes.
+                  Referencia: lunes 00:00 de America/Santiago. ΔLP y V/D usan el mismo intervalo
+                  entre observaciones oficiales. Sin baseline anterior al lunes se muestra Δ parcial
+                  desde el primer registro válido de la semana. Sin dos registros comparables: Sin
+                  datos suficientes.
                 </InfoTip>
               </th>
             )}
@@ -280,15 +334,15 @@ export function Leaderboard({
               </td>
               <td role="cell" className="lp-cell">
                 <LPDisplay rank={p.rank} noRank={view === "5v5"} />
-                {view !== "5v5" && <PlayerMomentum metrics={p.momentum} />}
+                {view !== "5v5" && <LastFiveMomentum metrics={p.lastFiveLp} />}
               </td>
               {view !== "5v5" && (
                 <td
                   role="cell"
-                  className={`weekly-cell numeric ${(p.weeklyLp ?? 0) > 0 ? "positive" : (p.weeklyLp ?? 0) < 0 ? "negative" : ""}`}
+                  className={`weekly-cell numeric ${weeklyExpired ? "" : (p.weeklyLp ?? 0) > 0 ? "positive" : (p.weeklyLp ?? 0) < 0 ? "negative" : ""}`}
                 >
                   <span className="mobile-label">Δ SEMANA </span>
-                  {p.weeklyLp == null ? "—" : `${signedLp(p.weeklyLp)} LP`}
+                  <WeeklyMomentum summary={weeklyExpired ? null : p.weeklySummary} />
                 </td>
               )}
               <td role="cell" className="wr-cell">
@@ -355,6 +409,28 @@ export function Leaderboard({
             </Link>
           )}
         </div>
+      )}
+      {(shared.status === "invalid" || shared.status === "unavailable") && (
+        <p className="shared-rivalry-status" role="status">
+          {shared.status === "invalid"
+            ? "Enlace de rivalidad inválido. La clasificación permanece disponible."
+            : "El enfrentamiento compartido ya no está disponible con este estado o estos filtros. La clasificación permanece disponible."}
+        </p>
+      )}
+      {shared.status === "ready" && (
+        <Link
+          className="shared-rivalry-status"
+          href={
+            sharedRivalryPath(view, [shared.rivalry.players[0].id, shared.rivalry.players[1].id], {
+              search,
+              region,
+              sort,
+              ascending,
+            }) ?? "/rivalidades"
+          }
+        >
+          Abrir enfrentamiento compartido
+        </Link>
       )}
       <div className="table-bottom">
         <span role="status">
