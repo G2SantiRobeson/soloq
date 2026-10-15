@@ -42,11 +42,12 @@ export default function Privacy() {
         {demo
           ? "La demo no inicia sesiones administrativas; las cookies administrativas residuales no habilitan operaciones."
           : "La administración usa una cookie de sesión HttpOnly, con duración máxima de ocho horas."}{" "}
-        La aplicación guarda preferencias de navegación y filtros en el almacenamiento local del
-        navegador. No integra publicidad ni analítica propia. El proveedor de alojamiento puede
-        registrar solicitudes e información técnica. Algunos recursos estáticos públicos se
-        consultan en Data Dragon o la CDN de Riot; una solicitud a esa CDN comunica la dirección IP
-        del visitante.
+        La aplicación guarda preferencias de navegación, filtros y rivales elegidos en el
+        almacenamiento local del navegador. No integra publicidad ni analítica propia. El proveedor
+        de alojamiento puede registrar solicitudes e información técnica.{" "}
+        {demo
+          ? "Las imágenes de esta demo se sirven localmente desde el alojamiento; los retratos ficticios reutilizan ilustraciones locales de campeones. No se consulta Data Dragon ni la CDN de Riot durante la navegación."
+          : "Algunos recursos estáticos públicos se consultan en Data Dragon o la CDN de Riot; una solicitud a esa CDN comunica la dirección IP del visitante."}
       </p>
       <h2>Conservación y eliminación</h2>
       <p>

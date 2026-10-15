@@ -1,7 +1,8 @@
 import type { Platform } from "./routing";
 import type { Rank } from "./ranking";
 import type { Totals } from "./stats";
-import type { LpMetrics, RankSnapshot } from "./lp-metrics";
+import type { FiveMatchLp, LpMetrics, RankSnapshot } from "./lp-metrics";
+import type { WeeklyLp } from "./weekly-lp";
 import type { HistoryStatus } from "./season";
 import type { PerformancePoint, LpObservation } from "./history";
 export type RecentChampionMatch = Pick<
@@ -32,13 +33,22 @@ export type PublicPlayer = {
   platform: Platform;
   profileIconId: number | null;
   lastSyncedAt: string | null;
+  /** Player-wide LEAGUE-V4 verification, not a per-queue snapshot or match coverage. */
+  rankCheckedAt?: string | null;
   observedAt: string;
   createdAt: string;
   rank: Rank | null;
   stats: Totals;
   recent: RecentChampionMatch[];
   momentum: LpMetrics | null;
+  /** Bounded, chronological observations from the selected ranked queue; never rankCheckedAt. */
+  rivalryHistory?: readonly RankSnapshot[];
+  /** Calendar-week batch, bounded separately; false completeness suppresses the award. */
+  weeklyRivalryHistory?: readonly RankSnapshot[];
+  weeklyRivalryHistoryComplete?: boolean;
   weeklyLp?: number | null;
+  weeklySummary?: WeeklyLp | null;
+  lastFiveLp?: FiveMatchLp;
   seasonHistory?: HistoryStatus;
 };
 export type ChampionStats = Totals & { champion: string; championId: number };

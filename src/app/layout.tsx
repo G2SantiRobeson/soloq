@@ -22,7 +22,9 @@ export async function generateMetadata(): Promise<Metadata> {
     ? "Demo pública de SoloQ con jugadores, partidas, rangos y LP ficticios. Sin sincronización de cuentas reales."
     : "Sigue el ranking, las partidas y el progreso de tu comunidad de League of Legends. SoloQ, Flex y 5v5 en un solo lugar.";
   return {
-    metadataBase: new URL(process.env.APP_URL || "http://localhost:3000"),
+    metadataBase: new URL(
+      process.env.APP_URL || (isDemo() ? "https://soloq-teal.vercel.app" : "http://localhost:3000"),
+    ),
     title: { default: "SoloQ — Cada partida cuenta", template: "%s | SoloQ" },
     description,
     openGraph: {

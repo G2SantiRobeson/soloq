@@ -93,13 +93,13 @@ describe("Production Demo without credentials or PostgreSQL", () => {
     "serves leaderboard, profiles, graphs and awards for %s exclusively from fixtures",
     async (view) => {
       const players = await getLeaderboard(view);
-      expect(players).toHaveLength(12);
+      expect(players).toHaveLength(24);
       for (const player of players) {
         expect(player.id).toMatch(/^demo-/);
         expect(player.gameName).toMatch(/^Demo /);
         const profile = await getProfile(player.id, view);
         expect(profile?.id).toBe(player.id);
-        expect(profile?.recent.length).toBeLessThanOrEqual(40);
+        expect(profile?.recent.length).toBeLessThanOrEqual(360);
         expect(profile).not.toHaveProperty("puuid");
       }
       const profile = await getProfile(players[0].id, view);
@@ -122,7 +122,7 @@ describe("Production Demo without credentials or PostgreSQL", () => {
       for (const view of VIEWS) {
         const players = await getLeaderboard(view, period);
         const overview = await getSeasonOverview(view, period);
-        expect(globalMetrics(players, view, "matches").participants).toBe(12);
+        expect(globalMetrics(players, view, "matches").participants).toBe(24);
         expect(players.reduce((sum, p) => sum + p.stats.games, 0)).toBeGreaterThan(0);
         expect(overview.uniqueGames).toBeGreaterThan(0);
         expect(overview.activity.length).toBeGreaterThan(0);

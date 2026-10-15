@@ -43,14 +43,18 @@ env[pathKey] = `${path.dirname(process.execPath)}${path.delimiter}${env[pathKey]
 const port = await new Promise((resolve, reject) => {
   const socket = net.createServer();
   socket.once("error", reject);
-  socket.listen(0, "127.0.0.1", () => {
+  const requestedPort = process.argv.find((a) => /^--port=\d+$/.test(a));
+  const selectedPort = requestedPort ? Number(requestedPort.slice(7)) : 0;
+  assert(selectedPort === 0 || (selectedPort >= 1024 && selectedPort <= 65535));
+  socket.listen(selectedPort, "127.0.0.1", () => {
     const { port } = socket.address();
     socket.close(() => resolve(port));
   });
 });
 env.DEMO_MODE = "true";
 env.NODE_ENV = "production";
-env.APP_URL = `http://127.0.0.1:${port}`;
+env.APP_URL = "https://soloq-teal.vercel.app";
+const localUrl = `http://127.0.0.1:${port}`;
 env.LADDER_SCHEDULER_ENABLED = "false";
 env.NEXT_TELEMETRY_DISABLED = "1";
 env.NODE_OPTIONS = `--require="${path.join(isolated, "scripts/demo-network-guard.cjs").replaceAll("\\", "/")}"`;
@@ -64,6 +68,7 @@ const secrets = [
 assert(secrets.every((key) => !(key in env)));
 let server;
 let logs = "";
+const checks = [];
 function launch(command, args) {
   const child = spawn(command, args, {
     cwd: isolated,
@@ -91,7 +96,7 @@ async function npmBuild() {
   assert(!logs.includes("DEMO_FORBIDDEN_NETWORK"), "Build attempted a forbidden connection");
 }
 async function check(route, expected = 200, options = {}) {
-  const response = await fetch(`${env.APP_URL}${route}`, {
+  const response = await fetch(`${localUrl}${route}`, {
     ...options,
     redirect: "manual",
     signal: AbortSignal.timeout(60_000),
@@ -107,12 +112,14 @@ async function check(route, expected = 200, options = {}) {
   );
   if (Array.isArray(expected))
     assert(body.includes("No encontramos esta página."), `${route}: missing not-found view`);
-  if (route.startsWith("/api/")) assert.equal(response.headers.get("cache-control"), "no-store");
-  else {
+  if (route.startsWith("/api/") && ![404, 405].includes(response.status))
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  else if (!route.startsWith("/api/")) {
     assert(body.includes("rangos y LP ficticios"), `${route}: missing honest demo banner`);
     assert(body.includes("endorsed by Riot Games"), `${route}: missing disclaimer`);
   }
   assert(!logs.includes("DEMO_FORBIDDEN_NETWORK"), "A forbidden connection was attempted");
+  checks.push({ route, method: options.method ?? "GET", status: response.status });
   console.log(`demo_route_check ${response.status} ${route}`);
   return body;
 }
@@ -195,6 +202,36 @@ try {
       assert(metrics.includes("Salón de honor") && metrics.includes("Salón de la vergüenza"));
     }
   }
+  for (const queue of ["soloq", "flex", "5v5"]) {
+    const center = await check(`/logros?queue=${queue}&player=demo-5`);
+    assert(center.includes("Sin concesión permanente"));
+    if (queue !== "5v5") assert(center.includes('data-state="observed"'));
+    else assert(!center.includes('data-state="observed"'));
+    assert(center.includes("Ver requisitos"));
+  }
+  for (const queue of ["soloq", "flex"]) {
+    const hall = await check(`/salon-de-la-fama?queue=${queue}`);
+    assert(hall.includes("acreditación real todavía no disponible"));
+    assert(hall.includes("Ficticio · Demo"));
+    assert(hall.includes("Rareza real: todavía no disponible"));
+    if (queue === "flex") assert(!hall.includes('data-source="fictional_hall"'));
+  }
+  for (const route of [
+    "/rivalidades?queue=soloq",
+    "/rivalidades?queue=flex",
+    "/rivalidades?queue=5v5",
+    "/rivalidades?q=missing",
+    "/rivalidad/demo-4/demo-5?queue=soloq",
+  ])
+    await check(route);
+  for (const method of ["GET", "POST", "PUT", "DELETE"])
+    await check("/api/player/demo-4/rival", method === "POST" ? 410 : 405, { method });
+  for (const asset of ["el-intocable", "el-monarca", "el-primero-de-su-nombre"]) {
+    const response = await fetch(localUrl + "/achievements/hall-of-fame/" + asset + ".webp");
+    assert.equal(response.status, 200);
+    assert(response.headers.get("content-type").includes("image/webp"));
+    checks.push({ route: asset + ".webp", method: "GET", status: 200 });
+  }
   const admin = await check("/admin");
   assert(admin.includes("modo demo") && admin.includes("disabled"));
   await check("/privacy");
@@ -207,6 +244,7 @@ try {
     await check(`/dev/${dev}`, [200, 404]);
   const uuid = "123e4567-e89b-42d3-a456-426614174000";
   await check("/api/admin/players", 503);
+  await check("/api/admin/sync/progress", 404); // Staging-only endpoint is deliberately not promoted.
   for (const route of [
     "login",
     "logout",
@@ -244,8 +282,25 @@ try {
   console.log(
     "PRODUCTION_DEMO_PASS: production build and HTTP smoke checks, no PostgreSQL or authenticated Riot connections",
   );
+  await mkdir(path.join(artifacts, "rc2"), { recursive: true });
+  await writeFile(
+    path.join(artifacts, "rc2/production-demo.json"),
+    JSON.stringify(
+      {
+        node: process.version,
+        checks,
+        count: checks.length,
+        forbiddenNetworkAttempts: false,
+        secretsPresent: false,
+        build: "PASS",
+        url: localUrl,
+      },
+      null,
+      2,
+    ),
+  );
   if (process.argv.includes("--serve")) {
-    console.log(`Demo QA URL: ${env.APP_URL}`);
+    console.log(`Demo QA URL: ${localUrl}`);
     await new Promise((resolve) => {
       process.once("SIGINT", resolve);
       process.once("SIGTERM", resolve);
