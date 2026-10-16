@@ -6,7 +6,14 @@ import { APP_TIMEZONE } from "@/lib/time";
 import { countLabel } from "@/lib/format";
 
 export function WeeklyMomentum({ summary }: { summary?: WeeklyLp | null }) {
-  if (!summary) return <small className="muted">Sin datos suficientes</small>;
+  // A dash marks "no comparable records" (the column tip explains it); it is never a 0 LP week.
+  if (!summary)
+    return (
+      <small className="muted weekly-empty" title="Sin datos suficientes">
+        <span aria-hidden="true">—</span>
+        <span className="sr-only">Sin datos suficientes</span>
+      </small>
+    );
   const format = (iso: string) => new Date(iso).toLocaleString("es-CL", { timeZone: APP_TIMEZONE });
   return (
     <>

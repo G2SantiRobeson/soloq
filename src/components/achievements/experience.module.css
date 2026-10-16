@@ -1,0 +1,593 @@
+/* Logros: three experimental challenges read as rows of one board, joined by 1px seams.
+   The category colour lives only on the emblem; state, threshold and evidence use the
+   shared tokens. The profile showcase at the end reuses the same emblem. */
+.page {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.page > :global(.page-heading) {
+  padding-bottom: 0;
+}
+.page > :global(.queue-tabs) {
+  border-bottom: 1px solid var(--line);
+}
+.experimentalTag {
+  display: inline-block;
+  margin-right: var(--space-half);
+  padding: 0 var(--space-half);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  color: var(--warning);
+  font-size: var(--fs-2);
+  font-weight: 600;
+  line-height: 1.5;
+}
+.metaLink,
+.profileLink,
+.showcase header a {
+  color: var(--accent);
+  text-decoration: underline transparent;
+  text-underline-offset: 4px;
+  transition: text-decoration-color var(--dur-ui) ease;
+}
+.metaLink {
+  white-space: nowrap;
+}
+.metaLink:hover,
+.profileLink:hover,
+.showcase header a:hover {
+  text-decoration-color: currentColor;
+}
+.profileLink {
+  font-size: var(--fs-2);
+}
+
+/* Profile picker: sits in the masthead, aligned with the bottom of the title. */
+.profilePicker {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 440px;
+  padding-bottom: var(--space-half);
+}
+.profilePicker h2 {
+  color: var(--muted);
+  font:
+    600 var(--fs-2) / 1.4 var(--font-body),
+    sans-serif;
+}
+.profileName {
+  max-width: 100%;
+  font:
+    600 var(--fs-5) / 1.05 var(--font-display),
+    sans-serif;
+  overflow-wrap: anywhere;
+}
+.profileName[data-empty="true"] {
+  color: var(--muted);
+}
+.profilePicker .demoCases {
+  max-width: 100%;
+  margin: var(--space-half) 0 0;
+}
+.demoNote {
+  color: var(--warning);
+  font-size: var(--fs-1);
+}
+.profileForm {
+  display: grid;
+  gap: var(--space-half);
+  width: 100%;
+  min-width: 0;
+}
+.profileForm label {
+  color: var(--muted);
+  font-size: var(--fs-2);
+  font-weight: 600;
+}
+.profileForm > span {
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.profileForm input {
+  flex: 1;
+  min-width: 0;
+  height: var(--target-min);
+  padding-inline: var(--space-cell);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-3);
+  transition: border-color var(--dur-ui) ease;
+}
+.profileForm input:hover {
+  border-color: var(--accent);
+}
+.profileForm :global(.button) {
+  min-height: var(--target-min);
+}
+.notice {
+  padding: var(--space-cell) var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--fs-3);
+}
+
+/* Challenge board */
+.catalog {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.galleryHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-half) var(--space-3);
+}
+.galleryHeading p {
+  color: var(--muted);
+  font-size: var(--fs-2);
+}
+.categoryNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  margin-left: auto;
+  font-size: var(--fs-2);
+}
+.categoryNav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-floor);
+  color: var(--muted);
+  text-decoration: underline transparent;
+  text-underline-offset: 4px;
+  transition:
+    color var(--dur-ui) ease,
+    text-decoration-color var(--dur-ui) ease;
+}
+.categoryNav a:hover {
+  color: var(--text);
+  text-decoration-color: var(--accent);
+}
+.gallery {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--line);
+  list-style: none;
+}
+.catalogItem,
+.signalBadge {
+  --signal: var(--emblem-recovery);
+  --signal-bg: var(--emblem-recovery-bg);
+}
+.catalogItem[data-theme="streak"],
+.signalBadge[data-theme="streak"] {
+  --signal: var(--emblem-streak);
+  --signal-bg: var(--emblem-streak-bg);
+}
+.catalogItem[data-theme="mastery"],
+.signalBadge[data-theme="mastery"] {
+  --signal: var(--emblem-mastery);
+  --signal-bg: var(--emblem-mastery-bg);
+}
+.catalogItem {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1.6fr);
+  grid-template-areas:
+    "emblem identity facts"
+    "emblem details details";
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+  scroll-margin-top: calc(var(--header-h) + var(--space-3));
+}
+.emblem {
+  grid-area: emblem;
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  color: var(--signal);
+}
+.emblemFrame {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 108px;
+  background: var(--signal-bg);
+  clip-path: polygon(50% 0, 94% 22%, 88% 73%, 50% 100%, 12% 73%, 6% 22%);
+}
+.emblemFrame svg {
+  width: 52px;
+  height: 52px;
+}
+/* Lit only when the condition was observed; every other state is spelled out in text. */
+.catalogItem:not([data-state="observed"]) .emblemFrame {
+  opacity: 0.45;
+}
+.identity {
+  grid-area: identity;
+  min-width: 0;
+}
+.categoryLabel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--muted);
+  font-size: var(--fs-2);
+  font-weight: 600;
+}
+.experimental {
+  padding: 0 var(--space-half);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: var(--fs-1);
+  line-height: 1.5;
+}
+.identity h3 {
+  margin-top: var(--space-1);
+  font-size: var(--fs-5);
+  line-height: 1.05;
+}
+.challengeCopy {
+  max-width: 46ch;
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font-size: var(--fs-3);
+  line-height: 1.5;
+}
+.facts {
+  grid-area: facts;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--space-3);
+  align-content: start;
+}
+.facts dt {
+  color: var(--muted);
+  font-size: var(--fs-2);
+  font-weight: 600;
+}
+.facts > div > dd {
+  margin-top: var(--space-1);
+}
+.threshold,
+.measurement {
+  font:
+    600 var(--fs-4) / 1.2 var(--font-display),
+    sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--fs-3);
+  font-weight: 600;
+}
+.status svg {
+  flex-shrink: 0;
+}
+.catalogItem[data-state="observed"] .status {
+  color: var(--win);
+}
+.catalogItem[data-state="insufficient"] .status,
+.catalogItem[data-state="invalid"] .status {
+  color: var(--warning);
+}
+.measurement {
+  margin-top: var(--space-half);
+  color: var(--text);
+}
+.explanation {
+  margin-top: var(--space-half);
+  color: var(--muted);
+  font-size: var(--fs-3);
+  line-height: 1.5;
+}
+.demoMarker {
+  display: block;
+  margin-top: var(--space-half);
+  color: var(--warning);
+  font-size: var(--fs-2);
+}
+.criteria {
+  grid-area: details;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-3);
+}
+.criteria summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: fit-content;
+  min-height: var(--target-min);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  transition: color var(--dur-ui) ease;
+}
+.criteria summary::-webkit-details-marker {
+  display: none;
+}
+.criteria summary:hover {
+  color: var(--accent);
+}
+.criteria summary svg,
+.methodology summary svg {
+  flex-shrink: 0;
+  transition: transform var(--dur-ui) var(--ease-out);
+}
+.criteria[open] > summary svg,
+.methodology[open] > summary svg {
+  transform: rotate(180deg);
+}
+.detailBody {
+  max-width: 72ch;
+  padding-bottom: var(--space-1);
+  color: var(--muted);
+  line-height: 1.55;
+}
+.detailBody h4 {
+  margin-top: var(--space-1);
+  color: var(--text);
+  font:
+    600 var(--fs-4) / 1.2 var(--font-display),
+    sans-serif;
+}
+.detailBody h5 {
+  margin-top: var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-3);
+}
+.detailBody p {
+  margin-block: var(--space-1);
+}
+.detailBody ul {
+  margin-block: var(--space-cell);
+  padding-left: var(--space-3);
+}
+.detailBody li {
+  margin-block: 6px;
+}
+.detailBody dl {
+  margin-block: var(--space-cell);
+}
+.detailBody dl > div {
+  padding-block: var(--space-1);
+  border-bottom: 1px solid var(--line);
+}
+.detailBody dt {
+  color: var(--text);
+  font-weight: 600;
+}
+.detailBody dd {
+  margin-top: var(--space-half);
+}
+.version {
+  font-size: var(--fs-2);
+}
+.methodology {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--fs-3);
+  overflow-wrap: anywhere;
+  scroll-margin-top: calc(var(--header-h) + var(--space-3));
+}
+.methodology summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: fit-content;
+  min-height: var(--target-min);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  transition: color var(--dur-ui) ease;
+}
+.methodology summary::-webkit-details-marker {
+  display: none;
+}
+.methodology summary:hover {
+  color: var(--accent);
+}
+.methodology p,
+.methodology ul {
+  max-width: 72ch;
+  margin-block: var(--space-cell);
+  line-height: 1.55;
+}
+.methodology ul {
+  padding-left: var(--space-3);
+}
+
+/* Profile showcase: observed conditions only, as compact emblem chips. */
+.showcase {
+  min-width: 0;
+  margin-block: var(--space-2);
+  padding-block: var(--space-cell);
+  border-block: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.showcase header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+}
+.showcase header a {
+  font-size: var(--fs-2);
+}
+.showcase h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-3);
+}
+.badgeStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-cell);
+  margin-top: var(--space-cell);
+}
+.signalBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-2);
+  line-height: 1.35;
+}
+.emblemCompact {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 48px;
+  height: 54px;
+  color: var(--signal);
+}
+.emblemCompact .emblemFrame {
+  width: 42px;
+  height: 48px;
+}
+.emblemCompact svg {
+  width: 26px;
+  height: 26px;
+}
+.signalBadge small,
+.badgeMotto {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-1);
+}
+.showcaseNote,
+.empty {
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font-size: var(--fs-1);
+}
+
+@media (max-width: 1100px) {
+  .catalogItem {
+    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-areas:
+      "emblem identity"
+      "emblem facts"
+      "emblem details";
+    column-gap: var(--space-3);
+  }
+}
+@media (max-width: 700px) {
+  .page {
+    gap: var(--space-2);
+  }
+  .profilePicker {
+    max-width: none;
+  }
+  .categoryNav {
+    margin-left: 0;
+  }
+  .catalogItem {
+    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-areas:
+      "emblem identity"
+      "facts facts"
+      "details details";
+    gap: var(--space-2);
+    padding: var(--space-2);
+  }
+  .emblemFrame {
+    width: 56px;
+    height: 64px;
+  }
+  .emblemFrame svg {
+    width: 32px;
+    height: 32px;
+  }
+  .identity h3 {
+    margin-top: var(--space-half);
+  }
+}
+@media (max-width: 560px) {
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+}
+@media (max-width: 420px) {
+  .identity h3 {
+    font-size: var(--fs-4);
+  }
+  .badgeStrip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-1);
+  }
+  .signalBadge {
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+    padding: var(--space-1);
+    font-size: 14px;
+  }
+  .emblemCompact {
+    width: 30px;
+    height: 36px;
+  }
+  .emblemCompact .emblemFrame {
+    width: 30px;
+    height: 34px;
+  }
+  .emblemCompact svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+@media (max-width: 380px) {
+  .profilePicker .demoCases a {
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+  }
+}
+@media (max-width: 360px) {
+  .signalBadge {
+    gap: var(--space-half);
+    padding: 6px;
+  }
+  .emblemCompact {
+    width: 22px;
+    height: 28px;
+  }
+  .emblemCompact .emblemFrame {
+    width: 22px;
+    height: 26px;
+  }
+  .emblemCompact svg {
+    width: 18px;
+    height: 18px;
+  }
+}

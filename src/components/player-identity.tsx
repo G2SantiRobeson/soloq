@@ -1,4 +1,5 @@
 import type { PublicPlayer } from "@/lib/types";
+import { profileIconAsset } from "@/lib/profile-icon";
 import { PLATFORM_LABELS } from "@/lib/routing";
 import { RankAvatar } from "./rank-avatar";
 import { Freshness } from "./freshness";
@@ -15,11 +16,7 @@ export function PlayerIdentity({
         tier={player.rank?.tier}
         decorative
         name={player.gameName}
-        src={
-          version && player.profileIconId !== null
-            ? `https://ddragon.leagueoflegends.com/cdn/${version}/img/profileicon/${player.profileIconId}.png`
-            : null
-        }
+        src={profileIconAsset(version, player.profileIconId)}
       />
       <span className="identity-copy">
         <span className="player-name">

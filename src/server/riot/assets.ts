@@ -1,4 +1,7 @@
 import "server-only";
+import { isDemo } from "@/server/env";
+import { demoPlayers } from "@/server/demo";
+import { profileIconAsset } from "@/lib/profile-icon";
 import { unstable_cache } from "next/cache";
 import { z } from "zod";
 const cdn = "https://ddragon.leagueoflegends.com";
@@ -49,6 +52,18 @@ const getCachedAssets = unstable_cache(
   { revalidate: 86400 },
 );
 export async function getAssets(): Promise<Assets> {
+  if (isDemo())
+    return {
+      version: "local-demo",
+      champions: Object.fromEntries(
+        demoPlayers("soloq", "season").flatMap((p) =>
+          p.champions.map((c) => [
+            c.championId,
+            { name: c.champion, image: "/champ-icons/" + c.championId + ".png" },
+          ]),
+        ),
+      ),
+    };
   try {
     return await getCachedAssets();
   } catch {
@@ -56,5 +71,5 @@ export async function getAssets(): Promise<Assets> {
   }
 }
 export function profileIconUrl(version: string | null, id: number | null) {
-  return version && id !== null ? `${cdn}/cdn/${version}/img/profileicon/${id}.png` : null;
+  return profileIconAsset(version, id);
 }

@@ -1,6 +1,6 @@
 // Preloaded only by the isolated demo validation process, never by deployments.
 const net = require("node:net"); // eslint-disable-line @typescript-eslint/no-require-imports -- Node CommonJS preload
-const allowed = new Set(["localhost", "127.0.0.1", "::1", "ddragon.leagueoflegends.com"]);
+const allowed = new Set(["localhost", "127.0.0.1", "::1"]);
 function reject() {
   console.error("DEMO_FORBIDDEN_NETWORK");
   throw new Error("Demo validation blocked an unexpected network operation.");

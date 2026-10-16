@@ -165,7 +165,8 @@ describe("demo OTP evidence belongs to the displayed player", () => {
     ).toBe("");
   });
 
-  it("flag off: no badge, no evaluation and no reads", async () => {
+  it("non-Demo flag off: no badge, no evaluation and no reads", async () => {
+    vi.stubEnv("DEMO_MODE", "false");
     vi.stubEnv("ACHIEVEMENTS_EXPERIMENTAL", undefined);
     const records = vi.spyOn(demoAchievementReader, "records");
     const load = profileAchievementLoader("demo-5", "soloq", asOf(), champions);

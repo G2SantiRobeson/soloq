@@ -23,6 +23,15 @@ const service = vi.hoisted(() => vi.fn());
 const missing = vi.hoisted(() => ({ value: false }));
 const profileChanges = vi.hoisted(() => ({ value: {} as Partial<PlayerProfile> }));
 vi.mock("@/server/achievements/service", () => ({ readPlayerAchievements: service }));
+vi.mock("@/server/profile-rival", () => ({ getProfileRival: async () => ({ status: "none" }) }));
+vi.mock("@/server/local-rival-options", () => ({
+  getLocalRivalOptions: async () => ({
+    available: false,
+    demo: false,
+    selectedId: null,
+    candidates: [],
+  }),
+}));
 vi.mock("@/server/queries", async () => {
   const { demoPlayers } = await import("@/server/demo");
   return {
@@ -38,6 +47,7 @@ vi.mock("@/server/riot/assets", () => ({
 }));
 vi.mock("@/server/signature-baseline", () => ({ getSignatureBaseline: async () => null }));
 vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
   usePathname: () => "/player/demo-1",
   notFound: () => {
     throw new Error("NOT_FOUND");
@@ -88,6 +98,7 @@ describe("gated profile integration", () => {
   it.each(["soloq", "flex", "5v5"] as const)(
     "off profile %s keeps existing data and performs no achievements work",
     async (view) => {
+      vi.stubEnv("DEMO_MODE", "false");
       service.mockRejectedValue(new Error("must not run"));
       const page = await resolvedPage(view);
       expect(elements(page).some((e) => e.type === PlayerSignatureSection)).toBe(true);
@@ -109,6 +120,7 @@ describe("gated profile integration", () => {
     vi.stubEnv("ACHIEVEMENTS_EXPERIMENTAL", "true");
     vi.stubEnv("VERCEL", "1");
     vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("DEMO_MODE", "false");
     expect(ProfileAchievements(props)).toBeNull();
     expect(await ProfileAchievementsContent(props)).toBeNull();
     expect(service).not.toHaveBeenCalled();
@@ -195,6 +207,7 @@ describe("gated profile integration", () => {
     expect(service).not.toHaveBeenCalled(); // Work begins when Next renders the independent Suspense child.
   });
   it("URL, cookie and header inputs cannot enable server policy", async () => {
+    vi.stubEnv("DEMO_MODE", "false");
     const forged = {
       ...pageProps(),
       searchParams: Promise.resolve({ queue: "soloq", achievements: "true" }),

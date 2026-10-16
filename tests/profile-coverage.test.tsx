@@ -6,7 +6,19 @@ import type { PlayerProfile } from "@/lib/types";
 import { emptyTotals } from "@/lib/stats";
 import PlayerPage from "@/app/player/[id]/page";
 
+vi.mock("@/server/local-rival-options", () => ({
+  getLocalRivalOptions: async () => ({
+    available: false,
+    demo: false,
+    selectedId: null,
+    candidates: [],
+  }),
+}));
 const state = vi.hoisted(() => ({ profile: null as PlayerProfile | null, demo: false }));
+// This legacy page test owns its profile fixture; the rival read is tested separately.
+vi.mock("@/server/profile-rival", () => ({
+  getProfileRival: vi.fn(async () => ({ status: "none" })),
+}));
 vi.mock("@/server/queries", () => ({ getProfile: vi.fn(async () => state.profile) }));
 vi.mock("@/server/env", () => ({ isDemo: () => state.demo }));
 vi.mock("@/server/riot/assets", () => ({
@@ -71,7 +83,7 @@ describe("honest season coverage", () => {
     (status) => {
       const html = render(status, true);
       expect(html).toContain('aria-label="Cobertura del historial importado"');
-    expect(html).toContain('role="note"');
+      expect(html).toContain('role="note"');
       expect(html).toContain("history-status-compact");
       expect(html).toContain("Métricas y campeones de partidas importadas");
       expect(html).toContain("Rendimiento de temporada");
@@ -116,14 +128,14 @@ describe("honest season coverage", () => {
       expect(html.indexOf("Historial parcial · puede continuar")).toBeLessThan(
         html.indexOf('aria-label="Estadísticas del historial importado"'),
       );
-      expect(html).toContain("PARTIDAS IMPORTADAS");
+      expect(html).toContain("Partidas importadas");
       expect(html).toContain("3 partidas");
       if (queue !== "5v5") {
         expect(html).toContain("80 V");
         expect(html).toContain("130 partidas");
         expect(html).toContain("en el estado ranked actual");
       } else {
-        expect(html).toContain("REGISTRO 5V5");
+        expect(html).toContain("Registro 5v5");
         expect(html).not.toContain("80 V");
       }
     },

@@ -23,6 +23,15 @@ const fixtures = vi.hoisted(() => ({
     throw new Error(`fixtures not ready: ${view}`);
   },
 }));
+vi.mock("@/server/profile-rival", () => ({ getProfileRival: async () => ({ status: "none" }) }));
+vi.mock("@/server/local-rival-options", () => ({
+  getLocalRivalOptions: async () => ({
+    available: false,
+    demo: false,
+    selectedId: null,
+    candidates: [],
+  }),
+}));
 vi.mock("@/server/queries", () => ({
   getProfile: async (id: string, view: string) =>
     fixtures.load(view).find((p) => p.id === id) ?? null,
@@ -36,6 +45,7 @@ vi.mock("@/components/player-signature-section", () => ({
   PlayerSignatureSkeleton: () => null,
 }));
 vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
   usePathname: () => "/player/demo-1",
   notFound: () => {
     throw new Error("NOT_FOUND");
@@ -95,7 +105,7 @@ describe("profile overview keeps every previously visible datum", () => {
     if (stats.duration) expect(top).toContain((stats.cs / (stats.duration / 60)).toFixed(1));
     if (stats.games)
       expect(top).toContain(Math.round(stats.damage / stats.games).toLocaleString("es-CL"));
-    expect(top).toContain(`PARTIDAS IMPORTADAS</span><strong>${stats.games}</strong>`);
+    expect(top).toContain(`Partidas importadas</span><strong>${stats.games}</strong>`);
     // Full pool, including champions behind the "Ver pool completo" disclosure.
     for (const c of p.champions) {
       expect(top).toContain(`${c.wins} V / ${c.losses} D`);
@@ -108,7 +118,7 @@ describe("profile overview keeps every previously visible datum", () => {
     expect(top).toContain("Winrate por campeón desde");
     expect(top).toContain("Historial ficticio de demo");
     if (view !== "5v5") {
-      expect(top).toContain("RANGO ACTUAL");
+      expect(top).toContain("Rango actual");
       expect(top).toContain(rankLabel(p.rank));
       if (p.rank && p.rank.tier !== "UNRANKED")
         expect(top).toContain(`<strong>${p.rank.leaguePoints.toLocaleString("es-CL")}</strong>`);
@@ -119,21 +129,21 @@ describe("profile overview keeps every previously visible datum", () => {
 
   it("5v5 shows no nonexistent rank or LP", async () => {
     const top = overview((await render("5v5")).html);
-    expect(top).toContain("REGISTRO 5V5");
+    expect(top).toContain("Registro 5v5");
     expect(top).toContain("Sin rango propio");
-    expect(top).not.toContain("RANGO ACTUAL");
+    expect(top).not.toContain("Rango actual");
     expect(top).not.toContain("lp-display");
     expect(top).not.toContain("ΔLP observado");
   });
 
   it("keeps official ranked counters and imported statistics labelled apart", async () => {
     const top = overview((await render("soloq")).html);
-    expect(top).toMatch(/REGISTRO RANKED<\/h2><span class="bento-tag">FICTICIO/);
-    expect(top).toMatch(/COMBATE<\/h2><span class="bento-tag">HISTORIAL FICTICIO/);
-    expect(top).toMatch(/POOL DE CAMPEONES<\/h2><span class="bento-tag">HISTORIAL FICTICIO/);
+    expect(top).toMatch(/Registro ranked<\/h2><span class="bento-tag">Ficticio/);
+    expect(top).toMatch(/Combate<\/h2><span class="bento-tag">Historial ficticio/);
+    expect(top).toMatch(/Pool de campeones<\/h2><span class="bento-tag">Historial ficticio/);
     const unranked = overview((await render("soloq", "demo-8")).html);
-    expect(unranked).toContain("REGISTRO IMPORTADO");
-    expect(unranked).not.toContain("REGISTRO RANKED");
+    expect(unranked).toContain("Registro importado");
+    expect(unranked).not.toContain("Registro ranked");
   });
 });
 
@@ -143,11 +153,11 @@ describe("profile structure and semantics", () => {
     async (view) => {
       const top = overview((await render(view)).html);
       const order = [
-        ...(view === "5v5" ? [] : ["RANGO ACTUAL"]),
-        view === "5v5" ? "REGISTRO 5V5" : "REGISTRO RANKED",
-        "FORMA RECIENTE",
-        "COMBATE",
-        "POOL DE CAMPEONES",
+        ...(view === "5v5" ? [] : ["Rango actual"]),
+        view === "5v5" ? "Registro 5v5" : "Registro ranked",
+        "Forma reciente",
+        "Combate",
+        "Pool de campeones",
         "Firma competitiva",
       ];
       const positions = order.map((label) => top.indexOf(label));
@@ -191,7 +201,8 @@ describe("profile structure and semantics", () => {
 
 describe("experimental signals respect the server flag inside the new layout", () => {
   const props = { playerId: "demo-1", asOf: "2026-11-01T00:00:00Z", champions: {} };
-  it("off: no block and no empty slot in the overview", async () => {
+  it("non-Demo off: no block and no empty slot in the overview", async () => {
+    vi.stubEnv("DEMO_MODE", "false");
     const { page, html } = await render("soloq");
     expect(html).not.toContain("Señales competitivas");
     expect(ProfileAchievements({ ...props, view: "soloq" })).toBeNull();

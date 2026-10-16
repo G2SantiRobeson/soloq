@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { QUEUE_LABELS, VIEWS, parseView } from "@/lib/queues";
+import type { CSSProperties } from "react";
+import { parseView } from "@/lib/queues";
 import { getLeaderboard } from "@/server/queries";
 import { CURRENT_SEASON, parsePeriod, type MetricsPeriod } from "@/lib/season";
 import { getSeasonOverview } from "@/server/season-queries";
@@ -19,7 +20,6 @@ import {
 } from "@/components/metrics-bento";
 import { getAssets } from "@/server/riot/assets";
 import { championAsset } from "@/lib/champion-assets";
-import { TIERS } from "@/lib/ranking";
 import {
   HIGHLIGHT_MIN_GAMES,
   RECENT_FORM_GAMES,
@@ -31,6 +31,10 @@ import { kda } from "@/lib/stats";
 import { signedLp } from "@/lib/lp-metrics";
 import { isDemo } from "@/server/env";
 import { countLabel } from "@/lib/format";
+import { PageHeading } from "@/components/page-heading";
+import { QueueTabs } from "@/components/queue-tabs";
+import { TierDistribution } from "@/components/tier-distribution";
+import { tierClass, tierColorVar, tierDistribution, tierKey } from "@/lib/ladder-strata";
 export const metadata: Metadata = { title: "Métricas" };
 export const dynamic = "force-dynamic";
 
@@ -88,29 +92,41 @@ export default async function MetricsPage({
       count: players.filter((p) => p.momentum?.net == null).length,
     },
   ];
-  const distribution = [...TIERS, "UNRANKED"]
-    .map((tier) => ({
-      tier,
-      count: players.filter((p) => (p.rank?.tier ?? "UNRANKED") === tier).length,
-    }))
-    .filter((r) => r.count > 0);
+  const distribution = tierDistribution(players, (p) => p.rank);
+  const periodLabel = PERIODS.find((p) => p.key === period)?.label;
   return (
     <div className={`metrics-page ${ranked ? "" : "is-5v5"}`}>
-      <header className="metrics-bar">
-        <h1>
-          Métricas<span className="heading-dot">.</span>
-        </h1>
-        <nav className="segmented" aria-label="Tipo de partida">
-          {VIEWS.map((q) => (
-            <Link
-              key={q}
-              href={`/metrics?queue=${q}&period=${period}`}
-              aria-current={q === view ? "page" : undefined}
-            >
-              {QUEUE_LABELS[q]}
-            </Link>
-          ))}
-        </nav>
+      <PageHeading
+        title="Métricas"
+        meta={
+          <>
+            Rendimiento de la comunidad · {periodLabel}
+            {partial > 0 && (
+              <>
+                {" · "}
+                <span className="metrics-partial">
+                  <InfoTip align="start" term={<>{partial} con historial parcial</>}>
+                    El historial de {partial} jugadores está incompleto o incluye partidas no
+                    disponibles.
+                    {demo
+                      ? "Los estados de cobertura son simulados y los premios usan únicamente fixtures ficticios."
+                      : "Los premios usan solo los datos importados y pueden cambiar al completarse."}{" "}
+                    Los filtros solo cambian la consulta.
+                  </InfoTip>
+                </span>
+              </>
+            )}
+          </>
+        }
+        figures={[
+          { label: "Jugadores", value: players.length.toLocaleString("es-CL") },
+          { label: "Participaciones", value: games.toLocaleString("es-CL") },
+          { label: "Partidas únicas", value: overview.uniqueGames.toLocaleString("es-CL") },
+          ...(ranked ? [{ label: "Clasificados", value: classified.toLocaleString("es-CL") }] : []),
+        ]}
+      />
+      <div className="metrics-controls">
+        <QueueTabs view={view} base="/metrics" period={period} />
         <nav className="segmented" aria-label="Período">
           {PERIODS.map((p) => (
             <Link
@@ -122,30 +138,32 @@ export default async function MetricsPage({
             </Link>
           ))}
         </nav>
-      </header>
-      <ul className="metrics-chips" aria-label="Resumen del período">
-        <li>{players.length} jugadores</li>
-        <li>{games.toLocaleString("es-CL")} participaciones</li>
-        <li>{overview.uniqueGames.toLocaleString("es-CL")} partidas únicas</li>
-        {ranked && <li>{classified} clasificados</li>}
-        {partial > 0 && (
-          <li className="chip-warning">
-            <InfoTip align="start" term={<>{partial} con historial parcial</>}>
-              El historial de {partial} jugadores está incompleto o incluye partidas no disponibles.
+      </div>
+      {ranked && distribution.length > 0 && (
+        <section className="metrics-section" aria-labelledby="metrics-distribution">
+          <header className="metrics-section-head">
+            <h2 id="metrics-distribution">Distribución por rango</h2>
+            <span>
               {demo
-                ? "Los estados de cobertura son simulados y los premios usan únicamente fixtures ficticios."
-                : "Los premios usan solo los datos importados y pueden cambiar al completarse."}{" "}
-              Los filtros solo cambian la consulta.
-            </InfoTip>
-          </li>
-        )}
-      </ul>
+                ? "Rangos ficticios de los fixtures de demo"
+                : "Rango oficial actual de cada jugador"}
+            </span>
+          </header>
+          <TierDistribution
+            items={distribution}
+            total={players.length}
+            linked={false}
+            hrefFor={(key) => `/?queue=${view}#estrato-${tierClass(key)}`}
+          />
+        </section>
+      )}
 
-      <div className="bento">
+      <div className="metrics-scoreboard">
         {ranked && (
           <Block
             title="Líder ranked"
-            className="span-hero"
+            className="span-hero metrics-leader"
+            style={{ "--rank-color": tierColorVar(tierKey(leader?.rank)) } as CSSProperties}
             info={
               demo
                 ? "Clasificación con tier, división y LP ficticios para demostrar la aplicación."
@@ -158,7 +176,7 @@ export default async function MetricsPage({
               player={leader}
               view={view}
               note={demo ? "Rango ficticio de demo" : "Rango oficial actual"}
-              aside={leader && <RankEmblem tier={leader.rank?.tier} size={64} decorative />}
+              aside={leader && <RankEmblem tier={leader.rank?.tier} size={80} decorative />}
             />
           </Block>
         )}
@@ -239,15 +257,15 @@ export default async function MetricsPage({
           <strong className="community-value">{stats.averageGames?.toFixed(1) ?? "—"}</strong>
           <small className="community-note">Media del período</small>
         </Block>
+      </div>
 
+      <div className="metrics-pair">
         <Block
           title="Salón de honor"
           className="span-half awards-honor"
           info={`Premios del período seleccionado con mínimo ${HIGHLIGHT_MIN_GAMES} partidas válidas. Rachas, diversidad y rendimiento sobre el historial ${demo ? "ficticio" : "importado"}; LP solo entre snapshots ${demo ? "ficticios" : "oficiales"} comparables dentro del período.`}
         >
-          <p className="awards-tagline">
-            Hazañas de la Grieta · {PERIODS.find((p) => p.key === period)?.label}
-          </p>
+          <p className="awards-tagline">Hazañas de la Grieta · {periodLabel}</p>
           <AwardList awards={awards.honor} view={view} />
         </Block>
         <Block
@@ -258,7 +276,9 @@ export default async function MetricsPage({
           <p className="awards-tagline">Con cariño. La próxima sale mejor.</p>
           <AwardList awards={awards.shame} view={view} />
         </Block>
+      </div>
 
+      <div className="metrics-pair">
         <Block
           title="Forma reciente"
           className="span-form"
@@ -310,7 +330,9 @@ export default async function MetricsPage({
             </dl>
           </Block>
         )}
+      </div>
 
+      <div className="metrics-pair">
         <Block
           title={period === "season" ? "Actividad de temporada" : "Actividad del período"}
           className="span-activity"
@@ -345,36 +367,6 @@ export default async function MetricsPage({
             <p className="bento-empty">Todavía no hay partidas en este período.</p>
           )}
         </Block>
-        {ranked && (
-          <Block
-            title="Distribución de rangos"
-            className="span-ranks"
-            info={
-              demo
-                ? "Rangos ficticios de los fixtures de demo."
-                : "Rango oficial actual de cada jugador."
-            }
-          >
-            {distribution.length ? (
-              <ul className="rank-bars">
-                {distribution.map((r) => (
-                  <li key={r.tier}>
-                    <RankDisplay
-                      rank={{ tier: r.tier, division: "", leaguePoints: 0, wins: 0, losses: 0 }}
-                      size={18}
-                    />
-                    <span className="distribution-track" aria-hidden="true">
-                      <span style={{ width: `${(100 * r.count) / players.length}%` }} />
-                    </span>
-                    <strong>{r.count}</strong>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="bento-empty">Añade jugadores para comenzar.</p>
-            )}
-          </Block>
-        )}
       </div>
     </div>
   );

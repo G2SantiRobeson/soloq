@@ -1,18 +1,31 @@
 import Link from "next/link";
 import { isDemo } from "@/server/env";
+import { Suspense } from "react";
 import { HeaderNav } from "./header-nav";
+import { NAV_LINKS, navLinkContent } from "./nav-links";
 export function Header() {
   return (
     <header className="site-header">
       <div className="container header-inner">
         <Link href="/" className="brand" aria-label="SoloQ, inicio">
-          SOLO<span className="accent">Q</span>
-          <span className="brand-slash" aria-hidden="true">
-            /
-          </span>
+          SOLO<span className="brand-q">Q</span>
         </Link>
-        <HeaderNav />
-        <span className="header-caption header-end">LEAGUE OF LEGENDS · COMUNIDAD</span>
+        <Suspense
+          fallback={
+            <nav className="header-nav" aria-label="Principal">
+              {NAV_LINKS.map((link) => {
+                const { label, content } = navLinkContent(link);
+                return (
+                  <Link key={link.href} href={link.href} className="nav-link" aria-label={label}>
+                    {content}
+                  </Link>
+                );
+              })}
+            </nav>
+          }
+        >
+          <HeaderNav />
+        </Suspense>
       </div>
     </header>
   );
@@ -20,8 +33,13 @@ export function Header() {
 export function DemoBanner() {
   return isDemo() ? (
     <div className="demo-banner">
-      <span className="demo-pill">DEMO</span> Jugadores, partidas, rangos y LP ficticios. No son
-      datos reales de Riot ni se sincronizan cuentas.
+      <div className="container demo-banner-inner">
+        <span className="demo-pill">Demo</span>
+        <span>
+          Jugadores, partidas, rangos y LP ficticios. No son datos reales de Riot ni se sincronizan
+          cuentas.
+        </span>
+      </div>
     </div>
   ) : null;
 }
@@ -29,8 +47,8 @@ export function Footer() {
   return (
     <footer className="site-footer container">
       <div className="footer-top">
-        <Link href="/" className="brand small-brand">
-          SOLOQ /
+        <Link href="/" className="brand small-brand" aria-label="SoloQ, inicio">
+          SOLO<span className="brand-q">Q</span>
         </Link>
         <span>League of Legends · Clasificación de la comunidad</span>
         <nav aria-label="Pie de página">

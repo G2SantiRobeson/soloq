@@ -177,7 +177,7 @@ describe("server evidence → presentation → isolated SSR components", () => {
     expect(html).toContain("Criterio y evidencia de Resurrección");
     expect(html).not.toContain('tabindex="-1"');
   });
-  it("does not introduce public imports, client evaluation, routes, IO in components or writes in the reader", () => {
+  it("keeps evaluation and IO server-side, off ranking and metrics, with a gated showcase boundary", () => {
     for (const path of [
       "src/app/page.tsx",
       "src/components/leaderboard.tsx",
@@ -189,8 +189,20 @@ describe("server evidence → presentation → isolated SSR components", () => {
     )) {
       const source = readFileSync(`src/components/achievements/${f}`, "utf8");
       expect(source).not.toMatch(
-        /use client|evaluateUnstoppable|evaluateResurrection|evaluateOtp|fetch\(|@\/db|@\/server/,
+        /use client|evaluateUnstoppable|evaluateResurrection|evaluateOtp|fetch\(|@\/db/,
       );
+    }
+    for (const f of readdirSync("src/components/achievements").filter((f) => f.endsWith(".tsx"))) {
+      const source = readFileSync(`src/components/achievements/${f}`, "utf8");
+      if (f !== "profile-achievements.tsx" && f !== "achievement-showcase.tsx")
+        expect(source).not.toMatch(/@\/server/);
+      if (f === "achievement-showcase.tsx") {
+        expect(source).toContain("achievementExperienceEnabled()");
+        expect(source).toContain("await load()");
+        expect(source).not.toMatch(
+          /readPlayerAchievements|profileAchievementPresentation|@\/server\/achievements\/queries/,
+        );
+      }
     }
     const reader = readFileSync("src/server/achievements/queries.ts", "utf8");
     expect(reader).not.toMatch(/\.insert\(|\.update\(|\.delete\(|\.execute\(|coalesce|\.limit\(/i);
