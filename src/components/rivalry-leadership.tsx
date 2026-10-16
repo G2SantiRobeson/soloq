@@ -24,12 +24,15 @@ export function RivalryLeadership({
   demo,
   weeklyChange,
   weeklyEnabled = true,
+  showSummary = true,
 }: {
   rivalry: Rivalry;
   view: View;
   demo: boolean;
   weeklyChange?: LeadershipChange;
   weeklyEnabled?: boolean;
+  /** Hide only the introductory copy when the surrounding view already explains the event. */
+  showSummary?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
@@ -61,12 +64,16 @@ export function RivalryLeadership({
   return (
     <>
       <div className="rivalry-leadership">
-        <p className="rivalry-leadership-title">
-          <ArrowLeftRight size={16} aria-hidden="true" />
-          <strong>{change ? "Cambio de liderazgo observado" : "Historial de la rivalidad"}</strong>
-          {demo && <span className="leadership-demo-badge">Ficticio · Demo</span>}
-        </p>
-        {change && (
+        {showSummary && (
+          <p className="rivalry-leadership-title">
+            <ArrowLeftRight size={16} aria-hidden="true" />
+            <strong>
+              {change ? "Cambio de liderazgo observado" : "Historial de la rivalidad"}
+            </strong>
+            {demo && <span className="leadership-demo-badge">Ficticio · Demo</span>}
+          </p>
+        )}
+        {showSummary && change && (
           <>
             <p className="leadership-banter">
               {stillLeads
