@@ -14,6 +14,8 @@ import {
   type LadderSort,
 } from "@/lib/ladder-filters";
 import { rankSortValue } from "@/lib/ranking";
+import { strata, tierClass, tierDistribution, tierName } from "@/lib/ladder-strata";
+import { countLabel } from "@/lib/format";
 import {
   resolveSharedRivalry,
   visibleSharedRivalries,
@@ -33,7 +35,11 @@ import type { SyncStatus } from "@/lib/sync-status";
 import { SyncCountdown } from "./sync-countdown";
 import { rememberLadderUrl } from "@/lib/ladder-memory";
 import { InfoTip } from "./info-tip";
+import { RankEmblem } from "./rank-emblem";
+import { TierDistribution } from "./tier-distribution";
 import { watchWeekChange } from "@/lib/weekly-refresh";
+/** Ranked views: position, player, rank, LP, Δ week, winrate, V/D, games, KDA, form, profile. */
+const LADDER_COLUMNS = 11;
 export function Leaderboard({
   players,
   view,
@@ -132,12 +138,82 @@ export function Leaderboard({
     });
   const shared = resolveSharedRivalry(rows, view, initialSharedRivalry);
   const rivalries = visibleSharedRivalries(selectRivalries(rows, view), shared);
+  // Tier strata only describe the official order; any other sort shows one plain list.
+  const ranked = view !== "5v5";
+  const grouped = ranked && sort === "rank";
+  const distribution = ranked ? tierDistribution(rows, (p) => p.rank) : [];
   function sortBy(next: LadderSort) {
     if (sort === next) setAscending(!ascending);
     else {
       setSort(next);
       setAscending(false);
     }
+  }
+  /** One ladder row. Identical cells in every grouping, so no datum depends on the sort. */
+  function renderRow(p: (typeof rows)[number]) {
+    return (
+      <tr role="row" key={p.id} className={`ladder-row ${p.place <= 3 ? "podium-row" : ""}`}>
+        <td role="cell" className={`place place-${p.place}`}>
+          <span className="place-number">
+            <span className="sr-only">Posición </span>#{p.place}
+          </span>
+        </td>
+        <td role="cell" className="identity-cell">
+          <Link className="player-link" href={`/player/${p.id}?queue=${view}`}>
+            <PlayerIdentity player={p} version={version} />
+          </Link>
+        </td>
+        <td role="cell" className="rank-cell">
+          <RankDisplay rank={p.rank} noRank={view === "5v5"} size={44} />
+        </td>
+        <td role="cell" className="lp-cell">
+          <LPDisplay rank={p.rank} noRank={view === "5v5"} />
+          {view !== "5v5" && <LastFiveMomentum metrics={p.lastFiveLp} />}
+        </td>
+        {view !== "5v5" && (
+          <td
+            role="cell"
+            className={`weekly-cell numeric ${weeklyExpired ? "" : (p.weeklyLp ?? 0) > 0 ? "positive" : (p.weeklyLp ?? 0) < 0 ? "negative" : ""}`}
+          >
+            <span className="mobile-label">Δ semana </span>
+            <WeeklyMomentum summary={weeklyExpired ? null : p.weeklySummary} />
+          </td>
+        )}
+        <td role="cell" className="wr-cell">
+          <span className={`winrate numeric ${p.games && p.winrate >= 50 ? "positive" : ""}`}>
+            {p.games ? p.winrate.toFixed(1) : "—"}
+            <small>{p.games ? "%" : ""}</small>
+            <span className="mobile-label"> WR</span>
+          </span>
+          <span className={`winrate-track ${p.games ? "" : "no-games"}`} aria-hidden="true">
+            <span style={{ width: `${p.winrate}%` }} />
+          </span>
+        </td>
+        <td role="cell" className="record record-column numeric">
+          <span>{p.wins}</span>
+          <i>/</i>
+          <span>{p.losses}</span>
+        </td>
+        <td role="cell" className="games-column numeric muted-number">
+          {p.games}
+        </td>
+        <td role="cell" className="kda-column numeric">
+          {p.stats.games ? p.kda.toFixed(2) : "—"}
+        </td>
+        <td role="cell" className="form-cell">
+          <RecentChampionForm matches={p.recent} champions={champions} />
+        </td>
+        <td role="cell" className="link-cell">
+          <Link
+            href={`/player/${p.id}?queue=${view}`}
+            className="row-link"
+            aria-label={`Ver perfil de ${p.gameName}`}
+          >
+            <ArrowUpRight size={18} />
+          </Link>
+        </td>
+      </tr>
+    );
   }
   function heading(label: string, key: LadderSort, className = "") {
     return (
@@ -166,7 +242,9 @@ export function Leaderboard({
             {view === "5v5" ? "Registro 5v5" : "Ranking"}
             <span className="count-tag">{players.length}</span>
           </h2>
-          <span>{view === "5v5" ? "RENDIMIENTO IMPORTADO" : "TIER / DIVISIÓN / LP"}</span>
+          <span>
+            {view === "5v5" ? "Rendimiento importado" : "Orden oficial: tier, división y LP"}
+          </span>
           {rivalries.length > 0 && (
             <Link
               className="rivalries-jump"
@@ -263,24 +341,28 @@ export function Leaderboard({
           {ascending ? "Ascendente" : "Descendente"}
         </button>
       </div>
+      {ranked && rows.length > 0 && (
+        <TierDistribution items={distribution} total={rows.length} linked={grouped} />
+      )}
       <table className="leaderboard" role="table">
         <caption className="sr-only">
           Clasificación de {view}. La posición se conserva al filtrar y ordenar.
+          {grouped && " Agrupada por tier oficial."}
         </caption>
         <thead role="rowgroup">
           <tr role="row">
             <th scope="col" role="columnheader" className="place-column">
-              POS.
+              Pos.
             </th>
             <th scope="col" role="columnheader">
-              JUGADOR / RIOT ID
+              Jugador / Riot ID
             </th>
             {view === "5v5" ? (
               <th scope="col" role="columnheader">
-                RANGO
+                Rango
               </th>
             ) : (
-              heading("RANGO", "rank")
+              heading("Rango", "rank")
             )}
             <th scope="col" role="columnheader" className="lp-column">
               {view === "5v5" ? (
@@ -294,7 +376,7 @@ export function Leaderboard({
             </th>
             {view !== "5v5" && (
               <th scope="col" role="columnheader" className="weekly-column">
-                <InfoTip term="Δ SEMANA">
+                <InfoTip term="Δ semana">
                   Referencia: lunes 00:00 de America/Santiago. ΔLP y V/D usan el mismo intervalo
                   entre observaciones oficiales. Sin baseline anterior al lunes se muestra Δ parcial
                   desde el primer registro válido de la semana. Sin dos registros comparables: Sin
@@ -302,89 +384,49 @@ export function Leaderboard({
                 </InfoTip>
               </th>
             )}
-            {heading("WINRATE", "winrate")}
+            {heading("Winrate", "winrate")}
             <th scope="col" role="columnheader" className="record-column">
               V / D
             </th>
-            {heading("PARTIDAS", "games", "games-column")}
+            {heading("Partidas", "games", "games-column")}
             {heading("KDA", "kda", "kda-column")}
             <th scope="col" role="columnheader">
-              FORMA / 5
+              Forma
             </th>
             <th scope="col" role="columnheader">
               <span className="sr-only">Perfil</span>
             </th>
           </tr>
         </thead>
-        <tbody role="rowgroup">
-          {rows.map((p) => (
-            <tr role="row" key={p.id} className={`ladder-row ${p.place <= 3 ? "podium-row" : ""}`}>
-              <td role="cell" className={`place place-${p.place}`}>
-                <span className="place-number">
-                  <span className="sr-only">Posición </span>#{p.place}
-                </span>
-              </td>
-              <td role="cell" className="identity-cell">
-                <Link className="player-link" href={`/player/${p.id}?queue=${view}`}>
-                  <PlayerIdentity player={p} version={version} />
-                </Link>
-              </td>
-              <td role="cell" className="rank-cell">
-                <RankDisplay rank={p.rank} noRank={view === "5v5"} size={44} />
-              </td>
-              <td role="cell" className="lp-cell">
-                <LPDisplay rank={p.rank} noRank={view === "5v5"} />
-                {view !== "5v5" && <LastFiveMomentum metrics={p.lastFiveLp} />}
-              </td>
-              {view !== "5v5" && (
-                <td
-                  role="cell"
-                  className={`weekly-cell numeric ${weeklyExpired ? "" : (p.weeklyLp ?? 0) > 0 ? "positive" : (p.weeklyLp ?? 0) < 0 ? "negative" : ""}`}
-                >
-                  <span className="mobile-label">Δ SEMANA </span>
-                  <WeeklyMomentum summary={weeklyExpired ? null : p.weeklySummary} />
-                </td>
-              )}
-              <td role="cell" className="wr-cell">
-                <span className={`winrate numeric ${p.games && p.winrate >= 50 ? "positive" : ""}`}>
-                  {p.games ? p.winrate.toFixed(1) : "—"}
-                  <small>{p.games ? "%" : ""}</small>
-                  <span className="mobile-label"> WR</span>
-                </span>
-                <span className={`winrate-track ${p.games ? "" : "no-games"}`} aria-hidden="true">
-                  <span style={{ width: `${p.winrate}%` }} />
-                </span>
-              </td>
-              <td role="cell" className="record record-column numeric">
-                <span>{p.wins}</span>
-                <i>/</i>
-                <span>{p.losses}</span>
-              </td>
-              <td role="cell" className="games-column numeric muted-number">
-                {p.games}
-              </td>
-              <td role="cell" className="kda-column numeric">
-                {p.stats.games ? p.kda.toFixed(2) : "—"}
-              </td>
-              <td role="cell" className="form-cell">
-                <RecentChampionForm matches={p.recent} champions={champions} />
-              </td>
-              <td role="cell" className="link-cell">
-                <Link
-                  href={`/player/${p.id}?queue=${view}`}
-                  className="row-link"
-                  aria-label={`Ver perfil de ${p.gameName}`}
-                >
-                  <ArrowUpRight size={18} />
-                </Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
+        {grouped ? (
+          strata(rows, (p) => p.rank).map(({ key, rows: members }) => (
+            <tbody role="rowgroup" key={key} className={`tier-group rank-${tierClass(key)}`}>
+              <tr role="row" className="tier-break">
+                <th role="rowheader" scope="rowgroup" colSpan={LADDER_COLUMNS}>
+                  <span className="tier-break-label" id={`estrato-${tierClass(key)}`}>
+                    <RankEmblem
+                      tier={key === "UNRANKED" ? null : key}
+                      size={28}
+                      variant="compact"
+                      decorative
+                    />
+                    <span className="tier-break-name">{tierName(key)}</span>
+                    <span className="tier-break-count">
+                      {countLabel(members.length, "jugador", "jugadores")}
+                    </span>
+                  </span>
+                </th>
+              </tr>
+              {members.map(renderRow)}
+            </tbody>
+          ))
+        ) : (
+          <tbody role="rowgroup">{rows.map(renderRow)}</tbody>
+        )}
       </table>
       {!rows.length && (
         <div className="empty-state">
-          <span className="eyebrow">SIN RESULTADOS</span>
+          {players.length > 0 && <Search size={28} aria-hidden="true" />}
           <h3>
             {players.length ? "Ningún jugador coincide." : "La clasificación aún está vacía."}
           </h3>
@@ -434,7 +476,7 @@ export function Leaderboard({
       )}
       <div className="table-bottom">
         <span role="status">
-          {rows.length} de {players.length} jugadores
+          {rows.length} de {countLabel(players.length, "jugador", "jugadores")}
         </span>
         <span>Posición global conservada al filtrar · Más reciente ←</span>
       </div>

@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Medal } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { parseView } from "@/lib/queues";
-import { ACHIEVEMENTS } from "@/lib/achievements/catalog";
 import { achievementCenterHref } from "@/lib/achievements/experience";
 import { readAchievementCenter, ACHIEVEMENT_DEMO_CASES } from "@/server/achievements/center";
 import { isDemo } from "@/server/env";
 import { AchievementCatalog } from "@/components/achievements/achievement-catalog";
+import { PageHeading } from "@/components/page-heading";
+import { QueueTabs } from "@/components/queue-tabs";
 import styles from "@/components/achievements/experience.module.css";
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -24,65 +25,26 @@ export default async function AchievementCenterPage({
     demo = isDemo();
   const selection = await readAchievementCenter(params.player, view, new Date().toISOString());
   const presentation = selection.presentation;
-  return (
-    <>
-      <section className={styles.hero}>
-        <div>
-          <div className="eyebrow">LOGROS E INSIGNIAS · COMUNIDAD SOLOQ</div>
-          <h1>
-            Deja tu marca
-            <br />
-            en la <span className={styles.heroAccent}>Grieta.</span>
-          </h1>
-          <p className={styles.intro}>Descubre los desafíos que definen tu estilo competitivo.</p>
-        </div>
-        <dl className={styles.heroContext}>
-          <div>
-            <dt>
-              {view === "flex" ? "FLEX" : view === "5v5" ? "5V5" : "SOLOQ"} · PERFIL CONSULTADO
-            </dt>
-            <dd>{selection.name ?? "Elige tu perfil"}</dd>
-            <dd className={styles.heroFootnote}>
-              {ACHIEVEMENTS.length} desafíos implementados · sin equipamiento
-            </dd>
-          </div>
-        </dl>
-      </section>
-      <div className={styles.experimentalNote}>
-        <Medal size={18} aria-hidden="true" />
-        <p>
-          Experimental · señales observadas, sin insignias permanentes.{" "}
-          <a href="#achievement-methodology">Cómo funciona ↓</a>
+  const profilePicker = (
+    <section className={styles.profilePicker} aria-labelledby="achievement-profile-title">
+      <h2 id="achievement-profile-title">Jugador consultado</h2>
+      {/* Outside Demo the server knows only the public ID, already shown in the form below. */}
+      {(demo || !selection.id) && (
+        <p className={styles.profileName} data-empty={!selection.name}>
+          {selection.name ?? "Elige un perfil"}
         </p>
-      </div>
-      <nav className="queue-tabs" aria-label="Modalidad de logros">
-        {(["soloq", "flex"] as const).map((queue) => (
-          <Link
-            key={queue}
-            className={`queue-tab${view === queue ? " active" : ""}`}
-            aria-current={view === queue ? "page" : undefined}
-            href={
-              selection.id ? achievementCenterHref(selection.id, queue) : `/logros?queue=${queue}`
-            }
+      )}
+      {selection.id && presentation?.status === "available" && (
+        <Link className={styles.profileLink} href={`/player/${selection.id}?queue=${view}`}>
+          Ver perfil relacionado →
+        </Link>
+      )}
+      {demo ? (
+        <>
+          <nav
+            className={`segmented ${styles.demoCases}`}
+            aria-label="Casos ficticios de demostración"
           >
-            {queue === "soloq" ? "SoloQ" : "Flex"}
-          </Link>
-        ))}
-      </nav>
-      <section className={styles.consultation} aria-label="Jugador consultado">
-        <div>
-          <h2>{demo ? "Explora los casos Demo" : "Consulta un perfil"}</h2>
-          <p>
-            {selection.id
-              ? "Tu estilo, según los registros disponibles."
-              : "Elige un perfil y explora sus señales competitivas."}
-          </p>
-          {selection.id && presentation?.status === "available" && (
-            <Link href={`/player/${selection.id}?queue=${view}`}>Ver perfil relacionado →</Link>
-          )}
-        </div>
-        {demo ? (
-          <nav className={styles.demoCases} aria-label="Casos ficticios de demostración">
             {ACHIEVEMENT_DEMO_CASES.map((example) => (
               <Link
                 key={example.id}
@@ -92,12 +54,16 @@ export default async function AchievementCenterPage({
                 {example.label}
               </Link>
             ))}
-            <small>Ficticio · Demo; cada caso usa los registros del mismo perfil.</small>
           </nav>
-        ) : (
-          <form action="/logros" method="get">
-            <input type="hidden" name="queue" value={view} />
-            <label htmlFor="achievement-player">ID público del perfil</label>
+          <small className={styles.demoNote}>
+            Ficticio · Demo; cada caso usa los registros del mismo perfil.
+          </small>
+        </>
+      ) : (
+        <form className={styles.profileForm} action="/logros" method="get">
+          <input type="hidden" name="queue" value={view} />
+          <label htmlFor="achievement-player">ID público del perfil</label>
+          <span>
             <input
               id="achievement-player"
               name="player"
@@ -107,9 +73,35 @@ export default async function AchievementCenterPage({
             <button className="button secondary" type="submit">
               Consultar
             </button>
-          </form>
-        )}
-      </section>
+          </span>
+        </form>
+      )}
+    </section>
+  );
+  return (
+    <div className={styles.page}>
+      <PageHeading
+        title="Logros"
+        lead="Descubre los desafíos que definen tu estilo competitivo."
+        meta={
+          <>
+            <span className={styles.experimentalTag}>Experimental</span> Señales observadas, sin
+            insignias permanentes.{" "}
+            <a className={styles.metaLink} href="#achievement-methodology">
+              Cómo funciona ↓
+            </a>
+          </>
+        }
+        aside={profilePicker}
+      />
+      <QueueTabs
+        view={view}
+        views={["soloq", "flex"]}
+        label="Modalidad de logros"
+        hrefFor={(queue) =>
+          selection.id ? achievementCenterHref(selection.id, queue) : `/logros?queue=${queue}`
+        }
+      />
       {selection.invalid && (
         <p role="status" className={styles.notice}>
           El identificador del perfil no es válido o no pertenece a esta Demo. No se evaluaron
@@ -133,7 +125,10 @@ export default async function AchievementCenterPage({
         playerId={selection.id}
       />
       <details id="achievement-methodology" className={styles.methodology}>
-        <summary>Cómo funciona · evidencia y límites</summary>
+        <summary>
+          <span>Cómo funciona · evidencia y límites</span>
+          <ChevronDown size={16} aria-hidden="true" />
+        </summary>
         <p>
           Las tres reglas son experimentales. SoloQ no concede ni equipa insignias permanentes con
           estos resultados. Condición observada significa que los registros examinados cumplen la
@@ -160,6 +155,6 @@ export default async function AchievementCenterPage({
           hacia una insignia permanente.
         </p>
       </details>
-    </>
+    </div>
   );
 }

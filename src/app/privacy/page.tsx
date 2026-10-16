@@ -6,8 +6,8 @@ export default function Privacy() {
   const demo = isDemo();
   return (
     <article className="legal-page">
-      <div className="eyebrow">{demo ? "DEMOSTRACIÓN PÚBLICA" : "INFORMACIÓN DEL SERVICIO"}</div>
       <h1>Privacidad</h1>
+      <p className="page-meta">{demo ? "Demostración pública" : "Información del servicio"}</p>
       <p className="legal-lead">
         {demo
           ? "Esta instancia de SoloQ muestra únicamente jugadores, partidas, rangos y LP ficticios para demostrar la aplicación. No sincroniza cuentas reales ni utiliza PostgreSQL para servir la demo."

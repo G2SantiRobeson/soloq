@@ -10,13 +10,19 @@ import {
   Ban,
   ChevronDown,
 } from "lucide-react";
-import { ACHIEVEMENTS } from "@/lib/achievements/catalog";
+import {
+  ACHIEVEMENTS,
+  OTP_RULE,
+  RESURRECTION_RULE,
+  UNSTOPPABLE_RULE,
+} from "@/lib/achievements/catalog";
 import {
   ACHIEVEMENT_CATEGORIES,
   achievementDisplayName,
   achievementExperienceState,
 } from "@/lib/achievements/experience";
 import type { AchievementPresentation } from "@/lib/achievements/presentation";
+import type { AchievementCode } from "@/lib/achievements/types";
 import type { View } from "@/lib/queues";
 import { AchievementEmblem, achievementArt } from "./achievement-emblem";
 import styles from "./experience.module.css";
@@ -37,6 +43,13 @@ const evidenceNames = {
   recorded_champion_share:
     "Campeones y partidas válidas en la muestra importada; no equivale a una certificación anual.",
 };
+const DAY_MS = 86_400_000;
+/** Short form of each rule's threshold, read from the rule constants; the full text stays in the details. */
+const thresholds: Record<AchievementCode, string> = {
+  resurrection: `Caída ≥${RESURRECTION_RULE.minDropLp} LP y recuperación en ≤${RESURRECTION_RULE.maxRecoveryMs / DAY_MS} días`,
+  unstoppable: `≥${UNSTOPPABLE_RULE.minWins} victorias consecutivas`,
+  "otp-specialist": `≥${OTP_RULE.minGames} partidas y ≥${(OTP_RULE.minShare.numerator * 100) / OTP_RULE.minShare.denominator} % con un campeón`,
+};
 export function AchievementCatalog({
   presentation,
   enabled,
@@ -50,13 +63,12 @@ export function AchievementCatalog({
   view: View;
   playerId?: string | null;
 }) {
+  const demo = presentation?.status === "available" && presentation.demo;
   return (
     <section className={styles.catalog} aria-labelledby="achievement-gallery-title">
       <header className={styles.galleryHeading}>
-        <div>
-          <span className={styles.overline}>TU MARCA COMPETITIVA</span>
-          <h2 id="achievement-gallery-title">Tres desafíos. Tu estilo.</h2>
-        </div>
+        <h2 id="achievement-gallery-title">Desafíos</h2>
+        <p>{ACHIEVEMENTS.length} reglas implementadas · sin equipamiento de insignias</p>
         <nav className={styles.categoryNav} aria-label="Categorías de logros">
           {ACHIEVEMENT_CATEGORIES.map((c) => (
             <a key={c.code} href={`#logros-${c.code}`}>
@@ -86,95 +98,94 @@ export function AchievementCatalog({
               data-theme={art.theme}
               aria-labelledby={titleId}
             >
-              <div className={styles.emblemStage}>
-                <span className={styles.categoryLabel}>{category.name}</span>
-                <AchievementEmblem code={definition.code} />
-                <span className={styles.motto}>{art.motto}</span>
-              </div>
-              <div className={styles.cardBody}>
+              <AchievementEmblem code={definition.code} />
+              <div className={styles.identity}>
+                <p className={styles.categoryLabel}>
+                  {category.name}
+                  <span className="sr-only"> · </span>
+                  <span className={styles.experimental}>Experimental</span>
+                </p>
                 <h3 id={titleId}>{name}</h3>
                 <p className={styles.challengeCopy}>{art.description}</p>
-                <div className={styles.catalogState}>
-                  <span className={styles.status}>
-                    <StateIcon size={16} aria-hidden="true" />
-                    {state.label}
-                  </span>
-                  <span className={styles.experimental}>Experimental</span>
+              </div>
+              <dl className={styles.facts}>
+                <div>
+                  <dt>Umbral</dt>
+                  <dd className={styles.threshold}>{thresholds[definition.code]}</dd>
                 </div>
-                {presentation?.status === "available" && presentation.demo && (
-                  <span className={styles.demoMarker}>Ficticio · Demo</span>
-                )}
-                <div className={styles.evidenceSummary}>
-                  {item?.measurement ? (
-                    <>
-                      <span className={styles.overline}>EVIDENCIA REGISTRADA</span>
-                      <p className={styles.measurement}>{item.measurement}</p>
-                    </>
-                  ) : (
-                    <p className={styles.explanation}>
-                      {state.kind === "observed"
-                        ? "Respaldado por los registros de esta lectura."
-                        : state.explanation}
-                    </p>
-                  )}
-                </div>
-                <details className={styles.criteria}>
-                  <summary>
-                    <span>
-                      Ver requisitos<span className="sr-only"> y evidencia de {name}</span>
+                <div>
+                  <dt>Evaluación</dt>
+                  <dd>
+                    <span className={styles.status}>
+                      <StateIcon size={16} aria-hidden="true" />
+                      {state.label}
                     </span>
-                    <ChevronDown size={16} aria-hidden="true" />
-                  </summary>
-                  <div className={styles.detailBody}>
-                    <h4>{name}</h4>
-                    <p>{definition.description}</p>
-                    <h5>El desafío exacto</h5>
-                    <p>{item?.conditions ?? definition.provisionalConditions}</p>
-                    <h5>Tu evaluación</h5>
-                    <p>
-                      {state.label}. {state.explanation}
-                    </p>
-                    {item && (
-                      <>
-                        <ul aria-label="Explicaciones de la evaluación">
-                          {item.reasons.map((reason) => (
-                            <li key={reason}>{reason}</li>
-                          ))}
-                        </ul>
-                        <dl>
-                          {item.evidence.map((row) => (
-                            <div key={row.label}>
-                              <dt>{row.label}</dt>
-                              <dd>{row.value}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      </>
-                    )}
-                    <h5>Cómo se acredita</h5>
-                    <p>{evidenceNames[definition.evidence]}</p>
-                    {presentation?.status === "available" && <p>{presentation.coverageText}</p>}
-                    <p className={styles.version}>
-                      Regla {item?.ruleVersion ?? definition.ruleVersion}
-                    </p>
-                    {definition.code === "otp-specialist" && (
-                      <p>
-                        Nombre del catálogo: «{definition.name}». No constituye una certificación de
-                        SoloQ ni de Riot.
+                    {item?.measurement ? (
+                      <p className={styles.measurement}>{item.measurement}</p>
+                    ) : (
+                      <p className={styles.explanation}>
+                        {state.kind === "observed"
+                          ? "Respaldado por los registros de esta lectura."
+                          : state.explanation}
                       </p>
                     )}
-                    <p>Sin concesión permanente ni equipamiento de insignias.</p>
-                    {item?.status === "observed" && playerId && (
-                      <Link
-                        className={styles.profileLink}
-                        href={`/player/${playerId}?queue=${view}`}
-                      >
-                        Ver perfil relacionado →
-                      </Link>
-                    )}
-                  </div>
-                </details>
-              </div>
+                    {demo && <span className={styles.demoMarker}>Ficticio · Demo</span>}
+                  </dd>
+                </div>
+              </dl>
+              <details className={styles.criteria}>
+                <summary>
+                  <span>
+                    Ver requisitos<span className="sr-only"> y evidencia de {name}</span>
+                  </span>
+                  <ChevronDown size={16} aria-hidden="true" />
+                </summary>
+                <div className={styles.detailBody}>
+                  <h4>{name}</h4>
+                  <p>{definition.description}</p>
+                  <h5>El desafío exacto</h5>
+                  <p>{item?.conditions ?? definition.provisionalConditions}</p>
+                  <h5>Tu evaluación</h5>
+                  <p>
+                    {state.label}. {state.explanation}
+                  </p>
+                  {item && (
+                    <>
+                      <ul aria-label="Explicaciones de la evaluación">
+                        {item.reasons.map((reason) => (
+                          <li key={reason}>{reason}</li>
+                        ))}
+                      </ul>
+                      <dl>
+                        {item.evidence.map((row) => (
+                          <div key={row.label}>
+                            <dt>{row.label}</dt>
+                            <dd>{row.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </>
+                  )}
+                  <h5>Cómo se acredita</h5>
+                  <p>{evidenceNames[definition.evidence]}</p>
+                  {presentation?.status === "available" && <p>{presentation.coverageText}</p>}
+                  <p className={styles.version}>
+                    Regla {item?.ruleVersion ?? definition.ruleVersion}
+                  </p>
+                  {definition.code === "otp-specialist" && (
+                    <p>
+                      Nombre del catálogo: «{definition.name}». No constituye una certificación de
+                      SoloQ ni de Riot.
+                    </p>
+                  )}
+                  <p>Sin concesión permanente ni equipamiento de insignias.</p>
+                  {item?.status === "observed" && playerId && (
+                    <Link className={styles.profileLink} href={`/player/${playerId}?queue=${view}`}>
+                      Ver perfil relacionado →
+                    </Link>
+                  )}
+                </div>
+              </details>
             </li>
           );
         })}

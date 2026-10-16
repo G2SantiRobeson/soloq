@@ -13,6 +13,8 @@ import { Avatar } from "./avatar";
 import { PLATFORM_LABELS } from "@/lib/routing";
 import { RankDisplay } from "./rank-display";
 import { RivalryLeadership } from "./rivalry-leadership";
+import { tierColorVar, tierKey } from "@/lib/ladder-strata";
+import type { CSSProperties } from "react";
 
 export function Rivalries({
   rivalries,
@@ -44,6 +46,13 @@ export function Rivalries({
       .flatMap((r) => r.players.map((p) => p.observedAt))
       .reduce((a, b) => (Date.parse(a) <= Date.parse(b) ? a : b));
   const weekly = weeklyEnabled ? selectWeeklyRivalry(visible, view, { asOf: reference }) : null;
+  // The week's rivalry leads the list; the others keep the order they were selected in.
+  const ordered = weekly
+    ? [
+        ...visible.filter((r) => rivalryKey(r) === rivalryKey(weekly.rivalry)),
+        ...visible.filter((r) => rivalryKey(r) !== rivalryKey(weekly.rivalry)),
+      ]
+    : visible;
   return (
     <section
       className="rivalries"
@@ -61,7 +70,7 @@ export function Rivalries({
         </a>
       </header>
       <ul className="rivalries-list">
-        {visible.map((rivalry) => {
+        {ordered.map((rivalry) => {
           const highlighted = rivalryKey(rivalry) === sharedPairKey;
           const awarded =
             weekly && rivalryKey(weekly.rivalry) === rivalryKey(rivalry) ? weekly : null;
@@ -85,6 +94,7 @@ export function Rivalries({
               id={rivalryAnchor([first.id, second.id])}
               tabIndex={-1}
               aria-label={highlighted ? "Rivalidad compartida" : undefined}
+              data-weekly={awarded ? "" : undefined}
               key={rivalry.players.map((p) => p.id).join(":")}
             >
               <div className="rivalry-current">
@@ -109,6 +119,9 @@ export function Rivalries({
                       key={player.id}
                       href={`/player/${player.id}?queue=${view}`}
                       aria-label={`Ver perfil de ${player.gameName}#${player.tagLine} en ${QUEUE_LABELS[view]}`}
+                      style={
+                        { "--rank-color": tierColorVar(tierKey(player.rank)) } as CSSProperties
+                      }
                     >
                       <span className="player-identity">
                         <Avatar
@@ -128,7 +141,7 @@ export function Rivalries({
                         </span>
                       </span>
                       <span className="rivalry-rank">
-                        <RankDisplay rank={player.rank} size={26} />
+                        <RankDisplay rank={player.rank} size={32} />
                         <strong className="rivalry-current-lp numeric">
                           {player.rank.leaguePoints} LP
                         </strong>
@@ -147,7 +160,7 @@ export function Rivalries({
                   <div className="rivalry-versus">
                     <span aria-hidden="true">VS</span>
 
-                    <p className="rivalry-current-advantage">
+                    <p className="rivalry-current-advantage" data-comparable={comparable}>
                       <span className="rivalry-advantage-label">Ventaja actual</span>
                       {difference === null
                         ? "Divisiones contiguas · Sin ventaja de LP comparable"
@@ -161,17 +174,19 @@ export function Rivalries({
                     </p>
                   </div>
                 </div>
-                {dynamics && (
-                  <p
-                    className="rivalry-dynamics"
-                    data-kind={dynamics.kind}
-                    title="Cambio entre dos cortes históricos comparables, no en tiempo real."
-                  >
-                    <DynamicIcon size={13} aria-hidden="true" />
-                    {RIVALRY_EVENT_LABELS[dynamics.kind]}
-                  </p>
-                )}
-                <ShareRivalry ids={[first.id, second.id]} view={view} filters={filters} />
+                <div className="rivalry-footer">
+                  {dynamics && (
+                    <p
+                      className="rivalry-dynamics"
+                      data-kind={dynamics.kind}
+                      title="Cambio entre dos cortes históricos comparables, no en tiempo real."
+                    >
+                      <DynamicIcon size={13} aria-hidden="true" />
+                      {RIVALRY_EVENT_LABELS[dynamics.kind]}
+                    </p>
+                  )}
+                  <ShareRivalry ids={[first.id, second.id]} view={view} filters={filters} />
+                </div>
               </div>
               <RivalryLeadership
                 rivalry={rivalry}

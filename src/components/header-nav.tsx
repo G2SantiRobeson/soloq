@@ -3,22 +3,15 @@ import Link from "next/link";
 import { ladderQuery, parseLadderFilters } from "@/lib/ladder-filters";
 import { parseView } from "@/lib/queues";
 import { useSearchParams, usePathname } from "next/navigation";
+import { NAV_LINKS, navLinkContent } from "./nav-links";
 
-const LINKS = [
-  { href: "/", label: "Clasificación", matches: (path: string) => path === "/" },
-  { href: "/metrics", label: "Métricas", matches: (path: string) => path.startsWith("/metrics") },
-  { href: "/logros", label: "Logros", matches: (path: string) => path.startsWith("/logros") },
-  {
-    href: "/salon-de-la-fama",
-    label: "Salón de la Fama",
-    matches: (path: string) => path.startsWith("/salon-de-la-fama"),
-  },
-  {
-    href: "/rivalidades",
-    label: "Rivalidades",
-    matches: (p: string) => p.startsWith("/rivalidades") || p.startsWith("/rivalidad/"),
-  },
-] as const;
+const MATCHES: Record<(typeof NAV_LINKS)[number]["href"], (path: string) => boolean> = {
+  "/": (path) => path === "/",
+  "/metrics": (path) => path.startsWith("/metrics"),
+  "/logros": (path) => path.startsWith("/logros"),
+  "/salon-de-la-fama": (path) => path.startsWith("/salon-de-la-fama"),
+  "/rivalidades": (path) => path.startsWith("/rivalidades") || path.startsWith("/rivalidad/"),
+};
 
 export function HeaderNav() {
   const pathname = usePathname();
@@ -33,17 +26,21 @@ export function HeaderNav() {
         : path + "?queue=" + view;
   return (
     <nav aria-label="Principal" className="header-nav">
-      {LINKS.map(({ href, label, matches }) => (
-        <Link
-          key={href}
-          href={navigationHref(href)}
-          prefetch={href === "/rivalidades" ? false : undefined}
-          className="nav-link"
-          aria-current={matches(pathname) ? "page" : undefined}
-        >
-          {label}
-        </Link>
-      ))}
+      {NAV_LINKS.map((link) => {
+        const { label, content } = navLinkContent(link);
+        return (
+          <Link
+            key={link.href}
+            href={navigationHref(link.href)}
+            prefetch={link.href === "/rivalidades" ? false : undefined}
+            className="nav-link"
+            aria-label={label}
+            aria-current={MATCHES[link.href](pathname) ? "page" : undefined}
+          >
+            {content}
+          </Link>
+        );
+      })}
     </nav>
   );
 }

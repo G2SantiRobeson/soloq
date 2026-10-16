@@ -10,6 +10,8 @@ import { Leaderboard } from "@/components/leaderboard";
 import { getSyncStatus } from "@/server/sync/status";
 import { isDemo } from "@/server/env";
 import { weekStart } from "@/lib/time";
+import { CURRENT_SEASON } from "@/lib/season";
+import { PageHeading } from "@/components/page-heading";
 export const dynamic = "force-dynamic";
 export default async function Home({
   searchParams,
@@ -31,30 +33,21 @@ export default async function Home({
   );
   return (
     <>
-      <section className="ladder-heading">
-        <div>
-          <div className="eyebrow">LEAGUE OF LEGENDS / CLASIFICACIÓN DE LA COMUNIDAD</div>
-          <h1>
-            La clasificación<span className="heading-dot">.</span>
-          </h1>
-        </div>
-        <dl className="ladder-summary">
-          <div>
-            <dt>JUGADORES</dt>
-            <dd>{String(players.length).padStart(2, "0")}</dd>
-          </div>
-          <div>
-            <dt>
-              {demo
-                ? "RESULTADOS FICTICIOS"
-                : view === "5v5"
-                  ? "RESULTADOS IMPORTADOS"
-                  : "RESULTADOS RANKED"}
-            </dt>
-            <dd>{games.toLocaleString("es-CL")}</dd>
-          </div>
-        </dl>
-      </section>
+      <PageHeading
+        title="La clasificación"
+        meta={`Comunidad de League of Legends · ${CURRENT_SEASON.label}`}
+        figures={[
+          { label: "Jugadores", value: players.length.toLocaleString("es-CL") },
+          {
+            label: demo
+              ? "Resultados ficticios"
+              : view === "5v5"
+                ? "Resultados importados"
+                : "Resultados ranked",
+            value: games.toLocaleString("es-CL"),
+          },
+        ]}
+      />
       <div className="ladder-navigation">
         <QueueTabs view={view} />
         <Link className="button secondary ladder-metrics-button" href={`/metrics?queue=${view}`}>
@@ -75,7 +68,7 @@ export default async function Home({
         key={view}
       />
       <aside className="data-note">
-        <span>LECTURA DEL RANKING</span>
+        <h2>Cómo leer el ranking</h2>
         <p>
           {demo
             ? "Clasificación de demostración con jugadores, rangos, LP y partidas ficticios. Las estadísticas y la forma reciente describen únicamente estos fixtures. "

@@ -1,32 +1,52 @@
 # SoloQ — sistema visual
 
-## Dirección
+## Dirección (RC3, en revisión)
 
-Una clasificación de competición, con la precisión de una hoja de resultados de esports.
-El ranking es el contenido principal: emblema de rango → jugador → LP → WR → forma.
-La posición permanece como número secundario en su columna. Las alas de `Wings/`
-rodean el avatar en Jugador / Riot ID; el emblema de tier aparece junto al texto en Rango.
-Sin hero promocional, tarjetas por métrica, ornamentos de Riot inventados ni efectos luminosos.
-La identidad procede de la tipografía condensada, numeración grande y reglas de separación.
+Transmisión competitiva: un fondo de tinta y un cromo color hueso que no compiten con el
+contenido. El color de la pantalla pertenece a los jugadores: su tier, sus campeones y sus
+resultados. El ranking sigue siendo el contenido principal y se lee como una escalera:
+estratos por tier oficial (Challenger → Iron → Sin clasificar) con su banda fijada bajo las
+cabeceras de columna mientras se recorre. La firma de la portada es la forma de la escalera:
+una barra de distribución por tier construida solo con los jugadores visibles.
+En el perfil, el tier del jugador tiñe el héroe y el marcador. Sin glow, gradientes,
+cejas (eyebrows) ni numeración decorativa 01/02/03. Columnas de la portada, iconos de
+perfil y alas de elo se conservan tal cual.
 
-## Tokens
+## Tokens (fuente única: `:root` en `src/app/globals.css`)
 
-- Fondo carbón `#101215`; superficie `#171a1f`; superficie activa `#20252a`.
-- Texto `#f0f1ed`; secundario `#a2a9b2`; borde `#30363d`.
-- Selección marfil `#e0d3ad`; victoria verde `#9bc7ab`; derrota coral `#df9299`.
-- Rangos: Iron `#afa49b`, Bronze `#caa081`, Silver `#c5cdd5`, Gold `#ddc17f`,
-  Platinum `#88c9d0`, Emerald `#7ed3ac`, Diamond `#9abaff`, Master `#c9a3ec`,
-  Grandmaster `#ed9995`, Challenger `#eed28d`. Unranked neutro, sin LP ficticios.
-- Bordes de 1 px. Radio 2 px para controles e imágenes; secciones abiertas sin sombras.
-- Espaciado: 4 / 8 / 12 / 16 / 24 / 32 / 48 px. Ancho máximo 1360 px.
+- Fondo `#0b0e13`; superficies `#10141b` / `#12171f` / `#161c25` / `#1c2330` (escalones de tono).
+- Texto `#eceff4`; secundario `#a3adbd` (≥6,9:1 en todas las superficies); línea `#232b37`;
+  borde de control `#606e84` (≥3:1 en todas las superficies).
+- Acento hueso `#ecdcb8` solo para cromo: acción primaria, foco, ubicación actual. Nunca dato.
+- Victoria azul `#5aa2ff` y derrota roja `#ff6672`, la convención de League; distinguibles
+  con daltonismo rojo-verde. Aviso/demo ámbar `#ffb547`.
+- Tiers: Iron `#b9aba1`, Bronze `#e8915a`, Silver `#b8c8dc`, Gold `#ffd84a`, Platinum `#3ad9c8`,
+  Emerald `#45e083`, Diamond `#72a6ff`, Master `#d07cff`, Grandmaster `#f86056`,
+  Challenger `#fff0a8`; siempre junto al nombre del tier.
+- Emblemas de logros (`--emblem-*`): recuperación `#29d6f2`, racha `#ffb64b`, maestría `#37e4a6`,
+  cada uno con su fondo oscuro (icono ≥7,7:1 sobre él). Solo en el emblema, nunca en texto.
+- Recompensa latón `--reward` `#e6c27a` (10,9:1 sobre superficie): exclusiva del Salón de la Fama.
+  Distinta del ámbar de aviso/Demo y del oro del tier Gold.
+- Radio 2 px. Sin sombras en reposo; solo flotan popovers, diálogos y barras fijas.
+- Espaciado: 4 / 8 / 12 / 16 / 24 / 32 / 40 / 48 px. Ancho máximo 1360 px.
+- Capas: `--z-sticky` 20, `--z-header` 40, `--z-popover` 60; cabecera fija de 60 px.
 
 ## Tipografía
 
-Barlow Condensed semibold para títulos, posiciones y LP; Barlow regular/semibold
+Barlow Condensed semibold para títulos, posiciones, LP y estratos; Barlow regular/semibold
 para texto, identidades y navegación. Fuentes locales con sus licencias OFL.
-Escala: 48/40 px título, 24 px sección, 18 px LP, 14 px contenido, 12 px metadatos,
-11 px etiquetas. Números tabulares y lining (`tnum`, `lnum`); porcentajes alineados.
-Riot ID legible, tag secundario. Nombres largos envuelven; nunca se pierde la identidad.
+Escala: título de página `clamp(52px … 104px)` con tracking −0,02 em; LP del perfil hasta
+104 px; 44 / 28 / 20 px para cifras y secciones; 15 px contenido; 13 px metadatos;
+12 px mínimo. Etiquetas en tipo oración, sin mayúsculas espaciadas diminutas. Números
+tabulares y lining (`tnum`, `lnum`).
+
+## Movimiento
+
+Solo `transform` y `opacity`, curva `cubic-bezier(0.23, 1, 0.32, 1)`, 120–180 ms.
+Respuesta al pulsar (`scale(0.97)`), subrayados de navegación y pestañas al pasar el puntero
+(solo con puntero fino), popovers que crecen desde su disparador y un único momento propio:
+la distribución por tier se asienta una vez al cargar (≈0,6 s, las etiquetas no se mueven).
+Con `prefers-reduced-motion` se conservan color y opacidad y desaparece el desplazamiento.
 
 ## Lenguaje de componentes
 
@@ -38,7 +58,33 @@ Riot ID legible, tag secundario. Nombres largos envuelven; nunca se pierde la id
 - RecentChampionForm: cinco retratos de campeón, más reciente a la izquierda;
   borde semántico y marcas ✓/×, con campeón y resultado accesibles.
 - ChampionIdentity: retrato y nombre juntos, tamaños constantes, fallback de iniciales.
-- QueueTabs: carriles numerados SoloQ / Flex / 5v5; fondo y regla superior seleccionados.
+- QueueTabs: SoloQ / Flex / 5v5 en display con detalle en tipo oración; la seleccionada
+  lleva una regla hueso inferior de 3 px. Sin numeración 01/02/03.
+- TierDistribution y estratos: una barra por tier presente, ancha según su parte de los
+  jugadores visibles; con orden oficial enlaza a su estrato. 5v5 no tiene ni barra ni estratos.
+- PageHeading: título grande, frase de entrada y línea de contexto debajo (nunca una ceja
+  encima) y cifras o un panel lateral opcionales. Lo usan portada, Rivalidades, el duelo
+  compartido, Métricas, Logros y el Salón de la Fama.
+- Duelo de clasificación (Rivalidades): una franja por duelo; cada mitad lleva el tier de su
+  jugador y los LP se enfrentan a través de la ventaja central. Sin LP comparables se muestra
+  el texto, nunca una cifra. La rivalidad de la semana encabeza la lista. Proximidad en el
+  ranking, no partidas entre ambos jugadores.
+- Métricas: cabecera con las cifras del período y el aviso de historial parcial; cola y
+  período bajo ella; la distribución compartida enlaza cada tier a su estrato del ranking.
+  Después, marcadores con costuras de 1 px: líderes y comunidad (el líder ranked teñido con
+  su tier), honor y vergüenza, forma y tendencia, actividad y campeones. Sin franjas de color.
+- Logros: cabecera compartida con el selector de perfil a su derecha (casos Demo o ID público)
+  y la etiqueta Experimental en la línea de contexto; pestañas SoloQ / Flex. Cada desafío es una
+  fila del mismo tablero con costuras de 1 px: emblema (encendido solo si la condición se
+  observó), categoría y Experimental, umbral leído de las constantes de la regla, evaluación con
+  icono y texto, evidencia registrada y requisitos plegados. Sin insignias concedidas, sin
+  progreso inventado. La vitrina del perfil reutiliza el emblema compacto, sin franja lateral.
+- Salón de la Fama: cabecera compartida con un único aviso sobrio a su derecha (propuestas sin
+  acreditación real y, en Demo, el carácter ficticio). Las tres insignias originales cuelgan como
+  placas de un mismo tablero; la legendaria, más ancha, lleva filete latón y su nombre en latón.
+  Después, el cuadro de honor de nombres (el enlazado desde un perfil se enmarca al llegar) y los
+  récords: el vigente con filete latón, los antiguos titulares siguen en el tablero. Sin cejas,
+  sin trofeos genéricos, sin franjas de color.
 - Botones rectangulares, altura mínima 40 px; primario marfil, secundario con borde.
 - Inputs con label, fondo oscuro y foco visible también en su contenedor.
 - Tabla compacta, avatar con marco específico del tier y emblema de 44 px junto al rango, posición secundaria, LP separado, líderes con acento sutil.
