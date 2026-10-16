@@ -131,12 +131,12 @@ export function ManualRival({
             </small>
           )}
           <Link
+            className="button secondary"
             href={
-              (sharedRivalryPath(view, [player.id, selected.id]) ?? "/rivalidades") +
-              "&tipo=elegida"
+              sharedRivalryPath(view, [player.id, selected.id], undefined, true) ?? "/rivalidades"
             }
           >
-            Ver comparación
+            Abrir VS
           </Link>
         </div>
       )}

@@ -44,10 +44,13 @@ export function sharedRivalryPath(
   view: View,
   rawIds: RivalPairIds,
   filters = parseLadderFilters(view, {}),
+  manual = false,
 ): string | null {
   const ids = normalizedRivalIds(rawIds);
   if (!ids || !rankedQueue(view)) return null;
-  return "/rivalidad/" + ids.join("/") + ladderQuery(view, filters);
+  return (
+    "/rivalidad/" + ids.join("/") + ladderQuery(view, filters) + (manual ? "&tipo=elegida" : "")
+  );
 }
 /** Resolve only public, filtered, adjacent current ladder candidates. Never force an old pair. */
 export function resolveSharedRivalry(
