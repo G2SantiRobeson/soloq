@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   CloudRain,
   Flame,
@@ -31,16 +31,19 @@ export function Block({
   info,
   tag,
   className = "",
+  style,
   children,
 }: {
   title: string;
   info?: ReactNode;
   tag?: string;
   className?: string;
+  /** For custom properties such as a tier's `--rank-color`. */
+  style?: CSSProperties;
   children: ReactNode;
 }) {
   return (
-    <section className={`bento-block ${className}`} aria-label={title}>
+    <section className={`bento-block ${className}`} aria-label={title} style={style}>
       <header className="bento-head">
         <h2>{title}</h2>
         {tag && <span className="bento-tag">{tag}</span>}

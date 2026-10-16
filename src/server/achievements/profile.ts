@@ -4,7 +4,7 @@ import type { View } from "@/lib/queues";
 import type { ChampionCatalog } from "@/lib/champion-assets";
 import { CURRENT_SEASON } from "@/lib/season";
 import { isDemo } from "@/server/env";
-import { achievementsExperimentalEnabled } from "./feature";
+import { achievementExperienceEnabled } from "./feature";
 import { reportAchievementFailure } from "./errors";
 import { achievementPresentation } from "./presentation";
 import type { AchievementPresentation } from "@/lib/achievements/presentation";
@@ -37,7 +37,7 @@ export async function profileAchievementPresentation(
   asOf: string,
   champions: ChampionCatalog,
 ): Promise<AchievementPresentation | null> {
-  if (!achievementsExperimentalEnabled() || view === "5v5") return null;
+  if (!achievementExperienceEnabled() || view === "5v5") return null;
   try {
     if (isDemo()) {
       // Each public demo profile is evaluated from its own fixture, never a shared one.

@@ -1,4 +1,5 @@
 import "server-only";
+import { isDemo } from "@/server/env";
 
 /** Fail closed. No client input, NEXT_PUBLIC variable or persisted activation. */
 export function achievementsExperimentalEnabled(): boolean {
@@ -8,4 +9,9 @@ export function achievementsExperimentalEnabled(): boolean {
   if (VERCEL === "1")
     return VERCEL_ENV === "preview" && (!VERCEL_TARGET_ENV || VERCEL_TARGET_ENV === "preview");
   return !VERCEL && !VERCEL_ENV && !VERCEL_TARGET_ENV && NODE_ENV === "development";
+}
+
+/** Demo presentation does not activate the real experimental reader. */
+export function achievementExperienceEnabled(): boolean {
+  return isDemo() || achievementsExperimentalEnabled();
 }

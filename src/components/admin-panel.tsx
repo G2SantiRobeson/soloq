@@ -56,8 +56,8 @@ export function LoginForm({ demo }: { demo: boolean }) {
       <span className="login-icon">
         <LockKeyhole size={27} aria-hidden="true" />
       </span>
-      <div className="eyebrow">SOLOQ / ACCESO DE ADMINISTRACIÓN</div>
       <h1>Detrás del ranking.</h1>
+      <p className="page-meta">Acceso de administración</p>
       <p>Inicia sesión para gestionar los jugadores y las actualizaciones de tu comunidad.</p>
       {demo && (
         <div className="notice">
@@ -332,8 +332,8 @@ export function AdminPanel({
     <>
       <div className="admin-heading">
         <div>
-          <div className="eyebrow">CENTRO DE CONTROL</div>
           <h1>Tu comunidad.</h1>
+          <p className="page-meta">Centro de control</p>
           <p className="muted">Rango y recientes primero. El histórico continúa por lotes.</p>
         </div>
         <div className="admin-heading-actions">

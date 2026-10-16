@@ -114,11 +114,15 @@ describe("OTP badge comes only from the existing observed evaluation", () => {
 });
 
 describe("OTP respects the experimental flag and shares one evaluation", () => {
-  it.each(["soloq", "flex", "5v5"] as const)("flag off (%s): no badge, no work", (view) => {
-    const load = profileAchievementLoader("demo-1", view, props.asOf, {});
-    expect(ProfileOtpHighlight({ view, load, champions: {} })).toBeNull();
-    expect(service).not.toHaveBeenCalled();
-  });
+  it.each(["soloq", "flex", "5v5"] as const)(
+    "non-Demo flag off (%s): no badge, no work",
+    (view) => {
+      vi.stubEnv("DEMO_MODE", "false");
+      const load = profileAchievementLoader("demo-1", view, props.asOf, {});
+      expect(ProfileOtpHighlight({ view, load, champions: {} })).toBeNull();
+      expect(service).not.toHaveBeenCalled();
+    },
+  );
 
   it("flag on: no badge in 5v5", () => {
     enable();

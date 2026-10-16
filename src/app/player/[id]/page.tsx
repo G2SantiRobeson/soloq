@@ -1,6 +1,12 @@
+import { HallLegacyShowcase } from "@/components/hall-of-fame/hall-of-fame";
+import { AchievementShowcase } from "@/components/achievements/achievement-showcase";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ArrowLeftRight, FingerprintPattern, TrendingUp } from "lucide-react";
+import { getProfileRival } from "@/server/profile-rival";
+import { ManualRival } from "@/components/manual-rival";
+import { getLocalRivalOptions } from "@/server/local-rival-options";
+import { ProfileRival } from "@/components/profile-rival";
 import { getProfile } from "@/server/queries";
 import { getAssets, profileIconUrl } from "@/server/riot/assets";
 import { parseView, STANDARD_QUEUES } from "@/lib/queues";
@@ -27,7 +33,8 @@ import {
   RankBlock,
   RecordBlock,
 } from "@/components/profile-overview";
-import { Suspense } from "react";
+import { Suspense, type CSSProperties } from "react";
+import { tierColorVar, tierKey } from "@/lib/ladder-strata";
 import {
   PlayerSignatureSection,
   PlayerSignatureSkeleton,
@@ -57,49 +64,77 @@ export default async function PlayerPage({ params, searchParams }: Props) {
   const view = parseView((await searchParams).queue);
   const [player, assets] = await Promise.all([getProfile(id, view), getAssets()]);
   if (!player) notFound();
+  const rivalResult =
+    view !== "5v5" ? await getProfileRival(player, view) : { status: "none" as const };
+  const manualContext = await getLocalRivalOptions(player, view);
   const signatureInput = toSignaturePlayer(
     player,
     view,
     (championId, fallback) => championAsset(championId, fallback, assets.champions).name,
   );
   const source = { player, demo };
+  const tierStyle = {
+    "--rank-color": tierColorVar(view === "5v5" ? "UNRANKED" : tierKey(player.rank)),
+  } as CSSProperties;
   // Lazy: nothing runs unless the flag allows a consumer to render; both consumers share it.
   const achievements = profileAchievementLoader(id, view, player.observedAt, assets.champions);
   return (
     <>
       <BackToLadder view={view} />
-      <section className="profile-header">
+      {/* The player's own tier tints the hero and the scoreboard; 5v5 has no tier to show. */}
+      <section className="profile-header" style={tierStyle}>
         <RankAvatar
           tier={view === "5v5" ? null : player.rank?.tier}
           name={player.gameName}
           src={profileIconUrl(assets.version, player.profileIconId)}
           size={132}
         />
-        <div>
-          <div className="eyebrow">PERFIL DE JUGADOR · {PLATFORM_LABELS[player.platform]}</div>
+        <div className="profile-heading-identity">
           <h1>
             {player.gameName}
             <span>#{player.tagLine}</span>
           </h1>
-          <ProfileFreshness
-            rankCheckedAt={player.rankCheckedAt ?? null}
-            lastSyncedAt={player.lastSyncedAt}
-            observedAt={player.observedAt}
-            view={view}
-            demo={demo}
-          />
+          <div className="profile-meta">
+            <span className="region-tag">{PLATFORM_LABELS[player.platform]}</span>
+            <ProfileFreshness
+              rankCheckedAt={player.rankCheckedAt ?? null}
+              lastSyncedAt={player.lastSyncedAt}
+              observedAt={player.observedAt}
+              view={view}
+              demo={demo}
+            />
+            <span className="profile-since">
+              En seguimiento desde{" "}
+              <b>{new Date(player.createdAt).toLocaleDateString("es-CL", { timeZone: "UTC" })}</b>
+            </span>
+          </div>
         </div>
-        <span className="profile-since">
-          En seguimiento desde
-          <br />
-          <b>{new Date(player.createdAt).toLocaleDateString("es-CL", { timeZone: "UTC" })}</b>
-        </span>
+        {view !== "5v5" && (
+          <div className="profile-header-rivals">
+            <ProfileRival result={rivalResult} view={view} version={assets.version} demo={demo} />
+            <ManualRival
+              key={id + "-" + player.platform + "-" + view}
+              player={{
+                id: player.id,
+                gameName: player.gameName,
+                tagLine: player.tagLine,
+                platform: player.platform,
+                profileIconId: player.profileIconId,
+                rank: player.rank,
+                observedAt: player.observedAt,
+              }}
+              view={view}
+              initial={manualContext}
+              version={assets.version}
+            />
+          </div>
+        )}
       </section>
-      <div className="tabs-line">
+      <div className="tabs-line" style={tierStyle}>
         <QueueTabs view={view} base={`/player/${id}`} />
       </div>
       {/* Bento order is also the mobile reading order: rank/record, form, stats, pool, extras. */}
-      <div className={`profile-bento${view === "5v5" ? " is-5v5" : ""}`}>
+      <div className={`profile-bento${view === "5v5" ? " is-5v5" : ""}`} style={tierStyle}>
         {view !== "5v5" && <RankBlock {...source} view={view} />}
         <RecordBlock {...source} view={view} />
         <FormBlock {...source} champions={assets.champions} />
@@ -132,6 +167,8 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           load={achievements}
         />
       </div>
+      {/* The badge showcase follows the scoreboard so rank and LP lead the first screen. */}
+      <AchievementShowcase playerId={id} view={view} load={achievements} />
       <div className="profile-progression-grid">
         <section className="panel evolution-panel">
           <div className="panel-title">
@@ -193,6 +230,7 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           <LpDeltaSummary observations={player.lpObservations} demo={demo} />
         </details>
       )}
+      <HallLegacyShowcase playerId={id} view={view} />
       <MatchHistory
         demo={demo}
         key={`${id}-${view}`}

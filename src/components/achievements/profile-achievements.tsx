@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { Radar } from "lucide-react";
 import type { View } from "@/lib/queues";
 import type { ChampionCatalog } from "@/lib/champion-assets";
-import { achievementsExperimentalEnabled } from "@/server/achievements/feature";
+import { achievementExperienceEnabled } from "@/server/achievements/feature";
 import {
   profileAchievementPresentation,
   type ProfileAchievementLoader,
@@ -32,7 +32,7 @@ export async function ProfileAchievementsContent(props: Props) {
 
 /** Native collapsed disclosure: streaming does not push essential information down. */
 export function ProfileAchievements(props: Props) {
-  if (!achievementsExperimentalEnabled() || props.view === "5v5") return null;
+  if (!achievementExperienceEnabled() || props.view === "5v5") return null;
   return (
     <details className={`disclosure disclosure-block profile-disclosure ${styles.profile}`}>
       <summary>
@@ -76,7 +76,7 @@ export function ProfileOtpHighlight(props: {
   load: ProfileAchievementLoader;
   champions: ChampionCatalog;
 }) {
-  if (!achievementsExperimentalEnabled() || props.view === "5v5") return null;
+  if (!achievementExperienceEnabled() || props.view === "5v5") return null;
   return (
     <Suspense fallback={null}>
       <ProfileOtpHighlightContent load={props.load} champions={props.champions} />

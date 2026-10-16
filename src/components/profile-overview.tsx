@@ -22,14 +22,14 @@ import { HistoryStatusLabel } from "./history-status";
 
 type Source = { player: PlayerProfile; demo: boolean };
 
-const importedTag = (demo: boolean) => (demo ? "HISTORIAL FICTICIO" : "HISTORIAL IMPORTADO");
+const importedTag = (demo: boolean) => (demo ? "Historial ficticio" : "Historial importado");
 
 /** Ranked queues only: 5v5 has no rank or LP of its own, so no block is rendered. */
 export function RankBlock({ player, view, demo }: Source & { view: Exclude<View, "5v5"> }) {
   return (
     <Block
-      title="RANGO ACTUAL"
-      tag={`${QUEUE_LABELS[view].toUpperCase()} · ${demo ? "FICTICIO" : "OFICIAL"}`}
+      title="Rango actual"
+      tag={`${QUEUE_LABELS[view]} · ${demo ? "ficticio" : "oficial"}`}
       className="profile-block-rank"
     >
       <div className="profile-rank-heading">
@@ -54,8 +54,8 @@ export function RecordBlock({ player, view, demo }: Source & { view: View }) {
   const rate = winrate(record.wins, record.losses);
   return (
     <Block
-      title={view === "5v5" ? "REGISTRO 5V5" : official ? "REGISTRO RANKED" : "REGISTRO IMPORTADO"}
-      tag={official ? (demo ? "FICTICIO" : "OFICIAL") : importedTag(demo)}
+      title={view === "5v5" ? "Registro 5v5" : official ? "Registro ranked" : "Registro importado"}
+      tag={official ? (demo ? "Ficticio" : "Oficial") : importedTag(demo)}
       className="profile-block-record"
     >
       <div className="record-summary">
@@ -83,7 +83,7 @@ export function RecordBlock({ player, view, demo }: Source & { view: View }) {
 
 export function FormBlock({ player, champions, demo }: Source & { champions: ChampionCatalog }) {
   return (
-    <Block title="FORMA RECIENTE" tag="ÚLTIMAS 5" className="profile-block-form">
+    <Block title="Forma reciente" tag="Últimas 5" className="profile-block-form">
       <div className="profile-form">
         <RecentChampionForm matches={player.recent} champions={champions} interactive size={40} />
       </div>
@@ -98,7 +98,7 @@ export function FormBlock({ player, champions, demo }: Source & { champions: Cha
 export function CombatBlock({ player, demo }: Source) {
   const { stats } = player;
   return (
-    <Block title="COMBATE" tag={importedTag(demo)} className="profile-block-combat">
+    <Block title="Combate" tag={importedTag(demo)} className="profile-block-combat">
       <HistoryStatusLabel history={player.seasonHistory} demo={demo} compact />
       <section className="stat-strip" aria-label="Estadísticas del historial importado">
         <div>
@@ -108,17 +108,17 @@ export function CombatBlock({ player, demo }: Source) {
           </strong>
         </div>
         <div>
-          <span>CS / MIN</span>
+          <span>CS / min</span>
           <strong>{stats.duration ? (stats.cs / (stats.duration / 60)).toFixed(1) : "—"}</strong>
         </div>
         <div>
-          <span>DAÑO / PARTIDA</span>
+          <span>Daño / partida</span>
           <strong>
             {stats.games ? Math.round(stats.damage / stats.games).toLocaleString("es-CL") : "—"}
           </strong>
         </div>
         <div>
-          <span>PARTIDAS IMPORTADAS</span>
+          <span>Partidas importadas</span>
           <strong>{stats.games}</strong>
         </div>
       </section>
@@ -156,7 +156,7 @@ export function ChampionPoolBlock({
     </div>
   ));
   return (
-    <Block title="POOL DE CAMPEONES" tag={importedTag(demo)} className="profile-block-pool">
+    <Block title="Pool de campeones" tag={importedTag(demo)} className="profile-block-pool">
       {children}
       {rows.length ? (
         <>

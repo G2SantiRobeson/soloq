@@ -41,6 +41,11 @@ export type PublicPlayer = {
   stats: Totals;
   recent: RecentChampionMatch[];
   momentum: LpMetrics | null;
+  /** Bounded, chronological observations from the selected ranked queue; never rankCheckedAt. */
+  rivalryHistory?: readonly RankSnapshot[];
+  /** Calendar-week batch, bounded separately; false completeness suppresses the award. */
+  weeklyRivalryHistory?: readonly RankSnapshot[];
+  weeklyRivalryHistoryComplete?: boolean;
   weeklyLp?: number | null;
   weeklySummary?: WeeklyLp | null;
   lastFiveLp?: FiveMatchLp;
