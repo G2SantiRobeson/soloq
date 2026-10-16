@@ -98,7 +98,10 @@ export function AchievementCatalog({
               data-theme={art.theme}
               aria-labelledby={titleId}
             >
-              <AchievementEmblem code={definition.code} />
+              <AchievementEmblem
+                code={definition.code}
+                specialization={item?.status === "observed" ? item.specialization : null}
+              />
               <div className={styles.identity}>
                 <p className={styles.categoryLabel}>
                   {category.name}
