@@ -10,9 +10,11 @@ import { isDemo } from "@/server/env";
 import { Rivalries } from "@/components/rivalries";
 import { rivalryKey } from "@/lib/weekly-rivalry";
 import { ManualDuel } from "@/components/manual-duel";
+import { PageHeading } from "@/components/page-heading";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Enfrentamiento compartido | SoloQ" };
+// The root layout's title template already appends "| SoloQ".
+export const metadata: Metadata = { title: "Enfrentamiento compartido" };
 type Props = {
   params: Promise<{ first: string; second: string }>;
   searchParams: Promise<LadderSearchParams>;
@@ -35,16 +37,15 @@ export default async function SharedDuelPage({ params, searchParams }: Props) {
       <Link className="back-link" href={rankingHref}>
         ← Volver a la clasificación
       </Link>
-      <section className="ladder-heading">
-        <div>
-          <div className="eyebrow">ENFRENTAMIENTO COMPARTIDO · {QUEUE_LABELS[view]}</div>
-          <h1>
-            {pair.every(Boolean)
-              ? pair.map((p) => p!.gameName).join(" vs ")
-              : "Rivalidad no disponible"}
-          </h1>
-        </div>
-      </section>
+      <PageHeading
+        dot={false}
+        title={
+          pair.every(Boolean)
+            ? pair.map((p) => p!.gameName).join(" vs ")
+            : "Rivalidad no disponible"
+        }
+        meta={`Enfrentamiento compartido · ${QUEUE_LABELS[view]}`}
+      />
       {manual && pair[0] && pair[1] && pair[0].platform === pair[1].platform ? (
         <ManualDuel
           players={[pair[0], pair[1]]}

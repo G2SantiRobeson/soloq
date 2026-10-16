@@ -128,14 +128,14 @@ describe("honest season coverage", () => {
       expect(html.indexOf("Historial parcial · puede continuar")).toBeLessThan(
         html.indexOf('aria-label="Estadísticas del historial importado"'),
       );
-      expect(html).toContain("PARTIDAS IMPORTADAS");
+      expect(html).toContain("Partidas importadas");
       expect(html).toContain("3 partidas");
       if (queue !== "5v5") {
         expect(html).toContain("80 V");
         expect(html).toContain("130 partidas");
         expect(html).toContain("en el estado ranked actual");
       } else {
-        expect(html).toContain("REGISTRO 5V5");
+        expect(html).toContain("Registro 5v5");
         expect(html).not.toContain("80 V");
       }
     },

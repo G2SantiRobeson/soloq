@@ -6,8 +6,8 @@ export default function Terms() {
   const demo = isDemo();
   return (
     <article className="legal-page">
-      <div className="eyebrow">{demo ? "DEMOSTRACIÓN PÚBLICA" : "INFORMACIÓN DEL SERVICIO"}</div>
       <h1>Términos de uso</h1>
+      <p className="page-meta">{demo ? "Demostración pública" : "Información del servicio"}</p>
       <p className="legal-lead">
         SoloQ es un proyecto independiente para visualizar el progreso de una comunidad de League of
         Legends.

@@ -7,6 +7,8 @@ import { rivalComparisonLabel } from "@/lib/rival-comparison-label";
 import { manualComparison } from "@/lib/manual-rival";
 import type { RivalIdentity } from "@/lib/nearest-rival";
 import type { View } from "@/lib/queues";
+import { tierColorVar, tierKey } from "@/lib/ladder-strata";
+import type { CSSProperties } from "react";
 export function ManualDuel({
   players,
   view,
@@ -36,6 +38,11 @@ export function ManualDuel({
               (comparison.leaderId === p.id ? " current-leader" : "")
             }
             href={"/player/" + p.id + "?queue=" + view}
+            style={
+              {
+                "--rank-color": tierColorVar(tierKey(hasRivalRank(p) ? p.rank : null)),
+              } as CSSProperties
+            }
           >
             <Avatar
               name={p.gameName}

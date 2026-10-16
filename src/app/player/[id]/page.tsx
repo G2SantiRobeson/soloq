@@ -33,7 +33,8 @@ import {
   RankBlock,
   RecordBlock,
 } from "@/components/profile-overview";
-import { Suspense } from "react";
+import { Suspense, type CSSProperties } from "react";
+import { tierColorVar, tierKey } from "@/lib/ladder-strata";
 import {
   PlayerSignatureSection,
   PlayerSignatureSkeleton,
@@ -72,12 +73,16 @@ export default async function PlayerPage({ params, searchParams }: Props) {
     (championId, fallback) => championAsset(championId, fallback, assets.champions).name,
   );
   const source = { player, demo };
+  const tierStyle = {
+    "--rank-color": tierColorVar(view === "5v5" ? "UNRANKED" : tierKey(player.rank)),
+  } as CSSProperties;
   // Lazy: nothing runs unless the flag allows a consumer to render; both consumers share it.
   const achievements = profileAchievementLoader(id, view, player.observedAt, assets.champions);
   return (
     <>
       <BackToLadder view={view} />
-      <section className="profile-header">
+      {/* The player's own tier tints the hero and the scoreboard; 5v5 has no tier to show. */}
+      <section className="profile-header" style={tierStyle}>
         <RankAvatar
           tier={view === "5v5" ? null : player.rank?.tier}
           name={player.gameName}
@@ -85,23 +90,24 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           size={132}
         />
         <div className="profile-heading-identity">
-          <div className="eyebrow">PERFIL DE JUGADOR · {PLATFORM_LABELS[player.platform]}</div>
           <h1>
             {player.gameName}
             <span>#{player.tagLine}</span>
           </h1>
-          <ProfileFreshness
-            rankCheckedAt={player.rankCheckedAt ?? null}
-            lastSyncedAt={player.lastSyncedAt}
-            observedAt={player.observedAt}
-            view={view}
-            demo={demo}
-          />
-          <span className="profile-since">
-            En seguimiento desde
-            <br />
-            <b>{new Date(player.createdAt).toLocaleDateString("es-CL", { timeZone: "UTC" })}</b>
-          </span>
+          <div className="profile-meta">
+            <span className="region-tag">{PLATFORM_LABELS[player.platform]}</span>
+            <ProfileFreshness
+              rankCheckedAt={player.rankCheckedAt ?? null}
+              lastSyncedAt={player.lastSyncedAt}
+              observedAt={player.observedAt}
+              view={view}
+              demo={demo}
+            />
+            <span className="profile-since">
+              En seguimiento desde{" "}
+              <b>{new Date(player.createdAt).toLocaleDateString("es-CL", { timeZone: "UTC" })}</b>
+            </span>
+          </div>
         </div>
         {view !== "5v5" && (
           <div className="profile-header-rivals">
@@ -124,12 +130,11 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           </div>
         )}
       </section>
-      <div className="tabs-line">
+      <div className="tabs-line" style={tierStyle}>
         <QueueTabs view={view} base={`/player/${id}`} />
       </div>
-      <AchievementShowcase playerId={id} view={view} load={achievements} />
       {/* Bento order is also the mobile reading order: rank/record, form, stats, pool, extras. */}
-      <div className={`profile-bento${view === "5v5" ? " is-5v5" : ""}`}>
+      <div className={`profile-bento${view === "5v5" ? " is-5v5" : ""}`} style={tierStyle}>
         {view !== "5v5" && <RankBlock {...source} view={view} />}
         <RecordBlock {...source} view={view} />
         <FormBlock {...source} champions={assets.champions} />
@@ -162,6 +167,8 @@ export default async function PlayerPage({ params, searchParams }: Props) {
           load={achievements}
         />
       </div>
+      {/* The badge showcase follows the scoreboard so rank and LP lead the first screen. */}
+      <AchievementShowcase playerId={id} view={view} load={achievements} />
       <div className="profile-progression-grid">
         <section className="panel evolution-panel">
           <div className="panel-title">

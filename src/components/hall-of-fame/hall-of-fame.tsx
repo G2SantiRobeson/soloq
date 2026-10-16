@@ -1,10 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
 import { hallEmblemAsset } from "@/lib/hall-of-fame/emblems";
-import { Shield, Trophy, ChevronDown, History } from "lucide-react";
+import { Shield, Trophy, ChevronDown } from "lucide-react";
 import { HALL_PROPOSALS } from "@/lib/hall-of-fame/proposals";
 import { readHallPreview } from "@/server/hall-of-fame/demo";
 import type { View } from "@/lib/queues";
+import { PageHeading } from "@/components/page-heading";
+import { QueueTabs } from "@/components/queue-tabs";
 import styles from "./hall.module.css";
 export function HallEmblem({ id, small = false }: { id: string; small?: boolean }) {
   const asset = hallEmblemAsset(id);
@@ -34,45 +36,39 @@ const date = (value: string) =>
 export function HallOfFame({ view }: { view: View }) {
   const data = readHallPreview(view);
   return (
-    <>
-      <section className={styles.hero}>
-        <div>
-          <span className="eyebrow">EL LEGADO DE LA COMUNIDAD</span>
-          <h1>
-            Salón de la <span>Fama.</span>
-          </h1>
-          <p>Las hazañas pasan. Los nombres permanecen.</p>
-          <Link href={`/logros?queue=${view}`}>← Explorar desafíos experimentales</Link>
-        </div>
-        <Trophy className={styles.heroTrophy} aria-hidden="true" strokeWidth={1} />
-      </section>
-      <p className={styles.notice}>
-        Propuestas · acreditación real todavía no disponible. Ningún reconocimiento se concede desde
-        esta página.
-      </p>
-      <nav className={styles.modeNav} aria-label="Modalidad del Salón de la Fama">
-        {(["soloq", "flex"] as const).map((q) => (
-          <Link
-            key={q}
-            href={`/salon-de-la-fama?queue=${q}`}
-            aria-current={view === q ? "page" : undefined}
-          >
-            {q === "soloq" ? "SoloQ" : "Flex"}
+    <div className={styles.page}>
+      <PageHeading
+        title="Salón de la Fama"
+        lead="Las hazañas pasan. Los nombres permanecen."
+        meta={
+          <Link className={styles.metaLink} href={`/logros?queue=${view}`}>
+            Explorar desafíos experimentales →
           </Link>
-        ))}
-      </nav>
-      {data.demo && (
-        <p className={styles.demoNotice}>
-          Ficticio · Demo. Nombres, hazañas, fechas y récords simulados. Escenarios independientes
-          de las partidas y señales experimentales de los perfiles.
-        </p>
-      )}
-      <section aria-labelledby="hall-concepts">
+        }
+        aside={
+          <p className={styles.notice}>
+            <strong>Propuestas</strong> · acreditación real todavía no disponible. Ningún
+            reconocimiento se concede desde esta página.
+            {data.demo && (
+              <>
+                {" "}
+                <span className={styles.demoMarker}>Ficticio · Demo.</span> Nombres, hazañas, fechas
+                y récords simulados. Escenarios independientes de las partidas y señales
+                experimentales de los perfiles.
+              </>
+            )}
+          </p>
+        }
+      />
+      <QueueTabs
+        view={view}
+        base="/salon-de-la-fama"
+        views={["soloq", "flex"]}
+        label="Modalidad del Salón de la Fama"
+      />
+      <section className={styles.section} aria-labelledby="hall-concepts">
         <header className={styles.sectionHeading}>
-          <div>
-            <span className={styles.overline}>EL PRÓXIMO CAPÍTULO</span>
-            <h2 id="hall-concepts">Hazañas que dejarían historia</h2>
-          </div>
+          <h2 id="hall-concepts">Hazañas que dejarían historia</h2>
           <span>Rareza real: todavía no disponible</span>
         </header>
         <ul className={styles.gallery}>
@@ -84,59 +80,53 @@ export function HallOfFame({ view }: { view: View }) {
               data-proposal={proposal.id}
             >
               <HallEmblem id={proposal.id} />
-              <div className={styles.proposalBody}>
-                <span className={styles.overline}>{proposal.categoryName} · propuesta</span>
-                <h3>{proposal.name}</h3>
-                <p>{proposal.description}</p>
-                <span className={styles.proposalState}>
-                  {data.recognitions.some((r) => r.proposalId === proposal.id)
-                    ? "Caso simulado disponible · Demo"
-                    : "Sin acreditación disponible"}
-                </span>
-                <details className={styles.details}>
-                  <summary>
-                    Ver propuesta y requisitos <ChevronDown size={16} aria-hidden="true" />
-                  </summary>
-                  <dl>
-                    <div>
-                      <dt>Requisito conceptual</dt>
-                      <dd>{proposal.requirement}</dd>
-                    </div>
-                    <div>
-                      <dt>Evidencia necesaria</dt>
-                      <dd>{proposal.evidence}</dd>
-                    </div>
-                    <div>
-                      <dt>Límites de cobertura</dt>
-                      <dd>{proposal.coverage}</dd>
-                    </div>
-                    <div>
-                      <dt>Verificabilidad actual</dt>
-                      <dd>{proposal.feasibility}</dd>
-                    </div>
-                    <div>
-                      <dt>Infraestructura pendiente</dt>
-                      <dd>{proposal.infrastructure}</dd>
-                    </div>
-                  </dl>
-                  <p>
-                    Identificador: {proposal.id} · {proposal.version}. No es una regla activa ni un
-                    umbral definitivo.
-                  </p>
-                </details>
-              </div>
+              <p className={styles.category}>{proposal.categoryName} · propuesta</p>
+              <h3>{proposal.name}</h3>
+              <p className={styles.description}>{proposal.description}</p>
+              <p className={styles.proposalState}>
+                {data.recognitions.some((r) => r.proposalId === proposal.id)
+                  ? "Caso simulado disponible · Demo"
+                  : "Sin acreditación disponible"}
+              </p>
+              <details className={styles.details}>
+                <summary>
+                  Ver propuesta y requisitos <ChevronDown size={16} aria-hidden="true" />
+                </summary>
+                <dl>
+                  <div>
+                    <dt>Requisito conceptual</dt>
+                    <dd>{proposal.requirement}</dd>
+                  </div>
+                  <div>
+                    <dt>Evidencia necesaria</dt>
+                    <dd>{proposal.evidence}</dd>
+                  </div>
+                  <div>
+                    <dt>Límites de cobertura</dt>
+                    <dd>{proposal.coverage}</dd>
+                  </div>
+                  <div>
+                    <dt>Verificabilidad actual</dt>
+                    <dd>{proposal.feasibility}</dd>
+                  </div>
+                  <div>
+                    <dt>Infraestructura pendiente</dt>
+                    <dd>{proposal.infrastructure}</dd>
+                  </div>
+                </dl>
+                <p>
+                  Identificador: {proposal.id} · {proposal.version}. No es una regla activa ni un
+                  umbral definitivo.
+                </p>
+              </details>
             </li>
           ))}
         </ul>
       </section>
-      <section className={styles.legacy} aria-labelledby="hall-legacy">
+      <section className={styles.section} aria-labelledby="hall-legacy">
         <header className={styles.sectionHeading}>
-          <div>
-            <span className={styles.overline}>HISTORIAL PERSONAL</span>
-            <h2 id="hall-legacy">
-              Nombres del legado {data.demo && <small>Ficticio · Demo</small>}
-            </h2>
-          </div>
+          <h2 id="hall-legacy">Nombres del legado</h2>
+          {data.demo && <span className={styles.demoMarker}>Ficticio · Demo</span>}
         </header>
         {data.recognitions.length ? (
           <ul className={styles.recognitions}>
@@ -183,26 +173,22 @@ export function HallOfFame({ view }: { view: View }) {
             </p>
             {data.demo && view !== "soloq" && (
               <Link href="/salon-de-la-fama?queue=soloq">
-                Ver los ejemplos ficticios de SoloQ →
+                Ver los ejemplos ficticios de SoloQ{" "}→
               </Link>
             )}
           </div>
         )}
       </section>
-      <section className={styles.records} aria-labelledby="hall-records">
+      <section className={styles.section} aria-labelledby="hall-records">
         <header className={styles.sectionHeading}>
-          <div>
-            <span className={styles.overline}>RÉCORDS Y PIONEROS</span>
-            <h2 id="hall-records">El trono puede cambiar de manos</h2>
-          </div>
-          <History size={22} aria-hidden="true" />
+          <h2 id="hall-records">El trono puede cambiar de manos</h2>
         </header>
         <p className={styles.recordNote}>
           Un pionero conserva su acreditación histórica. El poseedor de un récord vigente puede
           cambiar; los antiguos titulares siguen formando parte del historial.
         </p>
         {data.records.length ? (
-          <ul>
+          <ul className={styles.records}>
             {data.records.map((r) => (
               <li key={r.id} data-source={r.source} data-record-state={r.to ? "former" : "current"}>
                 <span>
@@ -210,7 +196,10 @@ export function HallOfFame({ view }: { view: View }) {
                   Demo
                 </span>
                 <Link href={`/player/${r.playerId}?queue=soloq`}>{r.playerName}</Link>
-                <strong>{r.value} victorias · racha ficticia SoloQ</strong>
+                <strong>
+                  <span className={styles.recordValue}>{r.value}</span> victorias · racha ficticia
+                  SoloQ
+                </strong>
                 <p>
                   {date(r.from)} → {r.to ? date(r.to) : "vigente en el guion de Demo"}
                 </p>
@@ -228,7 +217,7 @@ export function HallOfFame({ view }: { view: View }) {
           histórica válida; revisión e invalidación requieren evidencia y trazabilidad.
         </p>
       </section>
-      <details className={styles.details}>
+      <details className={`${styles.details} ${styles.pending}`}>
         <summary>
           Qué falta para acreditar estos reconocimientos{" "}
           <ChevronDown size={16} aria-hidden="true" />
@@ -244,7 +233,7 @@ export function HallOfFame({ view }: { view: View }) {
           significan rareza extrema.
         </p>
       </details>
-    </>
+    </div>
   );
 }
 export function HallLegacyShowcase({ playerId, view }: { playerId: string; view: View }) {
@@ -255,7 +244,8 @@ export function HallLegacyShowcase({ playerId, view }: { playerId: string; view:
     <section className={styles.showcase} aria-label="Legado personal simulado">
       <header>
         <h2>
-          <Trophy size={18} aria-hidden="true" /> Legado personal <small>Ficticio · Demo</small>
+          <Trophy size={18} aria-hidden="true" /> Legado personal{" "}
+          <small className={styles.demoMarker}>Ficticio · Demo</small>
         </h2>
         <Link href={`/salon-de-la-fama?queue=${view}`}>Ver Salón de la Fama →</Link>
       </header>
