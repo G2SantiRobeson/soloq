@@ -344,7 +344,7 @@ export function Leaderboard({
       {ranked && rows.length > 0 && (
         <TierDistribution items={distribution} total={rows.length} linked={grouped} />
       )}
-      <table className="leaderboard" role="table">
+      <table className="leaderboard" role="table" hidden={rows.length === 0}>
         <caption className="sr-only">
           Clasificación de {view}. La posición se conserva al filtrar y ordenar.
           {grouped && " Agrupada por tier oficial."}

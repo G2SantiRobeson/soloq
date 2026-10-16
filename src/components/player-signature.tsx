@@ -42,14 +42,14 @@ export function PlayerSignature({
   const sources = new Set([...featured, ...others].map((metric) => metric.referenceSource));
   const referenceLabel =
     sources.size > 1
-      ? "REFERENCIAS MIXTAS"
+      ? "Referencias mixtas"
       : sources.has("community")
         ? demo
-          ? "COMUNIDAD SIMULADA"
-          : "REFERENCIA COMUNITARIA"
+          ? "Comunidad simulada"
+          : "Referencia comunitaria"
         : sources.has("default")
-          ? "VALORES DEL SISTEMA"
-          : "REFERENCIAS ESTADÍSTICAS";
+          ? "Valores del sistema"
+          : "Referencias estadísticas";
   return (
     <section
       className={`signature rank-${tier?.toLowerCase() ?? "unranked"}`}

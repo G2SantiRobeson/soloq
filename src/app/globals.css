@@ -503,6 +503,12 @@ h1 + .page-meta {
     font-size: var(--fs-2);
   }
 }
+.not-found-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+}
 .heading-dot {
   color: var(--accent);
 }
@@ -846,6 +852,9 @@ a.tier-segment-link:hover .tier-segment-count {
   --thead-h: 44px;
   border-collapse: separate;
   border-spacing: 0;
+}
+.leaderboard[hidden] {
+  display: none;
 }
 .leaderboard thead th {
   position: sticky;
@@ -1400,8 +1409,6 @@ a.tier-segment-link:hover .tier-segment-count {
   font:
     600 var(--fs-1) / 1.5 var(--font-body),
     sans-serif;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
   vertical-align: middle;
 }
 .disclosure-toggle {
@@ -1662,10 +1669,6 @@ a.tier-segment-link:hover .tier-segment-count {
   grid-column: 1 / span 5;
   grid-row: span 2;
   background: color-mix(in srgb, var(--rank-color, var(--muted)) 7%, var(--surface));
-}
-.profile-bento > .profile-block-rank,
-.profile-bento.is-5v5 > .profile-block-record {
-  border-top: 2px solid var(--accent);
 }
 .profile-bento > .profile-block-rank {
   border-top: 0;
@@ -2089,8 +2092,9 @@ a.tier-segment-link:hover .tier-segment-count {
   max-width: 480px;
   margin: var(--space-3) auto;
   padding: var(--space-4);
-  border: 0;
-  border-top: 3px solid var(--accent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 .login-icon {
   color: var(--accent);
@@ -2133,7 +2137,8 @@ a.tier-segment-link:hover .tier-segment-count {
   font-size: var(--fs-2);
 }
 .notice {
-  border-left: 2px solid var(--warning);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   padding: var(--space-2);
   color: var(--warning);
   background: var(--warning-bg);
@@ -2162,7 +2167,8 @@ a.tier-segment-link:hover .tier-segment-count {
   gap: var(--space-1) var(--space-2);
   margin-top: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  border-left: 3px solid var(--accent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--surface-2);
   font-size: var(--fs-2);
 }
@@ -3046,6 +3052,16 @@ dialog.confirm-dialog::backdrop {
   .leaderboard .rank-display {
     gap: var(--space-half);
     font-size: var(--fs-2);
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .leaderboard .rank-display > span:last-child {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .leaderboard .form-cell .recent-champions {
+    flex-wrap: wrap;
+    max-width: calc(2 * var(--space-5));
   }
 }
 @media (max-width: 700px) {
@@ -3320,10 +3336,8 @@ dialog.confirm-dialog::backdrop {
   gap: var(--space-1) var(--space-2);
   margin-top: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--accent);
-  border-left-width: 3px;
+  border: 1px solid var(--line);
   background: var(--surface-2);
-  box-shadow: var(--glow-accent);
   font-size: var(--fs-2);
 }
 .refresh-notice p {
@@ -3471,6 +3485,10 @@ dialog.confirm-dialog::backdrop {
   overflow: auto;
   margin-bottom: var(--space-2);
 }
+.lp-observations:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .lp-observations article {
   padding: var(--space-2);
   border: 1px solid var(--line);
@@ -3584,7 +3602,9 @@ dialog.confirm-dialog::backdrop {
   display: flex;
   gap: var(--space-2);
   padding: var(--space-2);
-  border-left: 3px solid var(--accent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 .admin-operation > svg {
   flex-shrink: 0;
@@ -3597,24 +3617,32 @@ dialog.confirm-dialog::backdrop {
 }
 .admin-operation.success {
   border-color: var(--win);
+  background: var(--win-bg);
 }
-.admin-operation.success > svg {
+.admin-operation.success > svg,
+.admin-operation.success strong {
   color: var(--win);
 }
 .admin-operation.partial,
 .admin-operation.cooldown,
 .admin-operation.uncertain {
   border-color: var(--warning);
+  background: var(--warning-bg);
 }
 .admin-operation.partial > svg,
 .admin-operation.cooldown > svg,
-.admin-operation.uncertain > svg {
+.admin-operation.uncertain > svg,
+.admin-operation.partial strong,
+.admin-operation.cooldown strong,
+.admin-operation.uncertain strong {
   color: var(--warning);
 }
 .admin-operation.error {
   border-color: var(--loss);
+  background: var(--loss-bg);
 }
-.admin-operation.error > svg {
+.admin-operation.error > svg,
+.admin-operation.error strong {
   color: var(--loss);
 }
 .admin-progress-meta {
@@ -3881,12 +3909,11 @@ dialog.confirm-dialog::backdrop {
 .recent-champion[data-tip]:hover::after {
   position: absolute;
   top: calc(100% + var(--space-1));
-  z-index: 30;
+  z-index: var(--z-popover);
   width: max-content;
   max-width: min(280px, calc(100vw - var(--space-4)));
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
-  border-top: 2px solid var(--accent);
   background: var(--surface-raised);
   box-shadow: var(--shadow-pop);
   color: var(--text);
@@ -4580,16 +4607,13 @@ dialog.confirm-dialog::backdrop {
   min-width: 0;
   padding: var(--space-2);
   border: 1px solid var(--line);
-  border-top: 2px solid var(--rank-color, var(--accent));
   border-radius: var(--radius);
   background: var(--surface);
 }
 .signature-label {
   color: var(--muted);
-  font-size: var(--fs-1);
+  font-size: var(--fs-2);
   font-weight: 600;
-  letter-spacing: 1px;
-  text-transform: uppercase;
 }
 .signature-num,
 .signature-mini {
@@ -4930,6 +4954,72 @@ dialog.confirm-dialog::backdrop {
 @media (max-width: 550px) {
   .admin-actions .auto-history-action {
     grid-column: 1 / -1;
+  }
+}
+
+/* Route-local placeholders: static even when motion is allowed. */
+.rivalries-loading .skeleton {
+  background: var(--surface-2);
+  background-size: auto;
+  animation: none;
+}
+.rivalries-loading-line {
+  display: block;
+  width: min(100%, 54ch);
+  height: var(--space-3);
+}
+.rivalries-loading-line.short {
+  width: min(100%, 40ch);
+  height: var(--space-2);
+}
+.rivalries-loading .skeleton-tabs {
+  width: min(100%, 240px);
+  margin: 0 0 var(--space-2);
+}
+.rivalries-loading-filters {
+  width: min(100%, 400px);
+  height: var(--target-min);
+  margin-bottom: var(--space-2);
+}
+.rivalries-loading-list {
+  display: grid;
+  margin-top: var(--space-6);
+  border-block: 1px solid var(--line);
+}
+.rivalries-loading-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(128px, 200px) minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+.rivalries-loading-row + .rivalries-loading-row {
+  border-top: 1px solid var(--line);
+}
+.rivalries-loading-player {
+  min-height: 160px;
+}
+.rivalries-loading-gap {
+  width: 75%;
+  height: var(--space-6);
+  align-self: center;
+  justify-self: center;
+}
+@media (max-width: 700px) {
+  .rivalries-loading-filters {
+    width: 100%;
+    height: 120px;
+  }
+  .rivalries-loading-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: var(--space-2);
+  }
+  .rivalries-loading-player {
+    min-height: 200px;
+  }
+  .rivalries-loading-gap {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 50%;
   }
 }
 

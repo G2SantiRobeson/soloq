@@ -19,7 +19,12 @@ export function LpDeltaSummary({
           en cada partida.
         </p>
       ) : (
-        <div className="lp-observations">
+        <div
+          className="lp-observations"
+          tabIndex={0}
+          role="region"
+          aria-label="Observaciones históricas de LP"
+        >
           {observations.toReversed().map((o) => (
             <article key={`${o.from}-${o.to}`}>
               <time dateTime={o.to}>

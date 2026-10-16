@@ -111,7 +111,7 @@ async function check(route, expected = 200, options = {}) {
     `${route}: unexpected HTTP status ${response.status}`,
   );
   if (Array.isArray(expected))
-    assert(body.includes("No encontramos esta página."), `${route}: missing not-found view`);
+    assert(body.includes("Página no encontrada"), `${route}: missing not-found view`);
   if (route.startsWith("/api/") && ![404, 405].includes(response.status))
     assert.equal(response.headers.get("cache-control"), "no-store");
   else if (!route.startsWith("/api/")) {

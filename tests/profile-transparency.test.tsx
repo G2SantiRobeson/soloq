@@ -26,7 +26,7 @@ describe("signature reference presentation", () => {
           others={defaults}
         />,
       );
-      expect(html).toContain("REFERENCIAS MIXTAS");
+      expect(html).toContain("Referencias mixtas");
       expect(html).toContain("Referencia: comunidad");
       expect(html).toContain("Referencia: valores del sistema");
       expect(html).toContain("no logros desbloqueados");
@@ -42,7 +42,7 @@ describe("signature reference presentation", () => {
     const html = renderToStaticMarkup(
       <PlayerSignature name="Tester" tier={null} view="soloq" {...{ featured, others }} />,
     );
-    expect(html).toContain("VALORES DEL SISTEMA");
+    expect(html).toContain("Valores del sistema");
     expect(html).not.toContain("Referencia: comunidad");
   });
   it("labels community demo baselines as simulated", () => {
@@ -59,7 +59,7 @@ describe("signature reference presentation", () => {
         others={[]}
       />,
     );
-    expect(html).toContain("COMUNIDAD SIMULADA");
+    expect(html).toContain("Comunidad simulada");
     expect(html).toContain("Referencia: comunidad simulada");
   });
   it("keeps insufficient data neutral and named", () => {
@@ -68,7 +68,7 @@ describe("signature reference presentation", () => {
     );
     expect(html).toContain("Todavía no hay partidas suficientes");
     expect(html).toContain('aria-labelledby="signature-heading"');
-    expect(html).not.toContain("REFERENCIA COMUNITARIA");
+    expect(html).not.toContain("Referencia comunitaria");
   });
 });
 
