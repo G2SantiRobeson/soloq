@@ -1,19 +1,43 @@
-import { Flame, RotateCcw, Target } from "lucide-react";
+import Image from "next/image";
 import type { AchievementCode } from "@/lib/achievements/types";
+import type { AchievementDisplay } from "@/lib/achievements/presentation";
+import { championAsset } from "@/lib/champion-assets";
 import styles from "./experience.module.css";
-/** Temporary code-native emblem slot; a future original asset can replace its icon. */
+
+/** Original artwork only: evaluation states and experimental labels remain outside the emblem. */
 export function AchievementEmblem({
   code,
   compact = false,
+  specialization,
 }: {
   code: AchievementCode;
   compact?: boolean;
+  /** Pass only the specialization from an observed OTP evaluation, never profile aggregates. */
+  specialization?: AchievementDisplay["specialization"];
 }) {
-  const Icon = { resurrection: RotateCcw, unstoppable: Flame, "otp-specialist": Target }[code];
+  // An empty catalog deliberately limits portraits to existing local champion assets.
+  const portrait =
+    code === "otp-specialist" && specialization
+      ? championAsset(specialization.championId, specialization.champion, {})
+      : null;
   return (
     <span className={compact ? styles.emblemCompact : styles.emblem} aria-hidden="true">
       <span className={styles.emblemFrame}>
-        <Icon strokeWidth={1.5} />
+        {code === "otp-specialist" && (
+          <span className={styles.otpPortrait}>
+            {portrait?.src && (
+              <Image src={portrait.src} alt="" width={128} height={128} unoptimized />
+            )}
+          </span>
+        )}
+        <Image
+          className={styles.emblemArt}
+          src={`/achievements/catalog/${code}.webp`}
+          alt=""
+          width={768}
+          height={768}
+          sizes={compact ? "72px" : "(max-width: 700px) 80px, (max-width: 1100px) 96px, 112px"}
+        />
       </span>
     </span>
   );

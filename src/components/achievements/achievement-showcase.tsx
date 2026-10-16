@@ -29,7 +29,7 @@ export function AchievementShowcaseContent({
             key={item.code}
             data-theme={achievementArt[item.code].theme}
           >
-            <AchievementEmblem code={item.code} compact />
+            <AchievementEmblem code={item.code} specialization={item.specialization} compact />
             <span>
               {item.name}
               <span className={styles.badgeMotto}>{achievementArt[item.code].motto}</span>
