@@ -8,14 +8,18 @@ export function ShareRivalry({
   ids,
   view,
   filters,
+  manual = false,
+  label = "Compartir rivalidad",
 }: {
   ids: RivalPairIds;
   view: View;
   filters?: LadderFilters;
+  manual?: boolean;
+  label?: string;
 }) {
   const [feedback, setFeedback] = useState(""),
     [fallback, setFallback] = useState("");
-  const path = sharedRivalryPath(view, ids, filters);
+  const path = sharedRivalryPath(view, ids, filters, manual);
   async function copy() {
     if (!path) return;
     const value = new URL(path, window.location.origin).href;
@@ -33,7 +37,7 @@ export function ShareRivalry({
     <div className="share-rivalry">
       <button type="button" className="share-rivalry-button" onClick={copy} disabled={!path}>
         <LinkIcon size={13} aria-hidden="true" />
-        Compartir rivalidad
+        {label}
       </button>
       <span role="status" aria-live="polite">
         {feedback}

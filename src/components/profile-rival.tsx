@@ -64,6 +64,7 @@ export function ProfileRival({
                       ", según el estado registrado."}
               </p>
               <Link
+                className="button secondary"
                 href={
                   sharedRivalryPath(
                     view,
@@ -72,7 +73,7 @@ export function ProfileRival({
                   ) ?? "/?queue=" + view + "&region=" + rival.platform + "#clasificacion"
                 }
               >
-                Ver enfrentamiento
+                Abrir VS
               </Link>
             </div>
           );
